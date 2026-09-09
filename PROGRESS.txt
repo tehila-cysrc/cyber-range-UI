@@ -787,3 +787,40 @@ NOTES: Phase 3 (topology UI: node-type icons/coloring, discovered-vs-manual visu
   the environmentId field now returned by the topology read endpoint) and Phase 4 (Guacamole student
   access broker) and Phase 5 (audit/RBAC hardening) remain per the plan file. Same open item as Phase 1:
   a genuine success-path live test needs the real Service Principal secret from the user.
+==================================================================
+[2026-09-09 16:55 IDT] session=live-cloud-environment-phase3
+TASK: Continue the live-cloud-environment plan with Phase 3: dynamic topology UI (node-type
+  icons/coloring, discovered-vs-manual visual distinction, metadata detail panel). Linking UI was
+  already delivered as part of Phase 2.
+FILES:
+  M client/src/features/topology/TopologyGraph.tsx (purely additive, both consumers unchanged):
+    - `TopologyNodeData` gained optional `metadataJson`/`environmentId` fields (the server route
+      already returned metadataJson; environmentId was added to the read endpoint in Phase 2).
+    - Nodes are now colored by `node_type` via a `NODE_TYPE_STYLE` map covering both the existing
+      hand-drawn types (host/service/network) and the 9 Azure-discovery types (vm/nic/vnet/subnet/
+      nsg/public_ip/load_balancer/storage_account/key_vault), with a neutral fallback for anything
+      unrecognized so it can never crash on an unknown type. Each node also shows a small type
+      sublabel and, when `environmentId` is set, a small dot indicating it came from live discovery
+      rather than being hand-drawn.
+    - Clicking a node opens a floating detail panel (inside the same graph container) showing its
+      type and parsed `metadataJson` as key/value pairs; clicking the pane background closes it.
+      Both `TopologyViewerPage.tsx` (student, read-only) and `TopologyAdminPage.tsx` (instructor,
+      editable/draggable) get this for free since they just pass data through to `TopologyGraph` —
+      neither file needed to change.
+RESULT: verified-live. `npx tsc -b` clean on client; `npm run build -w client` clean (adds one new
+  CSS chunk for the graph, bundle sizes otherwise unchanged). Wrote a scratch script (deleted after,
+  never committed) that inserted one real Azure-discovery-shaped topology_nodes row (AIAGENT01, type
+  'vm', with realistic metadata_json) alongside the two pre-existing hand-drawn nodes (DC01, Web01),
+  then hit the REAL `GET /api/cyber-ranges/1/topology` endpoint over HTTP (logged in as the seeded
+  instructor) and confirmed the exact JSON shape TopologyGraph.tsx consumes: the discovered node
+  carries a non-null `environmentId` and a parsable `metadataJson` string with the expected keys; the
+  two pre-existing manual nodes come back with `environmentId: null, metadataJson: null` and are
+  therefore provably unaffected by this change. Cleaned up the scratch row afterward — DB back to 2
+  topology_nodes (the original manual ones), 0 rows in every Phase 1/2 table. Did not browser-click-
+  test the actual rendered graph/panel (same browser-tool localhost isolation noted in every session
+  this week) — verified via the real API response shape plus a clean build instead.
+NOTES: Phase 3 is now complete per the plan. Remaining: Phase 4 (Guacamole-based student access
+  broker — access_targets/access_sessions tables, credential-per-VM registration, the actual browser
+  session flow) and Phase 5 (audit/RBAC hardening beyond what Phases 1-2 already put in place). Same
+  standing open item: no real Azure Service Principal secret available this session for a genuine
+  discovery-success live test (auth-failure path is the only one provable without it).
