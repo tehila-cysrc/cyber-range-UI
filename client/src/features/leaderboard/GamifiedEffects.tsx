@@ -1,6 +1,7 @@
 import confetti from 'canvas-confetti';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useAuthStore } from '../../stores/authStore';
+import { playScoreChime } from './playScoreChime';
 
 interface ScoreAwardedPayload {
   isGamified: boolean;
@@ -16,17 +17,7 @@ export function GamifiedEffects() {
     if (role !== 'student' || !payload.isGamified) return;
 
     confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
-
-    try {
-      const audio = new Audio('/sounds/score.mp3');
-      audio.volume = 0.5;
-      void audio.play().catch(() => {
-        // Autoplay can be blocked before the user has interacted with the page — non-fatal,
-        // confetti still shows.
-      });
-    } catch {
-      // No audio asset / unsupported — confetti alone is enough, never let this throw.
-    }
+    playScoreChime();
   });
 
   return null;

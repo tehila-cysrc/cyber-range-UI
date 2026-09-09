@@ -1,11 +1,10 @@
+import { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { ProtectedRoute } from './ProtectedRoute';
 import { LoginPage } from '../features/auth/LoginPage';
 import { TeamWorkspacePage } from '../features/team/TeamWorkspacePage';
 import { InvestigationPage } from '../features/documentation/InvestigationPage';
-import { TopologyViewerPage } from '../features/topology/TopologyViewerPage';
-import { TopologyAdminPage } from '../features/topology/admin/TopologyAdminPage';
 import { InstructorDashboardPage } from '../features/instructorDashboard/InstructorDashboardPage';
 import { HomeRoute } from './HomeRoute';
 import { ProgressPage } from '../features/scoring/ProgressPage';
@@ -15,6 +14,19 @@ import { CyberRangeSummaryPage } from '../features/history/CyberRangeSummaryPage
 import { EventSummaryPage } from '../features/history/EventSummaryPage';
 import { EventResetPage } from '../features/admin/EventResetPage';
 import { TeamsAdminPage } from '../features/admin/TeamsAdminPage';
+
+// React Flow (topology) is the single largest dependency in the bundle — code-split it into its
+// own chunk so it only loads for users who actually open a topology screen (see BACKLOG.md).
+const TopologyViewerPage = lazy(() =>
+  import('../features/topology/TopologyViewerPage').then((m) => ({ default: m.TopologyViewerPage })),
+);
+const TopologyAdminPage = lazy(() =>
+  import('../features/topology/admin/TopologyAdminPage').then((m) => ({ default: m.TopologyAdminPage })),
+);
+
+function TopologyFallback() {
+  return <div style={{ padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading topology…</div>;
+}
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -27,7 +39,14 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <HomeRoute /> },
       { path: '/investigation', element: <InvestigationPage /> },
-      { path: '/topology', element: <TopologyViewerPage /> },
+      {
+        path: '/topology',
+        element: (
+          <Suspense fallback={<TopologyFallback />}>
+            <TopologyViewerPage />
+          </Suspense>
+        ),
+      },
       { path: '/progress', element: <ProgressPage /> },
       { path: '/team', element: <TeamWorkspacePage /> },
       { path: '/leaderboard', element: <LeaderboardPage /> },
@@ -46,7 +65,9 @@ export const router = createBrowserRouter([
         path: '/admin/topology',
         element: (
           <ProtectedRoute requireRole="instructor">
-            <TopologyAdminPage />
+            <Suspense fallback={<TopologyFallback />}>
+              <TopologyAdminPage />
+            </Suspense>
           </ProtectedRoute>
         ),
       },

@@ -430,3 +430,24 @@ NOTES: What worked before the tunnel died: loca.lt's one-time "are you the tunne
   pass is wanted, or the user can just open http://localhost:5173 directly themselves as already
   suggested.
 ==================================================================
+
+==================================================================
+[2026-09-09 15:40 IDT] session=backlog-polish-cleanup
+TASK: Closed the two remaining low-priority BACKLOG.md items (sound asset, bundle size) after the
+  user asked to continue finishing everything remaining.
+FILES:
+  A client/src/features/leaderboard/playScoreChime.ts (synthesized two-note WebAudio chime, replaces
+    the file-based `new Audio('/sounds/score.mp3')` call that always 404'd since no such asset ever
+    existed — avoids needing to source/license a real sound file at all)
+  M client/src/features/leaderboard/GamifiedEffects.tsx (calls playScoreChime() instead)
+  M client/src/app/routes.tsx (TopologyViewerPage/TopologyAdminPage now React.lazy + Suspense —
+    React Flow is by far the largest dependency, so it now ships as its own chunk loaded only when a
+    topology screen is actually opened)
+RESULT: verified-live
+NOTES: `npm run build -w client`: main bundle dropped from ~556KB to ~411KB gzip 125KB; React Flow
+  split into a separate ~141KB (gzip 45.5KB) chunk plus small per-page chunks; the "chunk larger than
+  500kB" build warning is gone. tsc -b clean. Confirmed the dev server and API still work end-to-end
+  after the routing change (curl through the :5173 proxy). Both BACKLOG.md items moved to Done. Only
+  remaining open backlog item is the deliberate "student self-report scoring" v2 idea, which was
+  always meant to stay deferred, not something to build now.
+==================================================================
