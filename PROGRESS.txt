@@ -861,3 +861,55 @@ NOTES: This closes the "no genuine success-path test" gap flagged in every Phase
   mapping + upsert + API) is now proven correct independent of which credential type supplies the
   token. This verification approach does NOT help Phase 4 (Guacamole broker) — that gap is
   guacd/network/VM-OS-credentials, unrelated to Azure AD auth, and az cli login doesn't touch it.
+==================================================================
+[2026-09-09 18:20 IDT] session=student-self-registration
+TASK: Fix #8 (three related asks for the "documenting a finding" screen, InvestigationPage.tsx):
+  1. Allow uploading an image with a documentation entry.
+  2. Add an "Indicator of Compromise (IOC)"-style category to the seeded taxonomy.
+  3. Let a student free-type a new category instead of only picking from the fixed dropdown.
+FILES:
+  M server/src/db/migrate.ts (additive column `documentation_entries.image_data_url TEXT` via the
+    existing `addColumnIfMissing` helper — base64 `data:image/...` stored inline, no file storage/
+    multer dependency added, matching this app's low-scale internal-tool scope)
+  M server/src/db/seed.ts (added `['ioc', 'Indicator of Compromise (IOC)']` to the seeded category
+    list, before 'other')
+  M server/src/app.ts (bumped `express.json()` limit from the 100kb default to `8mb` — needed
+    for a base64 image in the JSON body)
+  M server/src/routes/documentation.routes.ts (POST now accepts `newCategoryLabel` (free text,
+    takes precedence over `categoryId`) and `imageDataUrl`. New `findOrCreateCategoryId()`: slugifies
+    the label into a `key`, reuses an existing `documentation_categories` row by that key if one
+    exists (case/spacing-insensitive via the slug) instead of duplicating, else creates one at the
+    next `sort_order` — categories are CONFIG data, so this persists across an event reset for future
+    runs. `imageDataUrl` validated: must start with `data:image/`, capped at
+    `MAX_IMAGE_DATA_URL_LENGTH` (~4.5MB raw) — 400 on either violation. Both GET and POST responses
+    now include `imageDataUrl`.)
+  M server/src/routes/history.routes.ts (added `imageDataUrl` to the `/history/:cyberRangeId`
+    documentation SELECT, so the debrief view isn't missing images the live timeline shows)
+  M client/src/features/documentation/InvestigationPage.tsx (new `<input type="file" accept="image/*">`
+    reading via `FileReader.readAsDataURL`, 4MB client-side size guard with an inline error message,
+    thumbnail preview with a Remove button; timeline entries render an `<img>` when `imageDataUrl` is
+    set; new free-text `<input>` below the category `<select>` — filling it disables the dropdown and
+    takes precedence on submit; after a successful post with a new category, invalidates the
+    `documentation-categories` query so the dropdown picks it up next time)
+  M client/src/features/history/CyberRangeSummaryPage.tsx (added `imageDataUrl` to its `DocEntry`
+    type and renders the same `<img>` in the debrief view, for consistency with the live timeline)
+  M CLAUDE/api.md, CLAUDE/db.md (documented the new request fields, the find-or-create category
+    behavior, the image size caps, and the new additive column)
+RESULT: verified-live. Ran `npm run seed -w server` (idempotent — confirmed it only skipped-and-
+  logged for the already-seeded demo run, added nothing duplicate) to apply the migration and add the
+  ioc category to the running dev DB; confirmed via `GET /documentation-categories`. Verified via curl
+  as `alice`: posted an entry with a 1x1 PNG + `newCategoryLabel: "C2 Beaconing"` -> response included
+  the image and a newly-created `c2_beaconing` category -> posted again with `newCategoryLabel: "c2
+  beaconing"` (different case/spacing) -> reused the SAME category id, confirming find-or-create
+  works and doesn't duplicate -> confirmed `GET /history/1` (debrief) also returns `imageDataUrl` on
+  the right entries. Verified rejection paths: `imageDataUrl` with a non-`image/` MIME type -> 400;
+  an oversized (>4.5MB) `imageDataUrl` -> 400. `tsc -b` clean both workspaces, client build clean.
+  Cleaned up afterward: deleted only the 2 test documentation entries and 1 test category I created
+  (left the user's own 3 pre-existing manual-test entries for Team Alpha/Bravo untouched — confirmed
+  by inspecting entry bodies before deleting anything). Did not revert Team Alpha's cyber-range-1
+  "active" state I started to have something to post documentation against — leaving a team active
+  isn't data pollution the way duplicate entries/categories are, and Team Bravo already had its own
+  active scenario from the user's own testing.
+  Did not visually browser-test the new file input/image rendering/free-text category field (same
+  browser-tool network isolation noted throughout this session) — verified via the exact HTTP
+  contract the UI calls, plus clean typecheck/build.

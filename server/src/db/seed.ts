@@ -45,6 +45,7 @@ function seedDocumentationCategories() {
     ['persistence', 'Persistence'],
     ['lateral_movement', 'Lateral Movement'],
     ['exfiltration', 'Exfiltration'],
+    ['ioc', 'Indicator of Compromise (IOC)'],
     ['other', 'Other'],
   ];
   categories.forEach(([key, label], i) => insert.run(key, label, i + 1));

@@ -35,6 +35,10 @@ export function migrate() {
   addColumnIfMissing('topology_edges', 'environment_id', 'INTEGER REFERENCES cloud_environments(id)');
   addColumnIfMissing('topology_edges', 'discovery_run_id', 'INTEGER REFERENCES environment_discovery_runs(id)');
 
+  // Optional screenshot/evidence attached to a documentation entry — stored inline as a data: URL
+  // rather than on disk/blob storage, matching this app's low-scale internal-tool scope.
+  addColumnIfMissing('documentation_entries', 'image_data_url', 'TEXT');
+
   // external_key is the Azure ARM resource id for discovered nodes/edges — globally unique per
   // cyber range, so a safe upsert target for re-running discovery (INSERT ... ON CONFLICT DO UPDATE)
   // instead of delete-and-recreate.

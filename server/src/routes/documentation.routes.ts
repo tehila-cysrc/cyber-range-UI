@@ -41,6 +41,7 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
       `SELECT
          e.id AS id,
          e.body AS body,
+         e.image_data_url AS imageDataUrl,
          e.is_important_finding AS isImportantFinding,
          e.created_at AS createdAt,
          u.id AS authorUserId,
@@ -58,6 +59,39 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   res.json({ entries });
 });
 
+// Free-text categories (e.g. a student typing "IOC" or something not in the seeded list) are
+// find-or-created here rather than requiring an instructor to pre-configure every category —
+// documentation_categories is CONFIG data, so it survives an event reset and benefits future runs.
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000; // ~4.5MB raw image, generous for a screenshot
+
+function slugifyCategoryKey(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function findOrCreateCategoryId(label: string): number | null {
+  const key = slugifyCategoryKey(label);
+  if (!key) return null;
+
+  const existing = db.prepare('SELECT id FROM documentation_categories WHERE key = ?').get(key) as
+    | { id: number }
+    | undefined;
+  if (existing) return existing.id;
+
+  const nextSort = db
+    .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM documentation_categories')
+    .get() as { n: number };
+
+  const result = db
+    .prepare('INSERT INTO documentation_categories (key, label, sort_order, active) VALUES (?, ?, ?, 1)')
+    .run(key, label.trim(), nextSort.n);
+
+  return Number(result.lastInsertRowid);
+}
+
 router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   // Students only document their own team's investigation; instructors don't author entries.
   if (req.user!.role !== 'student' || !req.user!.teamId) {
@@ -65,25 +99,42 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
     return;
   }
 
-  const { body, categoryId, isImportantFinding } = req.body ?? {};
+  const { body, categoryId, newCategoryLabel, isImportantFinding, imageDataUrl } = req.body ?? {};
   if (typeof body !== 'string' || body.trim().length === 0) {
     res.status(400).json({ error: 'body is required' });
     return;
+  }
+
+  if (imageDataUrl != null) {
+    if (typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+      res.status(400).json({ error: 'imageDataUrl must be a data:image/... URL' });
+      return;
+    }
+    if (imageDataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      res.status(400).json({ error: 'image is too large' });
+      return;
+    }
+  }
+
+  let resolvedCategoryId: number | null = categoryId ?? null;
+  if (typeof newCategoryLabel === 'string' && newCategoryLabel.trim().length > 0) {
+    resolvedCategoryId = findOrCreateCategoryId(newCategoryLabel);
   }
 
   const createdAt = new Date().toISOString();
   const result = db
     .prepare(
       `INSERT INTO documentation_entries
-         (team_id, cyber_range_id, author_user_id, category_id, body, is_important_finding, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (team_id, cyber_range_id, author_user_id, category_id, body, image_data_url, is_important_finding, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       req.user!.teamId,
       Number(req.params.cyberRangeId),
       req.user!.id,
-      categoryId ?? null,
+      resolvedCategoryId,
       body.trim(),
+      imageDataUrl ?? null,
       isImportantFinding ? 1 : 0,
       createdAt,
     );
@@ -93,6 +144,7 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
       `SELECT
          e.id AS id,
          e.body AS body,
+         e.image_data_url AS imageDataUrl,
          e.is_important_finding AS isImportantFinding,
          e.created_at AS createdAt,
          u.id AS authorUserId,

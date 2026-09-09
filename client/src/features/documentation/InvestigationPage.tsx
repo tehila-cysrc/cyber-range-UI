@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
@@ -21,6 +21,7 @@ interface Category {
 interface DocEntry {
   id: number;
   body: string;
+  imageDataUrl: string | null;
   isImportantFinding: number;
   createdAt: string;
   authorName: string;
@@ -28,10 +29,15 @@ interface DocEntry {
   categoryLabel: string | null;
 }
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB raw file, before base64 inflation
+
 export function InvestigationPage() {
   const queryClient = useQueryClient();
   const [categoryId, setCategoryId] = useState<number | ''>('');
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [isImportant, setIsImportant] = useState(false);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const { data: activeData } = useQuery({
     queryKey: ['active-cyber-range'],
@@ -66,13 +72,23 @@ export function InvestigationPage() {
         body: JSON.stringify({
           body,
           categoryId: categoryId === '' ? null : categoryId,
+          newCategoryLabel: newCategoryLabel.trim() || undefined,
           isImportantFinding: isImportant,
+          imageDataUrl: imageDataUrl ?? undefined,
         }),
       }),
     onSuccess: () => {
       if (active) clearDraft(active.cyberRangeId);
       setIsImportant(false);
+      setCategoryId('');
+      setNewCategoryLabel('');
+      setImageDataUrl(null);
+      setImageError(null);
       queryClient.invalidateQueries({ queryKey: ['documentation', active?.cyberRangeId] });
+      // A free-text category may have just been created — refresh the dropdown for next time.
+      if (newCategoryLabel.trim()) {
+        queryClient.invalidateQueries({ queryKey: ['documentation-categories'] });
+      }
     },
   });
 
@@ -80,6 +96,20 @@ export function InvestigationPage() {
     e.preventDefault();
     if (!body.trim()) return;
     mutation.mutate();
+  }
+
+  function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError('Image is too large (max 4MB).');
+      return;
+    }
+    setImageError(null);
+    const reader = new FileReader();
+    reader.onload = () => setImageDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
   }
 
   // Realtime: merge entries other teammates post, without a refetch (US-003's "shared timeline").
@@ -157,6 +187,20 @@ export function InvestigationPage() {
                 </span>
               </div>
               <div style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
+              {entry.imageDataUrl && (
+                <img
+                  src={entry.imageDataUrl}
+                  alt="Attached evidence"
+                  style={{
+                    marginTop: 'var(--space-sm)',
+                    maxWidth: '100%',
+                    maxHeight: 320,
+                    borderRadius: 'var(--radius-control)',
+                    border: '1px solid var(--surface-border)',
+                    display: 'block',
+                  }}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -180,6 +224,7 @@ export function InvestigationPage() {
         />
         <select
           value={categoryId}
+          disabled={!!newCategoryLabel.trim()}
           onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
           style={{
             background: 'var(--surface-1)',
@@ -196,6 +241,50 @@ export function InvestigationPage() {
             </option>
           ))}
         </select>
+        <input
+          value={newCategoryLabel}
+          onChange={(e) => setNewCategoryLabel(e.target.value)}
+          placeholder="…or type a new category (e.g. IOC, C2)"
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-control)',
+            padding: 8,
+            color: 'var(--text-primary)',
+          }}
+        />
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 15, color: 'var(--text-muted)' }}>
+          Attach a screenshot (optional)
+          <input type="file" accept="image/*" onChange={handleImageChange} />
+        </label>
+        {imageError && <div style={{ color: 'var(--signal-alert)', fontSize: 13 }}>{imageError}</div>}
+        {imageDataUrl && (
+          <div style={{ position: 'relative', width: 'fit-content' }}>
+            <img
+              src={imageDataUrl}
+              alt="Selected attachment preview"
+              style={{ maxWidth: '100%', maxHeight: 160, borderRadius: 'var(--radius-control)', display: 'block' }}
+            />
+            <button
+              type="button"
+              onClick={() => setImageDataUrl(null)}
+              style={{
+                position: 'absolute',
+                top: 4,
+                right: 4,
+                background: 'var(--surface-floor)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 'var(--radius-control)',
+                cursor: 'pointer',
+                fontSize: 13,
+                padding: '2px 6px',
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 15, color: 'var(--text-muted)' }}>
           <input type="checkbox" checked={isImportant} onChange={(e) => setIsImportant(e.target.checked)} />
           Mark as important finding

@@ -6,6 +6,7 @@ import { TelemetryBadge } from '../../components/TelemetryBadge';
 interface DocEntry {
   id: number;
   body: string;
+  imageDataUrl: string | null;
   isImportantFinding: number;
   createdAt: string;
   authorName: string;
@@ -72,6 +73,20 @@ export function CyberRangeSummaryPage() {
                   {entry.categoryLabel ? ` · ${entry.categoryLabel}` : ''}
                 </div>
                 <div style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
+                {entry.imageDataUrl && (
+                  <img
+                    src={entry.imageDataUrl}
+                    alt="Attached evidence"
+                    style={{
+                      marginTop: 'var(--space-sm)',
+                      maxWidth: '100%',
+                      maxHeight: 320,
+                      borderRadius: 'var(--radius-control)',
+                      border: '1px solid var(--surface-border)',
+                      display: 'block',
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>

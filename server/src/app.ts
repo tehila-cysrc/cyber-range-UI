@@ -24,7 +24,8 @@ export function createApp() {
   const app = express();
 
   app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173' }));
-  app.use(express.json());
+  // Default 100kb is too small for a documentation entry's optional base64 image attachment.
+  app.use(express.json({ limit: '8mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });

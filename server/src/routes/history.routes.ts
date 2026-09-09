@@ -87,7 +87,8 @@ router.get('/history/:cyberRangeId', (req, res) => {
   const documentation = db
     .prepare(
       `SELECT
-         e.id AS id, e.body AS body, e.is_important_finding AS isImportantFinding,
+         e.id AS id, e.body AS body, e.image_data_url AS imageDataUrl,
+         e.is_important_finding AS isImportantFinding,
          e.created_at AS createdAt, u.display_name AS authorName, c.label AS categoryLabel
        FROM documentation_entries e
        JOIN users u ON u.id = e.author_user_id
