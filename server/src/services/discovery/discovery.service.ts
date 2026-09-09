@@ -40,7 +40,10 @@ export function triggerDiscovery(environmentId: number, actorUsername: string): 
     writeAudit(actorUsername, 'environment.discovery_triggered', 'cloud_environment', environmentId, { runId });
 
     // Fire-and-forget: the HTTP response returns immediately with the run id; the run's own status
-    // row is how the caller/UI polls for completion (GET .../discovery-runs/:runId).
+    // row is how the caller/UI polls for completion (GET .../discovery-runs/:runId). This catch is a
+    // last resort for a genuine bug (e.g. a DB error) — real Azure SDK failures are already routed
+    // through classifyAzureError inside runDiscovery before reaching here, so `err` at this point is
+    // never a raw SDK error carrying credential/request details.
     void runDiscovery(runId).catch((err) => {
       console.error(`[discovery] unhandled error running discovery run ${runId}:`, err);
     });

@@ -1018,3 +1018,54 @@ NOTES: This completes Phase 4 to the extent buildable/testable without real guac
   audit/RBAC hardening beyond what Phases 1-4 already established) and, whenever the user is ready,
   standing up a real guacd/guacamole-lite gateway + populating real VM credentials to light up the
   actual remote-desktop path end-to-end.
+==================================================================
+[2026-09-09 17:55 IDT] session=live-cloud-environment-phase5
+TASK: Continue the live-cloud-environment plan with Phase 5: audit/RBAC hardening, closing out the
+  plan file (C:\Users\Liram\.claude\plans\rustling-seeking-wave.md).
+FILES:
+  M server/src/services/audit.service.ts (+`listAuditLog` — the audit_log table had been write-only
+    since Phase 1, with no way for an instructor to actually read the compliance trail back; keyset
+    pagination via `before=<id>`, optional `entityType` filter, capped limit)
+  A server/src/routes/admin/auditLog.routes.ts (`GET /admin/audit-log`, requireAuth+requireRole
+    instructor)
+  M server/src/app.ts (mounted it)
+  A client/src/features/admin/AuditLogPage.tsx (instructor-facing log viewer: entity-type filter,
+    older/newer keyset pagination, color-coded by action e.g. denials/deletions in alert tone)
+  M client/src/app/routes.tsx, client/src/app/AppShell.tsx (new `/admin/audit-log` route + nav item)
+  M server/src/services/discovery/discovery.service.ts (comment-only: documented why the outer
+    fire-and-forget catch's `err` can never carry raw Azure SDK/credential details, per the security
+    audit's one INFO-level note below)
+  M CLAUDE/api.md (new endpoint)
+  M CLAUDE/services.md (new "Registering a cloud environment: least-privilege Service Principal"
+    section — the concrete `az ad sp create-for-rbac --role Reader --scopes /subscriptions/.../
+    resourceGroups/...` one-liner that both creates a dedicated SP AND scopes it correctly in one
+    step, plus `az role assignment list` to audit an existing SP before deciding whether to reuse it.
+    Documentation only — did not run either command myself, since creating a Service Principal or
+    role assignment mutates the user's real Azure AD tenant/subscription)
+RESULT: verified-live. Before writing anything, ran a full read-only security-audit pass (a forked
+  agent, not just self-review) across every route added in Phases 1-4, checking: RBAC coverage on
+  every admin/student route, every SQL SELECT that touches the `credentials` table (confirmed
+  `secret_ciphertext`/`secret_iv`/`secret_auth_tag` are selected in exactly one place —
+  `credential.service.ts#readCredentialPlaintext` — never in any route-facing query), student
+  `teamId` scoping on every team-scoped route, sensitive logging, and whether `audit_log` had a read
+  path yet. Came back clean: zero real findings across 20 route files, no `SELECT *` anywhere in
+  `server/src/`, no route ever echoes a secret/password back, every teams-scoped route resolves
+  server-side. One INFO-level note (a defensive outer catch in discovery.service.ts logs `err`
+  generically) — addressed with a clarifying comment rather than a behavior change, since the
+  real Azure error is already classified/sanitized before that catch could ever see it.
+  After adding the audit-log endpoint: `npx tsc -b` clean on both workspaces, `npm run build -w
+  client` clean. Live-tested `GET /admin/audit-log` against the REAL accumulated audit trail from
+  every prior phase's live testing this week (13+ real entries: environment registrations/deletions/
+  discovery runs/links) — confirmed unfiltered listing, `?entityType=cloud_environment` filtering,
+  `?before=<id>` pagination advancing correctly to older pages, and a student token correctly getting
+  403.
+NOTES: This closes out all 5 phases of the live-cloud-environment plan to the extent buildable and
+  verifiable in this environment. Genuinely remaining, not further buildable here: (1) a real success-
+  path test of Service Principal auth using the app's own stored-credential flow (only the CLI-
+  delegated-credential path was proven, per the earlier "real-verify" entry — the user would need to
+  either share the real SP secret or create the dedicated Reader-scoped one from the new services.md
+  checklist and register it themselves); (2) standing up an actual guacd/guacamole-lite gateway +
+  real VM login credentials to light up the Phase 4 broker's live remote-desktop path; (3) browser-
+  click-testing any of the new UI (environments, discovery, topology Connect button, audit log) —
+  this sandbox's browser tool has been unable to reach localhost all week, consistent with every
+  prior entry.

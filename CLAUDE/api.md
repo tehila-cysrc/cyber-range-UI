@@ -75,6 +75,7 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | DELETE | `/admin/topology/nodes/:nodeId/access-target` | Removes the access target (the node stops being connectable); does not touch historical `access_sessions` rows. |
 | GET | `/admin/access-sessions` | Currently-`active` student access sessions across all teams, for the instructor dashboard's live panel. |
 | POST | `/admin/access-sessions/:id/force-close` | Instructor-only kill switch — sets `outcome='force_closed'`, emits `access_session:ended`. |
+| GET | `/admin/audit-log` | Read-only view of the compliance trail (Phase 5). Optional `?entityType=` filter and `?before=<id>` for keyset pagination (pass the last row's id to page further back), `?limit=` (default 100, capped at 500). Newest first. |
 
 ## Realtime (Socket.io)
 

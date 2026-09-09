@@ -38,6 +38,29 @@ Copy `.env.example` (repo root) to `.env`. `server/src/env.ts` loads it via a `.
 
 `server/src/services/accessBroker/guacamoleToken.service.ts` implements guacamole-lite's actual token wire format (AES-256-CBC, `{iv, value}` JSON envelope, base64) purely with Node's built-in `node:crypto` — **no `guacamole-lite`/`guacd` dependency was added**, because there's nothing here to run it against: no `guacd` daemon, no network path to the lab VMs, and no VM login credentials for this dev machine. The broker (`accessBroker.service.ts`) still does everything up to minting that token and tracking the session — RBAC scoping, credential resolution, `access_sessions` bookkeeping, the expiry sweep (`accessSessionExpiry.service.ts`, same `setInterval` pattern as `clock.service.ts`) — verified live end-to-end against the real dev DB and a real HTTP round-trip (see `PROGRESS.txt`). What's *not* verified, and can't be from this environment: an actual guacd decrypting that token and opening a real RDP/SSH session. `GUACD_GATEWAY_WS_URL` stays unset here; `requestAccessSession` returns `wsUrl: null` in that case rather than failing — the session is still real and tracked, just without a gateway to hand a URL for. Setting that env var against a real guacd/guacamole-lite deployment (same `GUACAMOLE_LITE_SECRET_KEY` on both sides) should work against this token format unmodified — that's the intended completion path, not a rewrite.
 
+## Registering a cloud environment: least-privilege Service Principal (Phase 5)
+
+`CLAUDE/invariants.md` requires the app's own Service Principal to get `Reader` at resource-group scope only, never `Contributor`/`Owner`, and to be a **different identity** from whatever SP/account was used to build the environment. To create a fresh, correctly-scoped SP for a given resource group in one step:
+
+```bash
+az ad sp create-for-rbac \
+  --name "cyber-range-ui-<environment-name>" \
+  --role "Reader" \
+  --scopes "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
+```
+
+This prints `appId`/`password`/`tenant` directly — enter them as `clientId`/`clientSecret`/`tenantId` when registering the environment via the Instructor → Environments page (`POST /admin/environments`). Do **not** reuse an existing broader-scoped SP (e.g. one an IaC pipeline used to build the environment) just because it's already on hand — that violates the two-different-identities rule and turns a leaked app credential into a subscription-wide risk instead of a bounded read-only one.
+
+To audit an *existing* SP's role assignments before deciding whether it's safe to reuse:
+
+```bash
+az role assignment list --assignee <CLIENT_ID> --all -o table
+```
+
+Anything beyond `Reader` (or a narrowly-scoped additive role for a specific future feature, e.g. Bastion tunneling) on that output means the SP is over-privileged for this app's purposes — create a dedicated one instead of narrowing an existing one in place (narrowing a shared SP risks breaking whatever else uses it).
+
+This is operator guidance, not something the app runs for you — creating a Service Principal and role assignment are mutating changes to your Azure AD tenant/subscription, run them yourself when you're ready to register a real environment.
+
 ## Persistence note
 
 Uses Node's built-in `node:sqlite` (`DatabaseSync`), not `better-sqlite3` — the plan originally called for `better-sqlite3`, but it failed to install on this dev machine (no prebuilt binary for the Node version in use on Windows, and no Visual Studio Build Tools to compile from source). `node:sqlite` has the same synchronous `prepare/run/get/all` shape and ships with Node >=22.5 with zero native compilation. It's marked experimental by Node (logs an `ExperimentalWarning`) but is fully functional. See `PROGRESS.txt` entry `phase0-scaffolding` for the full story if this ever needs revisiting (e.g. if a future Node/OS combo gets a working `better-sqlite3` prebuild and someone wants to switch back).
