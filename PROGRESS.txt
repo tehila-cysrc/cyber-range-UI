@@ -824,3 +824,40 @@ NOTES: Phase 3 is now complete per the plan. Remaining: Phase 4 (Guacamole-based
   session flow) and Phase 5 (audit/RBAC hardening beyond what Phases 1-2 already put in place). Same
   standing open item: no real Azure Service Principal secret available this session for a genuine
   discovery-success live test (auth-failure path is the only one provable without it).
+==================================================================
+[2026-09-09 17:05 IDT] session=live-cloud-environment-real-verify
+TASK: User pointed out that instead of being blocked on "no real Service Principal secret", I could
+  use the machine's already-authenticated `az login` session to actually prove Phases 1-3 against
+  real Azure data. Ran a genuine success-path verification of the whole discovery pipeline.
+FILES: none changed (verification-only). Used a scratch script (server/src/scratch-test-real-
+  discovery.ts, deleted after, never committed) using `AzureCliCredential` from `@azure/identity`
+  (delegates to the existing `az login` session's service principal) instead of the stored
+  `ClientSecretCredential` path production code uses.
+RESULT: verified-live against the REAL `rg-cyber-range-demo` environment, real success path (not just
+  the auth-failure path proven in earlier sessions):
+  - `ResourceManagementClient.resourceGroups.get('rg-cyber-range-demo')` succeeded for real.
+  - The real Resource Graph query (identical to azureDiscoveryProvider.ts's `RESOURCE_GRAPH_QUERY`)
+    returned 32 real resources.
+  - `mapAzureResourcesToDiscovery` (the actual production mapping function, unmodified) mapped them
+    into 40 resources (32 + 8 synthesized subnets) and 34 relationships with **zero warnings** — every
+    edge inference path (vm->nic, nic->subnet, nic->public_ip, subnet/nic->nsg) matched real Azure's
+    actual property shapes on the first real run, including all 9 real VMs (AIAGENT01, APP01, DC01,
+    EDGE01, FILE01, JUMP01, LOG01, QRADAR01, SYNC01) and the real subnet name ('workloads' under
+    vnet-cyber-range) — this had only been validated against my own synthetic guesses before.
+  - Pushed the real mapped data through the real `upsertForCyberRange`/`pruneStale` functions against
+    cyber_range_id=1 (TJS): 40 nodes + 34 edges written correctly.
+  - Fetched it back through the REAL running HTTP server's `GET /api/cyber-ranges/1/topology` (logged
+    in as the seeded instructor over actual HTTP, not direct DB access) and confirmed AIAGENT01 came
+    back with correct `environmentId`, `nodeType: 'vm'`, and real curated metadata
+    (`vmSize: Standard_D2s_v5, osType: Windows, location: israelcentral`) — proving the full stack
+    (Azure -> mapping -> DB -> Express route -> HTTP response) end-to-end with real data.
+  - Cleaned up afterward: DB confirmed back to its prior state (0 cloud_environments, 2 topology_nodes
+    / 1 topology_edge — the original hand-drawn ones only).
+NOTES: This closes the "no genuine success-path test" gap flagged in every Phase 1-3 PROGRESS.txt
+  entry so far — the discovery logic is now proven correct against real Azure data, not just
+  synthetic. Production code is unchanged: it still authenticates via the stored Service Principal
+  secret (`ClientSecretCredential`), which is still untested for the success path since the real
+  secret is still not available this session — but the logic it drives (Resource Graph query +
+  mapping + upsert + API) is now proven correct independent of which credential type supplies the
+  token. This verification approach does NOT help Phase 4 (Guacamole broker) — that gap is
+  guacd/network/VM-OS-credentials, unrelated to Azure AD auth, and az cli login doesn't touch it.
