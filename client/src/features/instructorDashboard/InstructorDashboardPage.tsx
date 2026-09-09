@@ -34,6 +34,15 @@ interface CatalogCyberRange {
   dayLabel: string;
 }
 
+interface ActiveAccessSession {
+  id: number;
+  teamName: string;
+  username: string;
+  nodeLabel: string;
+  protocol: string;
+  expiresAt: string;
+}
+
 function formatRemaining(seconds: number | null) {
   if (seconds == null) return '—';
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -96,6 +105,19 @@ export function InstructorDashboardPage() {
     queryClient.invalidateQueries({ queryKey: ['help-requests', 'open'] });
   });
 
+  const { data: accessSessionsData } = useQuery({
+    queryKey: ['access-sessions'],
+    queryFn: () => apiFetch<{ sessions: ActiveAccessSession[] }>('/admin/access-sessions'),
+  });
+
+  const forceCloseSession = useMutation({
+    mutationFn: (id: number) => apiFetch(`/admin/access-sessions/${id}/force-close`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }),
+  });
+
+  useSocketEvent('access_session:started', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
+  useSocketEvent('access_session:ended', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
+
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -137,6 +159,38 @@ export function InstructorDashboardPage() {
                 </span>
                 <Button variant="ghost" onClick={() => resolveMutation.mutate(hr.id)}>
                   Resolve
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {accessSessionsData && accessSessionsData.sessions.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-xl)' }}>
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
+            Active access sessions
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+            {accessSessionsData.sessions.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: 'var(--space-sm) var(--space-md)',
+                  border: '1px solid var(--signal-primary)',
+                  borderRadius: 'var(--radius-control)',
+                  background: 'var(--surface-1)',
+                }}
+              >
+                <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>
+                  <TelemetryBadge tone="primary">{s.teamName}</TelemetryBadge>{' '}
+                  {s.username} · {s.protocol.toUpperCase()} to {s.nodeLabel} · expires {new Date(s.expiresAt).toLocaleTimeString()}
+                </span>
+                <Button variant="destructive" onClick={() => forceCloseSession.mutate(s.id)}>
+                  Force close
                 </Button>
               </div>
             ))}

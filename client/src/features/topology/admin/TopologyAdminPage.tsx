@@ -15,6 +15,21 @@ interface TopologyResponse {
   edges: TopologyEdgeData[];
 }
 
+interface AccessTarget {
+  protocol: 'rdp' | 'ssh';
+  host: string;
+  port: number;
+  hasCredential: boolean;
+}
+
+const selectStyle = {
+  background: 'var(--surface-1)',
+  border: '1px solid var(--surface-border)',
+  borderRadius: 'var(--radius-control)',
+  padding: 8,
+  color: 'var(--text-primary)',
+};
+
 export function TopologyAdminPage() {
   const queryClient = useQueryClient();
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
@@ -22,6 +37,13 @@ export function TopologyAdminPage() {
   const [nodeType, setNodeType] = useState('host');
   const [fromNodeId, setFromNodeId] = useState<number | ''>('');
   const [toNodeId, setToNodeId] = useState<number | ''>('');
+
+  const [accessNodeId, setAccessNodeId] = useState<number | ''>('');
+  const [accessProtocol, setAccessProtocol] = useState<'rdp' | 'ssh'>('rdp');
+  const [accessHost, setAccessHost] = useState('');
+  const [accessPort, setAccessPort] = useState('3389');
+  const [accessUsername, setAccessUsername] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
 
   const { data: rangesData } = useQuery({
     queryKey: ['cyber-ranges'],
@@ -36,6 +58,40 @@ export function TopologyAdminPage() {
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
+  }
+
+  const { data: accessTargetData } = useQuery({
+    enabled: accessNodeId !== '',
+    queryKey: ['access-target', accessNodeId],
+    queryFn: () => apiFetch<{ accessTarget: AccessTarget | null }>(`/admin/topology/nodes/${accessNodeId}/access-target`),
+  });
+
+  function invalidateAccessTarget() {
+    queryClient.invalidateQueries({ queryKey: ['access-target', accessNodeId] });
+    invalidate(); // topology response's hasAccessTarget flag also needs refreshing
+  }
+
+  const saveAccessTarget = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/topology/nodes/${accessNodeId}/access-target`, {
+        method: 'PUT',
+        body: JSON.stringify({ protocol: accessProtocol, host: accessHost, port: Number(accessPort), username: accessUsername, password: accessPassword }),
+      }),
+    onSuccess: () => {
+      setAccessPassword('');
+      invalidateAccessTarget();
+    },
+  });
+
+  const removeAccessTarget = useMutation({
+    mutationFn: () => apiFetch(`/admin/topology/nodes/${accessNodeId}/access-target`, { method: 'DELETE' }),
+    onSuccess: invalidateAccessTarget,
+  });
+
+  function handleSaveAccessTarget(e: FormEvent) {
+    e.preventDefault();
+    if (!accessNodeId || !accessHost.trim() || !accessUsername.trim() || !accessPassword.trim()) return;
+    saveAccessTarget.mutate();
   }
 
   const addNode = useMutation({
@@ -181,6 +237,52 @@ export function TopologyAdminPage() {
               <Button type="submit" variant="ghost">
                 Connect
               </Button>
+            </form>
+
+            <form onSubmit={handleSaveAccessTarget} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Student browser access</h2>
+              <select value={accessNodeId} onChange={(e) => setAccessNodeId(e.target.value ? Number(e.target.value) : '')} style={selectStyle}>
+                <option value="">Select a node…</option>
+                {topologyData?.nodes.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.label} {n.hasAccessTarget ? '(connectable)' : ''}
+                  </option>
+                ))}
+              </select>
+              {accessNodeId !== '' && (
+                <>
+                  {accessTargetData?.accessTarget && (
+                    <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
+                      Currently: {accessTargetData.accessTarget.protocol} to {accessTargetData.accessTarget.host}:{accessTargetData.accessTarget.port} — leave
+                      username/password blank to keep the same credential (re-entering rotates it).
+                    </div>
+                  )}
+                  <select value={accessProtocol} onChange={(e) => setAccessProtocol(e.target.value as 'rdp' | 'ssh')} style={selectStyle}>
+                    <option value="rdp">RDP</option>
+                    <option value="ssh">SSH</option>
+                  </select>
+                  <input value={accessHost} onChange={(e) => setAccessHost(e.target.value)} placeholder="Host / private IP" style={{ ...selectStyle, background: 'transparent' }} />
+                  <input value={accessPort} onChange={(e) => setAccessPort(e.target.value)} placeholder="Port" style={{ ...selectStyle, background: 'transparent' }} />
+                  <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={{ ...selectStyle, background: 'transparent' }} />
+                  <input
+                    value={accessPassword}
+                    onChange={(e) => setAccessPassword(e.target.value)}
+                    placeholder="Login password"
+                    type="password"
+                    style={{ ...selectStyle, background: 'transparent' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button type="submit" variant="ghost" disabled={saveAccessTarget.isPending}>
+                      Save access target
+                    </Button>
+                    {accessTargetData?.accessTarget && (
+                      <Button type="button" variant="destructive" onClick={() => removeAccessTarget.mutate()}>
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
             </form>
           </div>
         </div>

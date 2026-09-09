@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { rotateCredential, storeCredential } from '../../services/credential.service.js';
+import { writeAudit } from '../../services/audit.service.js';
 
 const router = Router();
 
@@ -70,7 +72,89 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =>
 router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   db.prepare('DELETE FROM topology_edges WHERE from_node_id = ? OR to_node_id = ?').run(nodeId, nodeId);
-  db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(nodeId);
+  db.prepare('DELETE FROM access_targets WHERE topology_node_id = ?').run(nodeId);
+  try {
+    db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(nodeId);
+  } catch {
+    // Deliberately NOT cleaning up access_sessions here — a node with real historical access-session
+    // rows shouldn't be silently deletable out from under its own audit trail (see CLAUDE/db.md).
+    res.status(409).json({ error: 'this node has recorded access-session history and cannot be deleted' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Access target config (Phase 4 — student browser access broker). Makes a node connectable: stores
+// the VM's login credential (encrypted — see credential.service.ts) and where/how to reach it. Only
+// instructors can configure this; the credential is write-only (never read back, same rule as
+// cloud_environments' Service Principal secret — see CLAUDE/invariants.md).
+router.put('/topology/nodes/:nodeId/access-target', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const { protocol, host, port, username, password } = req.body ?? {};
+
+  if (
+    (protocol !== 'rdp' && protocol !== 'ssh') ||
+    typeof host !== 'string' ||
+    typeof port !== 'number' ||
+    typeof username !== 'string' ||
+    typeof password !== 'string'
+  ) {
+    res.status(400).json({ error: 'protocol (rdp|ssh), host, port, username and password are required' });
+    return;
+  }
+
+  const node = db.prepare('SELECT id FROM topology_nodes WHERE id = ?').get(nodeId);
+  if (!node) {
+    res.status(404).json({ error: 'node not found' });
+    return;
+  }
+
+  // Rotate the existing credential in place on re-configure rather than minting a new row each time
+  // and leaving the old one orphaned (same "one credential per target" intent as cloud_environments'
+  // rotate-on-update behavior).
+  const existing = db.prepare('SELECT credential_id AS credentialId FROM access_targets WHERE topology_node_id = ?').get(nodeId) as
+    | { credentialId: number | null }
+    | undefined;
+
+  let credentialId: number;
+  if (existing?.credentialId) {
+    rotateCredential(existing.credentialId, password);
+    db.prepare('UPDATE credentials SET metadata_json = ? WHERE id = ?').run(JSON.stringify({ username }), existing.credentialId);
+    credentialId = existing.credentialId;
+  } else {
+    credentialId = storeCredential('vm_login', password, { username }, req.user!.username);
+  }
+
+  db.prepare(
+    `INSERT INTO access_targets (topology_node_id, protocol, host, port, credential_id) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (topology_node_id) DO UPDATE SET protocol = excluded.protocol, host = excluded.host, port = excluded.port, credential_id = excluded.credential_id`,
+  ).run(nodeId, protocol, host, port, credentialId);
+
+  writeAudit(req.user!.username, 'access_target.configured', 'topology_node', nodeId, { protocol, host });
+  res.status(201).json({ ok: true });
+});
+
+router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const target = db
+    .prepare('SELECT protocol, host, port, credential_id AS credentialId FROM access_targets WHERE topology_node_id = ?')
+    .get(nodeId) as { protocol: string; host: string; port: number; credentialId: number | null } | undefined;
+
+  if (!target) {
+    res.json({ accessTarget: null });
+    return;
+  }
+  res.json({ accessTarget: { protocol: target.protocol, host: target.host, port: target.port, hasCredential: target.credentialId != null } });
+});
+
+router.delete('/topology/nodes/:nodeId/access-target', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const result = db.prepare('DELETE FROM access_targets WHERE topology_node_id = ?').run(nodeId);
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'no access target configured for this node' });
+    return;
+  }
+  writeAudit(req.user!.username, 'access_target.removed', 'topology_node', nodeId, null);
   res.json({ ok: true });
 });
 

@@ -80,3 +80,25 @@ CREATE TABLE IF NOT EXISTS help_requests (
   resolved_at TEXT,
   resolved_by_user_id INTEGER REFERENCES users(id)
 );
+
+-- A live/completed student browser-access session (Phase 4). RUN — tied to one team/student/event
+-- run, same shape as help_requests/scores (a RUN row FK-ing CONFIG rows, e.g. cyber_range_id,
+-- topology_node_id, is the established pattern here). A summary is also written to the CONFIG-scoped
+-- audit_log at request/deny/end time, so "who accessed what, when" survives an event reset for
+-- compliance purposes even though this richer operational record doesn't — see CLAUDE/invariants.md.
+CREATE TABLE IF NOT EXISTS access_sessions (
+  id INTEGER PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  topology_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
+  protocol TEXT NOT NULL,
+  broker_connection_id TEXT,
+  requested_at TEXT NOT NULL,
+  started_at TEXT,
+  ended_at TEXT,
+  expires_at TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK (outcome IN ('active', 'completed', 'expired', 'denied', 'error', 'force_closed')),
+  denial_reason TEXT,
+  client_ip TEXT
+);

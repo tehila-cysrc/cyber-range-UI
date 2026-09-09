@@ -5,6 +5,7 @@ import { createApp } from './app.js';
 import { setIo } from './sockets/io.js';
 import { setupSockets } from './sockets/index.js';
 import { startClock } from './services/clock.service.js';
+import { startAccessSessionExpirySweep } from './services/accessBroker/accessSessionExpiry.service.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
@@ -18,6 +19,7 @@ const io = new SocketIOServer(httpServer, {
 setIo(io);
 setupSockets(io);
 startClock();
+startAccessSessionExpirySweep();
 
 httpServer.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);

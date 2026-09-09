@@ -31,6 +31,8 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | GET | `/history` | Own team's completed Cyber Ranges (day + difficulty + completedAt), newest first (US-010). Instructor must pass `?teamId=`. |
 | GET | `/history/event-summary` | Per-day (AI/Azure/AWS) completed-count + total points for the team — a day with zero completions is simply omitted, never shown zeroed (US-010/FR-8). **Must stay mounted before `/history/:cyberRangeId`** or Express will capture `event-summary` as an id. |
 | GET | `/history/:cyberRangeId` | Documentation + score total actually recorded for that team+range — no fabricated data. |
+| POST | `/teams/me/access-sessions` | Student only (Phase 4 access broker). `{topologyNodeId}` — the node's cyber range is cross-checked server-side against the team's active `team_cyber_range_progress`, never trusted from the client (same pattern as `/help-requests`' `cyberRangeId` resolution). 201 with `{accessSessionId, wsUrl, expiresAt}` on success (`wsUrl` is `null` when no `GUACD_GATEWAY_WS_URL` gateway is configured — token is still minted and the session still tracked); otherwise 400/403/409 with `{error, reason}` (`reason` one of `no_active_range\|node_not_in_active_range\|not_connectable\|no_credential_configured\|credential_error`) and the denial is still recorded (`access_sessions.outcome='denied'` + `audit_log`). |
+| POST | `/teams/me/access-sessions/:id/end` | Ends the caller's own `active` session (`outcome='completed'`). 404 if it isn't active or isn't the caller's team's. |
 
 ## Instructor (`/admin/*`, `requireRole('instructor')`)
 
@@ -68,6 +70,11 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | GET | `/admin/environments/:id/linked-cyber-ranges` | Cyber ranges this environment currently backs. |
 | POST | `/admin/cyber-ranges/:cyberRangeId/environments` | `{environmentId}` — links an environment to a cyber range; a discovery run then writes/updates that range's `topology_nodes`/`topology_edges` (upserted by Azure resource id, never duplicated — see `CLAUDE/db.md`). |
 | DELETE | `/admin/cyber-ranges/:cyberRangeId/environments/:environmentId` | Unlinks (does not delete previously-discovered topology — that's removed only by a subsequent successful discovery run's pruning, or by deleting the environment itself). |
+| PUT | `/admin/topology/nodes/:nodeId/access-target` | `{protocol: 'rdp'\|'ssh', host, port, username, password}` (Phase 4 — student browser access broker, see `CLAUDE/invariants.md`). Makes a node connectable: stores the VM login credential encrypted (`credentials`, `kind='vm_login'`) and re-configuring rotates the existing credential in place rather than leaving an orphaned row. `password` is write-only — never returned by any GET. |
+| GET | `/admin/topology/nodes/:nodeId/access-target` | `{accessTarget: {protocol, host, port, hasCredential} \| null}` — never the credential itself. |
+| DELETE | `/admin/topology/nodes/:nodeId/access-target` | Removes the access target (the node stops being connectable); does not touch historical `access_sessions` rows. |
+| GET | `/admin/access-sessions` | Currently-`active` student access sessions across all teams, for the instructor dashboard's live panel. |
+| POST | `/admin/access-sessions/:id/force-close` | Instructor-only kill switch — sets `outcome='force_closed'`, emits `access_session:ended`. |
 
 ## Realtime (Socket.io)
 
@@ -83,6 +90,8 @@ Handshake auth: client passes `{ auth: { token } }` (same bearer token as REST).
 | `clock:time_up` | `{progressId}` | `team:{teamId}` + `instructor` | Fires once when remaining hits 0 (deduped in-memory — an expired-but-still-`active` range does not re-fire this every second). |
 | `score:awarded` | `{score, isGamified, teamTotal, studentTotal}` | `team:{teamId}` + `instructor` | Instructor scores a documentation entry or awards a standalone team score. `GamifiedEffects.tsx` fires confetti/sound on the receiving team's clients when `isGamified` is true. |
 | `leaderboard:update` | `{teams}` | broadcast (all connected clients) | Any score change, only while `scoring_config.leaderboard_enabled`. Not team-scoped — the leaderboard itself is cross-team by nature. |
+| `access_session:started` | `{session: {id, topologyNodeId, protocol, expiresAt}}` | `team:{teamId}` + `instructor` | A student's access-session request succeeds (Phase 4). |
+| `access_session:ended` | `{accessSessionId, outcome}` | `team:{teamId}` + `instructor` | A session ends for any reason — self-end (`completed`), instructor kill (`force_closed`), or the server-side expiry sweep (`expired`). |
 
 Client side: `client/src/lib/socketClient.ts` (`getSocket()` lazily connects using the current auth token), `client/src/hooks/useSocketEvent.ts` (generic subscribe hook used by feature pages to merge live events into the TanStack Query cache).
 

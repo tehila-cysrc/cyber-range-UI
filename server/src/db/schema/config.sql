@@ -118,6 +118,19 @@ CREATE TABLE IF NOT EXISTS environment_discovery_runs (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_discovery_run
   ON environment_discovery_runs (environment_id) WHERE status IN ('queued', 'running');
 
+-- Per-node connection info for student browser-based access (Phase 4). CONFIG — same lifecycle as
+-- the topology_nodes row it configures, not tied to one event run. Only populated for nodes an
+-- instructor has explicitly made connectable (typically node_type = 'vm'). credential_id is nullable:
+-- when unset, the broker falls back to the owning cloud_environments.default_vm_credential_id.
+CREATE TABLE IF NOT EXISTS access_targets (
+  id INTEGER PRIMARY KEY,
+  topology_node_id INTEGER NOT NULL UNIQUE REFERENCES topology_nodes(id),
+  protocol TEXT NOT NULL CHECK (protocol IN ('rdp', 'ssh')),
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  credential_id INTEGER REFERENCES credentials(id)
+);
+
 -- Compliance/audit trail for environment + credential + access-session actions. CONFIG and never
 -- touched by POST /api/admin/event/reset — see CLAUDE/invariants.md for why a compliance trail must
 -- outlive the resets it may need to help investigate.

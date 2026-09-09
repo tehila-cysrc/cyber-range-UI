@@ -913,3 +913,108 @@ RESULT: verified-live. Ran `npm run seed -w server` (idempotent — confirmed it
   Did not visually browser-test the new file input/image rendering/free-text category field (same
   browser-tool network isolation noted throughout this session) — verified via the exact HTTP
   contract the UI calls, plus clean typecheck/build.
+==================================================================
+[2026-09-09 17:35 IDT] session=live-cloud-environment-phase4
+TASK: Continue the live-cloud-environment plan with Phase 4: student browser-access broker. User
+  acknowledged upfront that no guacd daemon, network path to lab VMs, or VM login credentials exist
+  in this environment, and asked to build the code now anyway, verifying everything reachable without
+  that infrastructure (RBAC, credential handling, encryption format, audit trail).
+FILES:
+  M server/src/db/schema/config.sql (new CONFIG table `access_targets` — per-node connection info,
+    UNIQUE topology_node_id, credential_id nullable with fallback to
+    cloud_environments.default_vm_credential_id)
+  M server/src/db/schema/run.sql (new RUN table `access_sessions` — team_id/user_id/cyber_range_id/
+    topology_node_id FKs, outcome enum active|completed|expired|denied|error|force_closed,
+    denial_reason, client_ip)
+  A server/src/services/accessBroker/guacamoleToken.service.ts (implements guacamole-lite's REAL
+    documented token wire format — AES-256-CBC, {iv,value} JSON envelope, base64 — using only
+    node:crypto, no new dependency; buildConnectionConfig + encryptConnectionToken +
+    decryptConnectionToken exported for verification)
+  A server/src/services/accessBroker/accessBroker.service.ts (`requestAccessSession` — the RBAC core:
+    re-derives the team's active cyber_range_id server-side, cross-checks the target node against it,
+    resolves the access_target + credential, mints a token, inserts an access_sessions row, emits
+    Socket.io events, writes audit_log; `endOwnSession`/`forceCloseSession`/`expireSession` all funnel
+    through one `finishSession`; `listActiveSessions` for the instructor dashboard)
+  A server/src/services/accessBroker/accessSessionExpiry.service.ts (setInterval sweep, same pattern
+    as clock.service.ts — force-expires any 'active' session past its expires_at)
+  M server/src/server.ts (wired the expiry sweep alongside startClock())
+  M server/src/sockets/emitters.ts (+emitAccessSessionStarted/emitAccessSessionEnded, same
+    team-room+instructor-room fan-out as every other emitter)
+  A server/src/routes/accessSessions.routes.ts (student: POST /teams/me/access-sessions,
+    POST /teams/me/access-sessions/:id/end)
+  A server/src/routes/admin/accessSessions.routes.ts (instructor: GET /admin/access-sessions,
+    POST /admin/access-sessions/:id/force-close)
+  M server/src/routes/admin/topology.routes.ts (+PUT/GET/DELETE .../topology/nodes/:nodeId/
+    access-target — instructor configures a node's VM login credential, write-only password,
+    rotates the existing credential in place on re-configure rather than orphaning it; also fixed the
+    node-DELETE handler to clean up access_targets first and catch the FK error from any node with
+    real access_sessions HISTORY, returning a clean 409 instead of a raw SQLite stack trace — mirrors
+    the deleteEnvironment fix from Phase 2, found the same way, this time proactively before shipping)
+  M server/src/routes/topology.routes.ts (topology read endpoint now also returns `hasAccessTarget`
+    per node via a LEFT JOIN, so the client knows which nodes to offer a Connect button on)
+  M server/src/app.ts (mounted both new route files)
+  M .env / .env.example (+GUACAMOLE_LITE_SECRET_KEY required; +GUACD_GATEWAY_WS_URL and
+    ACCESS_SESSION_TTL_MINUTES optional, both documented as unset/default in this dev environment)
+  M client/src/features/topology/TopologyGraph.tsx (+hasAccessTarget field, a small connectable
+    indicator on the node itself, and a "Connect" button in the existing metadata detail panel —
+    only rendered when the parent passes onConnectClick, so the instructor admin view is unaffected)
+  A client/src/features/accessSession/AccessSessionPanel.tsx (shows session status/expiry/Disconnect;
+    honestly renders "no gateway configured" instead of pretending a live remote-desktop canvas
+    exists, since GUACD_GATEWAY_WS_URL is unset here — swapping in a real guacamole-common-js canvas
+    when wsUrl is non-null is the documented next step, not an architecture change)
+  M client/src/features/topology/TopologyViewerPage.tsx (wires Connect -> POST access-sessions ->
+    AccessSessionPanel -> Disconnect -> POST .../end)
+  M client/src/features/topology/admin/TopologyAdminPage.tsx (+"Student browser access" form: pick a
+    node, set protocol/host/port/username/password, Save/Remove — GET-populated summary never shows
+    the password)
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (+"Active access sessions"
+    panel, live via the two new Socket.io events, Force close button per row)
+  M CLAUDE/api.md, CLAUDE/db.md, CLAUDE/services.md, CLAUDE/invariants.md (new endpoints/tables/env
+    vars, an explicit note on what is and isn't verifiable without guacd, 3 new invariants)
+RESULT: verified-live everywhere reachable without real infrastructure. `npx tsc -b` clean on both
+  workspaces after every change; `npm run build -w client` clean. `npm run migrate -w server` run
+  twice back-to-back (idempotent, per the addColumnIfMissing pattern from Phase 2). A scratch script
+  (server/src/scratch-test-broker.ts, deleted after, never committed) ran the full flow live against
+  the real dev server over HTTP as the seeded users, and EVERY check passed on the first run (no bugs
+  found this time, unlike Phase 2):
+  - Token encryption round-trip: minted a real token, decrypted it back to the exact original
+    connection config (password/hostname/protocol all intact), and confirmed the plaintext password
+    never appears anywhere in the emitted token string.
+  - Configured an access target on a real topology node (DC01) via the real PUT endpoint; confirmed
+    both the create response and a subsequent GET never include the password, only `hasCredential`.
+  - alice (team Alpha, active on cyber_range_id=1) requested a session on that node -> 201, real
+    accessSessionId, `wsUrl: null` (no gateway configured, exactly as expected), no credential leaked
+    in the response.
+  - Instructor's `GET /admin/access-sessions` showed it with the correct team/user/node.
+  - Cross-range RBAC: created a temp node under a DIFFERENT cyber range and confirmed alice's request
+    against it was denied (403, `node_not_in_active_range`) — the load-bearing check.
+  - No-active-range RBAC: paused team Alpha's progress mid-test, confirmed a request was denied (409,
+    `no_active_range`), restored it afterward.
+  - Instructor force-close: worked, outcome recorded as `force_closed`; ending an already-closed
+    session again correctly 404's instead of silently succeeding.
+  - Student self-end (a second team, carol/Bravo, also active on range 1): worked, outcome recorded
+    as `completed` (distinct from force_closed).
+  - Expiry sweep: inserted a session already past its expiry, waited 12s for the 10s-interval ticker,
+    confirmed it flipped to `expired` on its own — server-authoritative timing, same precedent as
+    clock.service.ts's countdown.
+  - Full audit trail coherent: access_target.configured, 2x access_session.requested, 2x
+    access_session.denied (cross-range + no-active-range), 3x access_session.ended (force-close +
+    self-end + expiry).
+  Also wrote a second scratch script proactively testing the new node-delete FK protection (a node
+  with real access_sessions history correctly gets a clean 409 instead of a raw SQLite stack trace,
+  stays undeleted, and deletes normally once that history is gone) — this bug pattern was caught
+  BEFORE shipping this time, having learned it from Phase 2's deleteEnvironment incident. Both scratch
+  scripts cleaned up after themselves; confirmed DB back to 0 rows in every Phase 4 table, 2
+  pre-existing topology_nodes, both teams' progress status restored to 'active'.
+  What is NOT verified and cannot be from this environment: an actual guacd/guacamole-lite server
+  decrypting a real minted token and opening a real RDP/SSH session — no such daemon exists here, no
+  network path to the lab VNet, no VM login credentials. The token format is implemented against
+  guacamole-lite's real documented protocol specifically so this gap is "deploy guacd and point
+  GUACD_GATEWAY_WS_URL at it," not a rewrite. Did not browser-click-test the new UI (same known
+  browser-tool localhost isolation as every session this week) — relied on the live HTTP-level
+  verification above plus clean typecheck/build instead.
+NOTES: This completes Phase 4 to the extent buildable/testable without real guacd infrastructure per
+  the plan file (C:\Users\Liram\.claude\plans\rustling-seeking-wave.md). Remaining: Phase 5 (further
+  audit/RBAC hardening beyond what Phases 1-4 already established) and, whenever the user is ready,
+  standing up a real guacd/guacamole-lite gateway + populating real VM credentials to light up the
+  actual remote-desktop path end-to-end.

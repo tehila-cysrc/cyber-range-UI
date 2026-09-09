@@ -46,3 +46,18 @@ export function emitScoreAwarded(
 export function emitLeaderboardUpdate(teams: unknown) {
   getIo().emit('leaderboard:update', { teams });
 }
+
+export function emitAccessSessionStarted(
+  teamId: number,
+  session: { id: number; topologyNodeId: number; protocol: string; expiresAt: string },
+) {
+  getIo()
+    .to([teamRoom(teamId), INSTRUCTOR_ROOM])
+    .emit('access_session:started', { session });
+}
+
+export function emitAccessSessionEnded(teamId: number, accessSessionId: number, outcome: string) {
+  getIo()
+    .to([teamRoom(teamId), INSTRUCTOR_ROOM])
+    .emit('access_session:ended', { accessSessionId, outcome });
+}

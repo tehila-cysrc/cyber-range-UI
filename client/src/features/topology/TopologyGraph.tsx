@@ -11,6 +11,7 @@ export interface TopologyNodeData {
   posY: number;
   metadataJson?: string | null;
   environmentId?: number | null;
+  hasAccessTarget?: number | boolean;
 }
 
 export interface TopologyEdgeData {
@@ -25,6 +26,11 @@ interface TopologyGraphProps {
   edges: TopologyEdgeData[];
   editable?: boolean;
   onNodeDragStop?: (nodeId: number, x: number, y: number) => void;
+  // Student-facing "Connect" action (Phase 4 access broker) — only rendered when both this callback
+  // is supplied AND the node has `hasAccessTarget` set. The instructor admin view doesn't pass this,
+  // so it never shows there.
+  onConnectClick?: (node: TopologyNodeData) => void;
+  connectingNodeId?: number | null;
 }
 
 // Border color + short type label per node_type — covers both instructor hand-drawn types
@@ -59,7 +65,14 @@ function parseMetadata(json: string | null | undefined): Record<string, unknown>
   }
 }
 
-export function TopologyGraph({ nodes, edges, editable = false, onNodeDragStop }: TopologyGraphProps) {
+export function TopologyGraph({
+  nodes,
+  edges,
+  editable = false,
+  onNodeDragStop,
+  onConnectClick,
+  connectingNodeId,
+}: TopologyGraphProps) {
   const [selectedExternalKey, setSelectedExternalKey] = useState<string | null>(null);
   const selectedNode = nodes.find((n) => n.externalKey === selectedExternalKey) ?? null;
 
@@ -82,6 +95,11 @@ export function TopologyGraph({ nodes, edges, editable = false, onNodeDragStop }
                     />
                   )}
                   <span>{n.label}</span>
+                  {!!n.hasAccessTarget && (
+                    <span title="Connectable" style={{ fontSize: 10, color: 'var(--signal-primary)' }}>
+                      ⏻
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {typeLabel}
@@ -182,6 +200,26 @@ export function TopologyGraph({ nodes, edges, editable = false, onNodeDragStop }
             </div>
           ) : (
             <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>No additional metadata.</div>
+          )}
+          {onConnectClick && !!selectedNode.hasAccessTarget && (
+            <button
+              onClick={() => onConnectClick(selectedNode)}
+              disabled={connectingNodeId === selectedNode.id}
+              style={{
+                marginTop: 10,
+                width: '100%',
+                background: 'var(--signal-primary)',
+                color: 'var(--surface-floor)',
+                border: 'none',
+                borderRadius: 'var(--radius-control)',
+                padding: '6px 0',
+                cursor: connectingNodeId === selectedNode.id ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                fontWeight: 500,
+              }}
+            >
+              {connectingNodeId === selectedNode.id ? 'Connecting…' : 'Connect'}
+            </button>
           )}
         </div>
       )}

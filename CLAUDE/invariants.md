@@ -57,6 +57,16 @@ Read before touching: the DB schema (`server/src/db/schema/*.sql`), the auth mid
 
 ---
 
+## Student access broker (Phase 4)
+
+### MUST
+
+- **A student's access-session request resolves the target node's cyber range server-side from the team's currently-`active` `team_cyber_range_progress` row — never from anything the client asserts.** Why: same class of protection as the existing `help_requests` `cyberRangeId` resolution and the "students never self-assign a scenario" rule above; without it a crafted request could reach another range's VM. How to apply: `accessBroker.service.ts#requestAccessSession` re-derives `activeProgress.cyberRangeId` and cross-checks the node's `cyber_range_id` against it before touching any credential — verified live: a cross-range request is rejected (403, `node_not_in_active_range`) and the rejection itself is audited, not silently dropped.
+- **A VM login credential (`access_targets` -> `credentials`, `kind='vm_login'`) is never selected into any API response, same rule as the Service Principal secret above.** How to apply: `GET .../access-target` returns only `{protocol, host, port, hasCredential}`; `password` is a write-only request field, and re-configuring rotates the existing credential row in place (`topology.routes.ts`) rather than leaving an orphaned one.
+- **A minted broker connection token is built and returned once, then never persisted or logged in plaintext form.** Why: `guacamoleToken.service.ts#encryptConnectionToken`'s output embeds the VM's login secret (AES-encrypted, but still the literal path to it) — treat it like the plaintext credential it decrypts to. How to apply: `access_sessions` stores only `broker_connection_id` (an opaque `randomUUID()`, unrelated to the token), never the token itself.
+
+---
+
 ## Adding a new invariant
 
 A new entry earns its place only if:
