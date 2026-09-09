@@ -365,3 +365,38 @@ NOTES: Full curl end-to-end run against the live server (this was the most conse
   leaderboard → complete a range → view history → reset) before treating this as production-ready
   for the actual event.
 ==================================================================
+
+==================================================================
+[2026-09-09 15:10 IDT] session=post-plan-roster-management
+TASK: Closed the roster-management gap flagged in BACKLOG.md during Phase 9 — added admin
+  team/account CRUD so a new cohort can actually be onboarded through the product after an event
+  reset, instead of requiring shell/DB access to re-run the seed script. Also did the first two git
+  commits for this project (previously nothing was committed).
+FILES:
+  M server/src/routes/admin/teams.routes.ts (added POST /admin/teams, DELETE /admin/teams/:id)
+  A server/src/routes/admin/users.routes.ts (POST /admin/users, DELETE /admin/users/:id;
+    UNIQUE(event_run_id, username) violations surface as 409)
+  M server/src/app.ts (mounted adminUsersRoutes)
+  A client/src/features/admin/TeamsAdminPage.tsx (create/delete teams and accounts, instructor-only)
+  M client/src/app/routes.tsx (added /admin/teams)
+  M client/src/app/AppShell.tsx (refactored the 4 near-identical instructor NavLink blocks into a
+    shared NavItem component + INSTRUCTOR_NAV_ITEMS array, matching the existing NAV_ITEMS pattern,
+    and added the new "Roster" link in the same pass)
+  M BACKLOG.md (moved the roster-management item from Open to Done with what shipped)
+  M CLAUDE/api.md (documented the new endpoints)
+  A .gitignore (added *.tsbuildinfo, in the cleanup commit)
+RESULT: verified-live
+NOTES: Deliberately checked the one correctness risk this feature raised: does DELETE /admin/teams/:id
+  cascade safely when a team's student has authored documentation_entries (whose author_user_id FK
+  has no ON DELETE CASCADE of its own)? Verified live: created Team Charlie, added student "erin" to
+  it, started a Cyber Range for the team, had erin log in and post a real documentation entry, then
+  deleted the team — no FK constraint error, team/user/auth-token/documentation/progress rows all
+  gone, and erin's login now fails. This confirms SQLite resolves the full cascade graph per DELETE
+  statement (both team_id- and team-scoped user_id-driven cascades fire together), not strictly
+  first-hop-only — matches the same pattern already proven safe by the Phase 9 event-reset test.
+  Duplicate-username creation correctly 409s. Client type-checks and production-builds cleanly (299
+  modules). Also made this project's first two git commits (root commit for all of Phases 0-9, then a
+  small follow-up removing an accidentally-tracked tsc build-cache file) — nothing had been committed
+  before this, despite CLAUDE.md's "commit every significant change" rule; commits only happen when
+  the user explicitly asks, which happened in this session.
+==================================================================

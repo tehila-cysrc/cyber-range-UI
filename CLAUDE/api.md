@@ -35,6 +35,10 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/admin/teams` | All teams + members. |
+| POST | `/admin/teams` | `{name}` — creates a team in the current active run. |
+| DELETE | `/admin/teams/:id` | Cascades to that team's users/progress/documentation/scores/help_requests. |
+| POST | `/admin/users` | `{username, password, role, teamId?, displayName?}` — onboards a student/instructor into the current run. `teamId` required when `role: 'student'`. 409 on duplicate username within the run. |
+| DELETE | `/admin/users/:id` | |
 | POST | `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` | Upserts `team_cyber_range_progress` to `active`, sets `started_at`/`time_limit_seconds` from the range's `expected_duration_minutes` (null if not configured, e.g. AWS ranges). |
 | POST | `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/complete` | Sets status `completed` + `completed_at`. 404 if no progress row exists yet. |
 | POST | `/admin/cyber-ranges/:cyberRangeId/topology/nodes` | `{label, nodeType, posX?, posY?, metadata?}`. `external_key` is set to the new row's id after insert (used as the React Flow node id). |

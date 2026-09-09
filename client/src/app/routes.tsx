@@ -14,6 +14,7 @@ import { HistoryPage } from '../features/history/HistoryPage';
 import { CyberRangeSummaryPage } from '../features/history/CyberRangeSummaryPage';
 import { EventSummaryPage } from '../features/history/EventSummaryPage';
 import { EventResetPage } from '../features/admin/EventResetPage';
+import { TeamsAdminPage } from '../features/admin/TeamsAdminPage';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -46,6 +47,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requireRole="instructor">
             <TopologyAdminPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin/teams',
+        element: (
+          <ProtectedRoute requireRole="instructor">
+            <TeamsAdminPage />
           </ProtectedRoute>
         ),
       },

@@ -16,6 +16,33 @@ const NAV_ITEMS = [
   { to: '/debrief', label: 'Debrief' },
 ];
 
+const INSTRUCTOR_NAV_ITEMS = [
+  { to: '/instructor', label: 'Instructor' },
+  { to: '/admin/topology', label: 'Topology Admin' },
+  { to: '/admin/teams', label: 'Roster' },
+  { to: '/admin/event-reset', label: 'Reset', alert: true },
+];
+
+function NavItem({ to, label, end, alert }: { to: string; label: string; end?: boolean; alert?: boolean }) {
+  const activeColor = alert ? 'var(--signal-alert)' : 'var(--signal-primary)';
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      style={({ isActive }) => ({
+        fontSize: 13,
+        fontWeight: 500,
+        textDecoration: 'none',
+        color: isActive ? (alert ? 'var(--signal-alert)' : 'var(--text-primary)') : 'var(--text-muted)',
+        borderBottom: isActive ? `2px solid ${activeColor}` : '2px solid transparent',
+        padding: '4px 0',
+      })}
+    >
+      {label}
+    </NavLink>
+  );
+}
+
 export function AppShell() {
   const { user, clear } = useAuthStore();
   const navigate = useNavigate();
@@ -50,65 +77,10 @@ export function AppShell() {
 
         <div style={{ display: 'flex', gap: 'var(--space-md)', flex: 1 }}>
           {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              style={({ isActive }) => ({
-                fontSize: 13,
-                fontWeight: 500,
-                textDecoration: 'none',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                borderBottom: isActive ? '2px solid var(--signal-primary)' : '2px solid transparent',
-                padding: '4px 0',
-              })}
-            >
-              {item.label}
-            </NavLink>
+            <NavItem key={item.to} {...item} />
           ))}
-          {user?.role === 'instructor' && (
-            <>
-              <NavLink
-                to="/instructor"
-                style={({ isActive }) => ({
-                  fontSize: 13,
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                  borderBottom: isActive ? '2px solid var(--signal-primary)' : '2px solid transparent',
-                  padding: '4px 0',
-                })}
-              >
-                Instructor
-              </NavLink>
-              <NavLink
-                to="/admin/topology"
-                style={({ isActive }) => ({
-                  fontSize: 13,
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                  borderBottom: isActive ? '2px solid var(--signal-primary)' : '2px solid transparent',
-                  padding: '4px 0',
-                })}
-              >
-                Admin
-              </NavLink>
-              <NavLink
-                to="/admin/event-reset"
-                style={({ isActive }) => ({
-                  fontSize: 13,
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  color: isActive ? 'var(--signal-alert)' : 'var(--text-muted)',
-                  borderBottom: isActive ? '2px solid var(--signal-alert)' : '2px solid transparent',
-                  padding: '4px 0',
-                })}
-              >
-                Reset
-              </NavLink>
-            </>
-          )}
+          {user?.role === 'instructor' &&
+            INSTRUCTOR_NAV_ITEMS.map((item) => <NavItem key={item.to} {...item} />)}
         </div>
 
         <div

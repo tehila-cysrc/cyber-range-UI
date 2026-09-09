@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { getActiveEventRunId } from '../../db/seed.js';
 
 const router = Router();
 
@@ -23,6 +24,38 @@ router.get('/teams', (_req, res) => {
   }));
 
   res.json({ teams: result });
+});
+
+// Onboarding a new cohort (e.g. after an event reset) — flexible N teams, never a fixed 2.
+router.post('/teams', (req, res) => {
+  const { name } = req.body ?? {};
+  if (typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+
+  const runId = getActiveEventRunId();
+  if (runId === null) {
+    res.status(409).json({ error: 'no active event run' });
+    return;
+  }
+
+  const nextSort = db
+    .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM teams WHERE event_run_id = ?')
+    .get(runId) as { n: number };
+
+  const result = db
+    .prepare('INSERT INTO teams (event_run_id, name, sort_order) VALUES (?, ?, ?)')
+    .run(runId, name.trim(), nextSort.n);
+
+  res.status(201).json({ team: { id: result.lastInsertRowid, name: name.trim() } });
+});
+
+router.delete('/teams/:id', (req, res) => {
+  // Cascades to that team's users/progress/documentation/scores/help_requests too — deliberate:
+  // an instructor removing a team they just created by mistake should not leave orphaned rows.
+  db.prepare('DELETE FROM teams WHERE id = ?').run(Number(req.params.id));
+  res.json({ ok: true });
 });
 
 export default router;
