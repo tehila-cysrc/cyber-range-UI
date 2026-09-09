@@ -400,3 +400,33 @@ NOTES: Deliberately checked the one correctness risk this feature raised: does D
   before this, despite CLAUDE.md's "commit every significant change" rule; commits only happen when
   the user explicitly asks, which happened in this session.
 ==================================================================
+
+==================================================================
+[2026-09-09 15:25 IDT] session=browser-tunnel-attempt
+TASK: Attempted a real browser click-through of the running app using the lean-chronoscope MCP
+  browser tool (reconnected mid-session after a prior CONNECT_TIMEOUT). Its browser runs in a
+  sandboxed environment with no route to this machine's localhost, so exposed the client dev server
+  via a temporary public tunnel (`npx localtunnel --port 5173`) — done only after asking the user,
+  since it briefly exposes a local port to the internet.
+FILES:
+  M client/vite.config.ts (added `server.allowedHosts: ['.loca.lt']` — Vite 8 blocks unrecognized
+    Host headers by default; dev-only setting, has zero effect on the production build)
+RESULT: partial
+NOTES: What worked before the tunnel died: loca.lt's one-time "are you the tunnel host" IP-confirm
+  interstitial was clicked through; the login page then rendered with full Obsidian Telemetry styling
+  (dark navy canvas, JetBrains Mono uppercase labels, correct form layout) — first actual visual
+  confirmation of the design system, not just curl/tsc; logging in as alice navigated correctly to
+  Home; the top nav rendered all 7 student destinations plus Sign out, matching AppShell.tsx; the
+  "No Cyber Range is active for your team right now" empty-state rendered correctly (accurate, since
+  Team Alpha's TJS had been completed during Phase 8 testing). Started an Azure-Intermediate range
+  for Team Alpha via curl to test the populated state, reloaded — the free loca.lt relay then started
+  returning intermittent 502s (one broke a Vite HMR module fetch, causing a blank page) and shortly
+  after went fully unreachable (curl to the tunnel AND to https://loca.lt/ itself both returned
+  connect-failure, DNS still resolved fine) — this is the free public relay's own instability, not an
+  app bug; a second fresh tunnel also failed to stay up. Stopped retrying to avoid burning more time
+  on a third-party outage outside our control. Dev servers (:4000, :5173) are unaffected and still
+  running normally for local access. A full click-through (documentation → topology → help request →
+  scoring → leaderboard → history) is still open — worth retrying with a tunnel later if a browser QA
+  pass is wanted, or the user can just open http://localhost:5173 directly themselves as already
+  suggested.
+==================================================================
