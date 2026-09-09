@@ -696,3 +696,94 @@ NOTES: Phases 2-5 (Azure discovery -> dynamic topology, Guacamole-based student 
   next session's work. Known open item: to fully verify the success path, the user needs to either
   share the real Service Principal client secret or rotate it themselves (`az ad sp credential reset`)
   and share the new one — did not do this unprompted since it mutates their real Azure AD app.
+==================================================================
+[2026-09-09 16:40 IDT] session=live-cloud-environment-phase2
+TASK: Continue the live-cloud-environment plan (rustling-seeking-wave.md) with Phase 2: Azure
+  Resource Graph discovery -> dynamic topology, building on Phase 1's environment registration.
+FILES:
+  M server/src/db/schema/config.sql (new CONFIG table `environment_discovery_runs` - one run's
+    status/history per environment, with a partial unique index enforcing at most one queued/running
+    run per environment at a time - DB-enforced concurrency guard, not app-level locking)
+  M server/src/db/migrate.ts (new `addColumnIfMissing` helper - SQLite has no `ALTER TABLE ADD COLUMN
+    IF NOT EXISTS`, so the additive `environment_id`/`discovery_run_id`/`external_key`/`relation_type`
+    columns on `topology_nodes`/`topology_edges` go through this idempotent guard instead of a bare
+    ALTER in the .sql files, keeping `migrate()` safe to re-run - confirmed by running it twice)
+  A server/src/services/azureErrors.ts (extracted `classifyAzureError` out of environments.service.ts
+    so discovery.service.ts can share the same safe error classification)
+  A server/src/services/discovery/discoveryProvider.ts (provider-neutral `DiscoveredResource` /
+    `DiscoveredRelationship` / `DiscoveryProvider` interfaces - no schema/API/client code references
+    "Azure" directly except azureDiscoveryProvider.ts itself)
+  A server/src/services/discovery/azureDiscoveryProvider.ts (one Resource Graph query covers all 8
+    resource types; `mapAzureResourcesToDiscovery` is a pure, exported function doing the ARM ->
+    DiscoveredResource/Relationship mapping + edge inference - vm->nic, nic->subnet, subnet->vnet
+    (free, derived from the subnet's own resource-id string), nic->public_ip, subnet/nic->nsg,
+    load_balancer->nic; drops + warns on any relationship whose endpoint wasn't discovered instead of
+    leaving a dangling reference)
+  A server/src/services/discovery/discovery.service.ts (`triggerDiscovery` inserts a 'running' row and
+    returns 202+runId, or 409 via the partial-unique-index constraint; `runDiscovery` runs async,
+    upserts discovered nodes/edges per linked cyber range inside one transaction, prunes stale rows
+    (only on a fully 'succeeded' run, never 'partial_failure'), writes audit log entries; exports
+    `upsertForCyberRange`/`pruneStale` for direct testing)
+  M server/src/services/environments.service.ts (added `getResolvedCredential` - shared by
+    connectivity-check and discovery so both resolve a usable Azure credential the same way; added
+    `linkEnvironmentToCyberRange`/`unlinkEnvironmentFromCyberRange`/`listLinkedCyberRanges`; fixed a
+    real bug found live: `deleteEnvironment` didn't clean up `environment_discovery_runs` or
+    discovered `topology_nodes`/`topology_edges` before deleting the `cloud_environments` row, so
+    deleting any environment that had ever run discovery hit a FOREIGN KEY constraint failure -
+    fixed the delete order: topology_edges -> topology_nodes -> environment_discovery_runs ->
+    cyber_range_environments -> cloud_environments -> credential)
+  M server/src/routes/admin/environments.routes.ts (+`POST .../discover`, `GET .../discovery-runs`,
+    `GET .../discovery-runs/:runId`, `GET .../linked-cyber-ranges`,
+    `POST/DELETE /admin/cyber-ranges/:cyberRangeId/environments`)
+  M server/src/routes/topology.routes.ts (topology read endpoint now also returns `environmentId` per
+    node, so the client can eventually distinguish discovered vs. hand-drawn nodes - Phase 3 will use
+    this; harmless additive field today, TopologyGraph.tsx ignores it)
+  M server/package.json (+`@azure/arm-resourcegraph`, pure JS/TS, pulls in deprecated-but-pure
+    `@azure/ms-rest-js`/`@azure/ms-rest-azure-js` transitively - warnings only)
+  M client/src/features/environments/EnvironmentsAdminPage.tsx (extracted per-row `EnvironmentCard`
+    subcomponent - needed once per-environment queries for discovery runs + linked cyber ranges were
+    added, since hooks can't be called in a .map() loop directly; "Discover now" button with a status
+    badge that polls every 1.5s only while a run is queued/running; inline link/unlink UI against the
+    `/cyber-ranges` catalog)
+  M CLAUDE/api.md, CLAUDE/db.md, CLAUDE/services.md (new endpoints, schema, the idempotent-migration
+    pattern, the partial-index upsert gotcha, new dependency)
+RESULT: verified-live (real run, not just compile). `npx tsc -b` clean on both workspaces after every
+  change. `npm run migrate -w server` run twice back-to-back to confirm the new `addColumnIfMissing`
+  guard is actually idempotent (no "duplicate column" error). Live API test against the real
+  `rg-cyber-range-demo` environment (real subscription/tenant/client ids, placeholder secret since the
+  real one is still unavailable - same limitation as Phase 1): registered environment, linked it to
+  the real TJS/ai cyber range, triggered discovery -> 202+runId; a second immediate trigger correctly
+  got 409 (partial unique index working); after the async run finished, `discovery-runs` correctly
+  showed status:'failed', reason: auth-classified message (proves the full live round-trip: decrypt
+  -> ClientSecretCredential -> Resource Graph call -> error classification -> DB update -> audit log,
+  same class of proof as Phase 1's connectivity check); triggering again afterward correctly got a
+  fresh 202 (concurrency guard releases properly). Since a genuine success-path discovery still needs
+  the real SP secret (not available this session either), wrote a scratch verification script
+  (server/src/scratch-test-discovery.ts, run via tsx, deleted afterward - never committed) that fed
+  `mapAzureResourcesToDiscovery` synthetic-but-realistic ARM data modeled on the ACTUAL resources seen
+  via `az resource list` earlier (AIAGENT01 + its nic/subnet/vnet/nsg/public-ip, DC01, a storage
+  account, a key vault) and called `upsertForCyberRange`/`pruneStale` directly against the real dev DB
+  for cyber_range_id=1 (TJS). This caught a real bug on the first run: the `ON CONFLICT` clauses didn't
+  repeat the partial unique index's `WHERE external_key IS NOT NULL` predicate, which SQLite requires
+  for conflict-target inference against a partial index ("ON CONFLICT clause does not match any
+  PRIMARY KEY or UNIQUE constraint") - fixed, re-ran, and confirmed: all 10 resources (incl. the
+  synthesized subnet) + 7 edges upserted correctly; re-running with DC01 removed from the input
+  correctly pruned DC01's node AND its nic node AND their edges via cascade-safe delete ordering
+  (edges before nodes, avoiding the FK violation topology_edges would otherwise hit), while AIAGENT01
+  was untouched; re-running the identical input a third time did not duplicate any rows (true upsert,
+  not insert-or-fail); dangling-relationship handling verified by removing the NSG from the input and
+  confirming the subnet->nsg edge was dropped with a warning instead of crashing. Test script's own
+  cleanup left one orphaned cloud_environments/environment_discovery_runs row behind on its FIRST
+  (pre-fix) crashed run - found and removed via the now-fixed DELETE /admin/environments/:id endpoint
+  itself (which conveniently double-verified that same bug fix against real leftover data, including a
+  run stuck in status='running'). Confirmed final DB state: all five new tables back to their real,
+  empty-of-test-data state except audit_log (13 rows, correctly retained - it's the compliance trail
+  and is never cleaned up), the 2 pre-existing manually-drawn topology_nodes untouched, all 5 seeded
+  cyber_ranges untouched. Did not verify a genuine discovery SUCCESS against live Azure (needs the
+  real SP secret) or browser-click-test the new "Discover now"/link UI (same browser-tool localhost
+  isolation as prior sessions this week) - client type-checks clean and follows
+  EnvironmentsAdminPage's own just-established conventions.
+NOTES: Phase 3 (topology UI: node-type icons/coloring, discovered-vs-manual visual distinction using
+  the environmentId field now returned by the topology read endpoint) and Phase 4 (Guacamole student
+  access broker) and Phase 5 (audit/RBAC hardening) remain per the plan file. Same open item as Phase 1:
+  a genuine success-path live test needs the real Service Principal secret from the user.

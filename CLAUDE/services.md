@@ -32,7 +32,7 @@ Copy `.env.example` (repo root) to `.env`. `server/src/env.ts` loads it via a `.
 
 ## External dependencies
 
-`@azure/identity` + `@azure/arm-resources` — the project's first outbound external/cloud dependency, added for the live cloud-environment integration (`server/src/services/environments.service.ts`, connectivity check). Both are pure JS/TS with no native bindings, deliberately chosen to avoid the same class of install failure as `better-sqlite3` below. Later discovery/broker phases add `@azure/arm-resourcegraph` and a Guacamole client — see the design plan referenced in `PROGRESS.txt`.
+`@azure/identity` + `@azure/arm-resources` — the project's first outbound external/cloud dependency, added for the live cloud-environment integration (`server/src/services/environments.service.ts`, connectivity check). `@azure/arm-resourcegraph` added for Phase 2 (`server/src/services/discovery/`) — one Resource Graph query covers all discovered resource types, so no `arm-compute`/`arm-network`/etc. dependency was needed. All three are pure JS/TS with no native bindings, deliberately chosen to avoid the same class of install failure as `better-sqlite3` below (arm-resourcegraph does pull in the older, deprecated `@azure/ms-rest-js`/`@azure/ms-rest-azure-js` transitively — deprecation warnings only, still pure JS). A later access-broker phase adds a Guacamole client — see the design plan referenced in `PROGRESS.txt`.
 
 ## Persistence note
 

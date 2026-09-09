@@ -3,6 +3,8 @@ import { ResourceManagementClient } from '@azure/arm-resources';
 import { db } from '../db/index.js';
 import { deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential } from './credential.service.js';
 import { writeAudit } from './audit.service.js';
+import { classifyAzureError } from './azureErrors.js';
+import type { ResolvedCloudCredential } from './discovery/discoveryProvider.js';
 
 export interface CloudEnvironmentInput {
   provider: 'azure' | 'aws';
@@ -152,6 +154,13 @@ export function deleteEnvironment(id: number, actorUsername: string): boolean {
 
   db.exec('BEGIN');
   try {
+    // Delete order matters: topology rows discovered by this environment reference it (and, for
+    // nodes, the discovery run that wrote them), so they must go before the run history, which must
+    // go before the environment itself — otherwise this trips the same FK constraint that protects
+    // the reset operation elsewhere in this schema.
+    db.prepare('DELETE FROM topology_edges WHERE environment_id = ?').run(id);
+    db.prepare('DELETE FROM topology_nodes WHERE environment_id = ?').run(id);
+    db.prepare('DELETE FROM environment_discovery_runs WHERE environment_id = ?').run(id);
     db.prepare('DELETE FROM cyber_range_environments WHERE environment_id = ?').run(id);
     db.prepare('DELETE FROM cloud_environments WHERE id = ?').run(id);
     deleteCredential(existing.credentialId);
@@ -165,36 +174,61 @@ export function deleteEnvironment(id: number, actorUsername: string): boolean {
   return true;
 }
 
+export function linkEnvironmentToCyberRange(cyberRangeId: number, environmentId: number, actorUsername: string): boolean {
+  const cyberRange = db.prepare('SELECT id FROM cyber_ranges WHERE id = ?').get(cyberRangeId);
+  const environment = db.prepare('SELECT id FROM cloud_environments WHERE id = ?').get(environmentId);
+  if (!cyberRange || !environment) return false;
+
+  db.prepare('INSERT OR IGNORE INTO cyber_range_environments (cyber_range_id, environment_id) VALUES (?, ?)').run(cyberRangeId, environmentId);
+  writeAudit(actorUsername, 'environment.linked', 'cyber_range_environment', null, { cyberRangeId, environmentId });
+  return true;
+}
+
+export function unlinkEnvironmentFromCyberRange(cyberRangeId: number, environmentId: number, actorUsername: string): boolean {
+  const result = db
+    .prepare('DELETE FROM cyber_range_environments WHERE cyber_range_id = ? AND environment_id = ?')
+    .run(cyberRangeId, environmentId);
+  if (result.changes === 0) return false;
+  writeAudit(actorUsername, 'environment.unlinked', 'cyber_range_environment', null, { cyberRangeId, environmentId });
+  return true;
+}
+
+export interface LinkedCyberRange {
+  cyberRangeId: number;
+  name: string;
+}
+
+export function listLinkedCyberRanges(environmentId: number): LinkedCyberRange[] {
+  return db
+    .prepare(
+      `SELECT cr.id AS cyberRangeId, cr.name AS name
+       FROM cyber_range_environments cre JOIN cyber_ranges cr ON cr.id = cre.cyber_range_id
+       WHERE cre.environment_id = ?`,
+    )
+    .all(environmentId) as unknown as LinkedCyberRange[];
+}
+
 export type ConnectivityResult =
   | { ok: true; latencyMs: number; resourceGroupId: string }
   | { ok: false; latencyMs: number; reason: 'not_configured' | 'auth' | 'not_found' | 'network' | 'unknown'; message: string };
 
 export async function checkConnectivity(id: number, actorUsername: string): Promise<ConnectivityResult> {
   const start = Date.now();
-  const row = db
-    .prepare(
-      `SELECT e.external_account_id AS externalAccountId, e.external_scope AS externalScope,
-              e.credential_id AS credentialId, c.metadata_json AS credentialMetadataJson
-       FROM cloud_environments e JOIN credentials c ON c.id = e.credential_id WHERE e.id = ?`,
-    )
-    .get(id) as
-    | { externalAccountId: string; externalScope: string | null; credentialId: number; credentialMetadataJson: string | null }
-    | undefined;
+  const credential = getResolvedCredential(id);
 
-  if (!row || !row.externalScope) {
-    return { ok: false, latencyMs: Date.now() - start, reason: 'not_configured', message: 'environment has no resource group configured' };
-  }
-
-  const meta = row.credentialMetadataJson ? JSON.parse(row.credentialMetadataJson) : {};
-  if (!meta.tenantId || !meta.clientId) {
-    return { ok: false, latencyMs: Date.now() - start, reason: 'not_configured', message: 'environment credential is missing tenantId/clientId' };
+  if (!credential || !credential.externalScope) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - start,
+      reason: 'not_configured',
+      message: !credential ? 'environment credential is missing tenantId/clientId' : 'environment has no resource group configured',
+    };
   }
 
   try {
-    const clientSecret = readCredentialPlaintext(row.credentialId);
-    const credential = new ClientSecretCredential(meta.tenantId, meta.clientId, clientSecret);
-    const client = new ResourceManagementClient(credential, row.externalAccountId);
-    const rg = await client.resourceGroups.get(row.externalScope);
+    const azureCredential = new ClientSecretCredential(credential.tenantId, credential.clientId, credential.clientSecret);
+    const client = new ResourceManagementClient(azureCredential, credential.externalAccountId);
+    const rg = await client.resourceGroups.get(credential.externalScope);
 
     writeAudit(actorUsername, 'environment.connectivity_checked', 'cloud_environment', id, { ok: true });
     return { ok: true, latencyMs: Date.now() - start, resourceGroupId: rg.id ?? '' };
@@ -205,18 +239,27 @@ export async function checkConnectivity(id: number, actorUsername: string): Prom
   }
 }
 
-function classifyAzureError(err: unknown): { reason: 'auth' | 'not_found' | 'network' | 'unknown'; message: string } {
-  const statusCode = (err as { statusCode?: number })?.statusCode;
-  const code = (err as { code?: string; name?: string })?.code ?? (err as { name?: string })?.name;
+// Shared with discovery.service.ts so both callers resolve a usable Azure credential the same way.
+export function getResolvedCredential(environmentId: number): ResolvedCloudCredential | null {
+  const row = db
+    .prepare(
+      `SELECT e.external_account_id AS externalAccountId, e.external_scope AS externalScope,
+              e.credential_id AS credentialId, c.metadata_json AS credentialMetadataJson
+       FROM cloud_environments e JOIN credentials c ON c.id = e.credential_id WHERE e.id = ?`,
+    )
+    .get(environmentId) as
+    | { externalAccountId: string; externalScope: string | null; credentialId: number; credentialMetadataJson: string | null }
+    | undefined;
 
-  if (statusCode === 401 || statusCode === 403 || code === 'AuthenticationRequiredError' || code === 'CredentialUnavailableError') {
-    return { reason: 'auth', message: 'authentication to the cloud provider failed — check the registered credential' };
-  }
-  if (statusCode === 404 || code === 'ResourceGroupNotFound') {
-    return { reason: 'not_found', message: 'the configured resource group was not found (or is not visible to this credential)' };
-  }
-  if (code === 'ENOTFOUND' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED') {
-    return { reason: 'network', message: 'could not reach the cloud provider (network/DNS/timeout)' };
-  }
-  return { reason: 'unknown', message: 'connectivity check failed for an unexpected reason' };
+  if (!row) return null;
+  const meta = row.credentialMetadataJson ? JSON.parse(row.credentialMetadataJson) : {};
+  if (!meta.tenantId || !meta.clientId) return null;
+
+  return {
+    tenantId: meta.tenantId,
+    clientId: meta.clientId,
+    clientSecret: readCredentialPlaintext(row.credentialId),
+    externalAccountId: row.externalAccountId,
+    externalScope: row.externalScope,
+  };
 }

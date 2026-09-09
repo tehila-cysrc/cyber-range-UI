@@ -26,6 +26,27 @@ interface ConnectivityResult {
   message?: string;
 }
 
+interface DiscoveryRun {
+  id: number;
+  environmentId: number;
+  status: string;
+  startedAt: string;
+  finishedAt: string | null;
+  resourceCounts: Record<string, number> | null;
+  errors: { message: string }[] | null;
+}
+
+interface LinkedCyberRange {
+  cyberRangeId: number;
+  name: string;
+}
+
+interface CatalogCyberRange {
+  id: number;
+  name: string;
+  dayLabel: string;
+}
+
 const inputStyle = {
   background: 'transparent',
   border: '1px solid var(--surface-border)',
@@ -34,9 +55,177 @@ const inputStyle = {
   color: 'var(--text-primary)',
 };
 
-// Registers a live cloud environment (Azure resource group today, other providers later) so an
-// instructor can verify connectivity to it — Phase 1 of the live-environment integration plan.
-// Discovery/topology/access-broker phases build on top of this registration, not part of this page.
+function runBadge(run: DiscoveryRun | undefined) {
+  if (!run) return null;
+  if (run.status === 'running' || run.status === 'queued') return <TelemetryBadge tone="secondary">Discovery: {run.status}…</TelemetryBadge>;
+  if (run.status === 'succeeded') {
+    const total = Object.values(run.resourceCounts ?? {}).reduce((a, b) => a + b, 0);
+    return <TelemetryBadge tone="primary">Discovered {total} resources</TelemetryBadge>;
+  }
+  if (run.status === 'partial_failure') {
+    const total = Object.values(run.resourceCounts ?? {}).reduce((a, b) => a + b, 0);
+    return (
+      <TelemetryBadge tone="secondary">
+        Discovered {total} resources · {run.errors?.length ?? 0} warning(s)
+      </TelemetryBadge>
+    );
+  }
+  return <TelemetryBadge tone="alert">Discovery failed: {run.errors?.[0]?.message ?? 'unknown error'}</TelemetryBadge>;
+}
+
+function EnvironmentCard({
+  env,
+  catalog,
+  checkResult,
+  onCheckConnectivity,
+  isChecking,
+  onDelete,
+}: {
+  env: CloudEnvironment;
+  catalog: CatalogCyberRange[];
+  checkResult?: ConnectivityResult;
+  onCheckConnectivity: () => void;
+  isChecking: boolean;
+  onDelete: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selectedRangeId, setSelectedRangeId] = useState<number | ''>('');
+
+  const { data: runsData } = useQuery({
+    queryKey: ['discovery-runs', env.id],
+    queryFn: () => apiFetch<{ runs: DiscoveryRun[] }>(`/admin/environments/${env.id}/discovery-runs`),
+    refetchInterval: (query) => (query.state.data?.runs[0]?.status === 'running' || query.state.data?.runs[0]?.status === 'queued' ? 1500 : false),
+  });
+  const latestRun = runsData?.runs[0];
+
+  const { data: linkedData } = useQuery({
+    queryKey: ['linked-cyber-ranges', env.id],
+    queryFn: () => apiFetch<{ cyberRanges: LinkedCyberRange[] }>(`/admin/environments/${env.id}/linked-cyber-ranges`),
+  });
+
+  function refreshLinks() {
+    queryClient.invalidateQueries({ queryKey: ['linked-cyber-ranges', env.id] });
+  }
+
+  const discover = useMutation({
+    mutationFn: () => apiFetch(`/admin/environments/${env.id}/discover`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['discovery-runs', env.id] }),
+  });
+
+  const linkRange = useMutation({
+    mutationFn: (cyberRangeId: number) =>
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/environments`, { method: 'POST', body: JSON.stringify({ environmentId: env.id }) }),
+    onSuccess: () => {
+      setSelectedRangeId('');
+      refreshLinks();
+    },
+  });
+
+  const unlinkRange = useMutation({
+    mutationFn: (cyberRangeId: number) => apiFetch(`/admin/cyber-ranges/${cyberRangeId}/environments/${env.id}`, { method: 'DELETE' }),
+    onSuccess: refreshLinks,
+  });
+
+  const linkedIds = new Set(linkedData?.cyberRanges.map((r) => r.cyberRangeId));
+  const availableToLink = catalog.filter((c) => !linkedIds.has(c.id));
+
+  return (
+    <div
+      style={{
+        padding: 'var(--space-md)',
+        border: '1px solid var(--surface-border)',
+        borderRadius: 'var(--radius-container)',
+        background: 'var(--surface-1)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{env.name}</strong>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="ghost" disabled={isChecking} onClick={onCheckConnectivity}>
+            Check connectivity
+          </Button>
+          <Button variant="ghost" disabled={discover.isPending || latestRun?.status === 'running'} onClick={() => discover.mutate()}>
+            Discover now
+          </Button>
+          <Button variant="destructive" onClick={onDelete}>
+            Delete
+          </Button>
+        </div>
+      </div>
+      <div style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>
+          {env.provider} · subscription <span className="tabular">{env.externalAccountId}</span>
+        </span>
+        {env.externalScope && <span>resource group: {env.externalScope}</span>}
+      </div>
+
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {checkResult &&
+          (checkResult.ok ? (
+            <TelemetryBadge tone="primary">Connected · {checkResult.latencyMs}ms</TelemetryBadge>
+          ) : (
+            <TelemetryBadge tone="alert">
+              {checkResult.reason} · {checkResult.message}
+            </TelemetryBadge>
+          ))}
+        {runBadge(latestRun)}
+      </div>
+
+      <div style={{ marginTop: 12, borderTop: '1px solid var(--surface-border)', paddingTop: 8 }}>
+        <div style={{ fontSize: 13, color: 'var(--text-telemetry)', marginBottom: 4 }}>Linked cyber ranges</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+          {linkedData?.cyberRanges.map((r) => (
+            <span
+              key={r.cyberRangeId}
+              style={{
+                fontSize: 13,
+                color: 'var(--text-primary)',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 'var(--radius-control)',
+                padding: '2px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {r.name}
+              <button
+                onClick={() => unlinkRange.mutate(r.cyberRangeId)}
+                style={{ background: 'none', border: 'none', color: 'var(--signal-alert)', cursor: 'pointer', fontSize: 12 }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {linkedData?.cyberRanges.length === 0 && <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>none yet</span>}
+        </div>
+        {availableToLink.length > 0 && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select
+              value={selectedRangeId}
+              onChange={(e) => setSelectedRangeId(e.target.value ? Number(e.target.value) : '')}
+              style={{ ...inputStyle, background: 'var(--surface-1)', padding: 6 }}
+            >
+              <option value="">Link a cyber range…</option>
+              {availableToLink.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.dayLabel} · {c.name}
+                </option>
+              ))}
+            </select>
+            <Button variant="ghost" disabled={!selectedRangeId} onClick={() => selectedRangeId && linkRange.mutate(selectedRangeId)}>
+              Link
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Registers a live cloud environment (Azure resource group today, other providers later), lets an
+// instructor check connectivity and trigger Azure Resource Graph discovery, and link the environment
+// to the cyber range(s) whose topology it should populate — Phases 1-2 of the live-environment plan.
 export function EnvironmentsAdminPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -51,6 +240,11 @@ export function EnvironmentsAdminPage() {
   const { data } = useQuery({
     queryKey: ['admin-environments'],
     queryFn: () => apiFetch<{ environments: CloudEnvironment[] }>('/admin/environments'),
+  });
+
+  const { data: catalogData } = useQuery({
+    queryKey: ['cyber-ranges-catalog'],
+    queryFn: () => apiFetch<{ cyberRanges: CatalogCyberRange[] }>('/cyber-ranges'),
   });
 
   function refresh() {
@@ -108,49 +302,17 @@ export function EnvironmentsAdminPage() {
       <div>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Cloud Environments</h1>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-          {data?.environments.map((env) => {
-            const result = checkResults[env.id];
-            return (
-              <div
-                key={env.id}
-                style={{
-                  padding: 'var(--space-md)',
-                  border: '1px solid var(--surface-border)',
-                  borderRadius: 'var(--radius-container)',
-                  background: 'var(--surface-1)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{env.name}</strong>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button variant="ghost" disabled={checkConnectivity.isPending} onClick={() => checkConnectivity.mutate(env.id)}>
-                      Check connectivity
-                    </Button>
-                    <Button variant="destructive" onClick={() => deleteEnvironment.mutate(env.id)}>
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-                <div style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span>
-                    {env.provider} · subscription <span className="tabular">{env.externalAccountId}</span>
-                  </span>
-                  {env.externalScope && <span>resource group: {env.externalScope}</span>}
-                </div>
-                {result && (
-                  <div style={{ marginTop: 8 }}>
-                    {result.ok ? (
-                      <TelemetryBadge tone="primary">Connected · {result.latencyMs}ms</TelemetryBadge>
-                    ) : (
-                      <TelemetryBadge tone="alert">
-                        {result.reason} · {result.message}
-                      </TelemetryBadge>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {data?.environments.map((env) => (
+            <EnvironmentCard
+              key={env.id}
+              env={env}
+              catalog={catalogData?.cyberRanges ?? []}
+              checkResult={checkResults[env.id]}
+              isChecking={checkConnectivity.isPending}
+              onCheckConnectivity={() => checkConnectivity.mutate(env.id)}
+              onDelete={() => deleteEnvironment.mutate(env.id)}
+            />
+          ))}
           {data?.environments.length === 0 && (
             <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No cloud environments registered yet.</div>
           )}

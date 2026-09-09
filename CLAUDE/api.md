@@ -24,7 +24,7 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | GET | `/cyber-ranges/:cyberRangeId/documentation` | Own team's entries for that range, chronological (US-003). Instructor must pass `?teamId=`. |
 | POST | `/cyber-ranges/:cyberRangeId/documentation` | Student only. `{body, categoryId?, isImportantFinding?}`. |
 | GET | `/cyber-ranges` | Read-only catalog (all days/ranges) — any authenticated user, used by admin UI to pick a range. |
-| GET | `/cyber-ranges/:cyberRangeId/topology` | Read-only `{nodes, edges}` (US-004). Topology is CONFIG data (tied to the range, not a team), so not team-scoped — empty arrays if none configured yet. |
+| GET | `/cyber-ranges/:cyberRangeId/topology` | Read-only `{nodes, edges}` (US-004). Topology is CONFIG data (tied to the range, not a team), so not team-scoped — empty arrays if none configured yet. Nodes/edges with a non-null `environmentId` were written by Azure discovery (see `/admin/environments/:id/discover` below), not hand-drawn by an instructor; both kinds render identically today (Phase 3 — visual distinction — not built yet). |
 | POST | `/help-requests` | Student only (US-005). `cyberRangeId` is resolved server-side from the team's active `team_cyber_range_progress` row, never trusted from the client. 409 if no active range. No hint payload — see `CLAUDE/invariants.md`. |
 | GET | `/leaderboard` | `{enabled: false, teams: []}` unless `scoring_config.leaderboard_enabled` (US-008/FR-6). |
 | GET | `/teams/me/scores` | Student's own team's scoring history + team total + per-student totals (US-007). |
@@ -62,6 +62,12 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | PATCH | `/admin/environments/:id` | Partial update; passing `clientSecret` rotates the stored credential (old ciphertext is overwritten, not kept). |
 | DELETE | `/admin/environments/:id` | Cascades: unlinks any `cyber_range_environments` rows and deletes the associated `credentials` row. |
 | POST | `/admin/environments/:id/connectivity-check` | On-demand only (no polling). Authenticates as the environment's registered Service Principal and does one lightweight ARM read (`resourceGroups.get`). Always 200: `{ok:true, latencyMs, resourceGroupId}` or `{ok:false, latencyMs, reason: 'not_configured'\|'auth'\|'not_found'\|'network'\|'unknown', message}` — an unreachable environment is a valid result, not a server error. Every call (success or failure) writes an `audit_log` row. |
+| POST | `/admin/environments/:id/discover` | Triggers an Azure Resource Graph discovery run (Phase 2 — see `PROGRESS.txt` and the plan referenced there). Runs async in-process; responds `202 {runId}` immediately, or `409` if a run is already `queued`/`running` for this environment (DB-enforced via a partial unique index, not app-level locking). No cyber range linked to the environment (`POST /admin/cyber-ranges/:cyberRangeId/environments` below) means resources are discovered but nothing is written to any topology — the run still completes with a warning, not an error. |
+| GET | `/admin/environments/:id/discovery-runs` | History of discovery runs for this environment, newest first — `{id, status, startedAt, finishedAt, triggeredByUsername, resourceCounts, errors}`. `status` is `queued\|running\|succeeded\|partial_failure\|failed`. |
+| GET | `/admin/environments/:id/discovery-runs/:runId` | Single run detail. |
+| GET | `/admin/environments/:id/linked-cyber-ranges` | Cyber ranges this environment currently backs. |
+| POST | `/admin/cyber-ranges/:cyberRangeId/environments` | `{environmentId}` — links an environment to a cyber range; a discovery run then writes/updates that range's `topology_nodes`/`topology_edges` (upserted by Azure resource id, never duplicated — see `CLAUDE/db.md`). |
+| DELETE | `/admin/cyber-ranges/:cyberRangeId/environments/:environmentId` | Unlinks (does not delete previously-discovered topology — that's removed only by a subsequent successful discovery run's pruning, or by deleting the environment itself). |
 
 ## Realtime (Socket.io)
 

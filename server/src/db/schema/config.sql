@@ -100,6 +100,24 @@ CREATE TABLE IF NOT EXISTS cyber_range_environments (
   UNIQUE (cyber_range_id, environment_id)
 );
 
+-- One discovery run's status/history for a cloud environment. CONFIG — history of a CONFIG entity's
+-- sync state must survive resets so "when did we last discover this environment" isn't lost every
+-- training day. The partial unique index guarantees at most one queued/running run per environment
+-- at a time (server/src/services/discovery/discovery.service.ts relies on the resulting UNIQUE
+-- constraint violation to answer a second concurrent trigger with 409, not a race).
+CREATE TABLE IF NOT EXISTS environment_discovery_runs (
+  id INTEGER PRIMARY KEY,
+  environment_id INTEGER NOT NULL REFERENCES cloud_environments(id),
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'partial_failure', 'failed')) DEFAULT 'queued',
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  triggered_by_username TEXT,
+  resource_counts_json TEXT,
+  errors_json TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_discovery_run
+  ON environment_discovery_runs (environment_id) WHERE status IN ('queued', 'running');
+
 -- Compliance/audit trail for environment + credential + access-session actions. CONFIG and never
 -- touched by POST /api/admin/event/reset — see CLAUDE/invariants.md for why a compliance trail must
 -- outlive the resets it may need to help investigate.

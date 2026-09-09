@@ -14,7 +14,7 @@ router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
   const nodes = db
     .prepare(
       `SELECT id, external_key AS externalKey, label, node_type AS nodeType,
-              pos_x AS posX, pos_y AS posY, metadata_json AS metadataJson
+              pos_x AS posX, pos_y AS posY, metadata_json AS metadataJson, environment_id AS environmentId
        FROM topology_nodes WHERE cyber_range_id = ?`,
     )
     .all(cyberRangeId);
