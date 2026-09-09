@@ -5,6 +5,7 @@ interface TokenRow {
   id: number;
   role: string;
   teamId: number | null;
+  username: string;
   expiresAt: string;
 }
 
@@ -19,7 +20,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   const row = db
     .prepare(
-      `SELECT u.id AS id, u.role AS role, u.team_id AS teamId, at.expires_at AS expiresAt
+      `SELECT u.id AS id, u.role AS role, u.team_id AS teamId, u.username AS username, at.expires_at AS expiresAt
        FROM auth_tokens at
        JOIN users u ON u.id = at.user_id
        WHERE at.token = ?`,
@@ -36,6 +37,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  req.user = { id: row.id, role: row.role as 'student' | 'instructor', teamId: row.teamId };
+  req.user = { id: row.id, role: row.role as 'student' | 'instructor', teamId: row.teamId, username: row.username };
   next();
 }

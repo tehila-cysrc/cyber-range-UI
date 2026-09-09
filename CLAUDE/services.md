@@ -28,7 +28,11 @@
 
 ## Environment
 
-Copy `.env.example` (repo root) to `.env`. `server/src/env.ts` loads it via a `../.env` relative path because npm workspace scripts run with `cwd = server/`. Vars: `PORT` (server), `DB_PATH` (relative to `server/`), `TOKEN_TTL_HOURS`, `CLIENT_ORIGIN` (CORS).
+Copy `.env.example` (repo root) to `.env`. `server/src/env.ts` loads it via a `../.env` relative path because npm workspace scripts run with `cwd = server/`. Vars: `PORT` (server), `DB_PATH` (relative to `server/`), `TOKEN_TTL_HOURS`, `CLIENT_ORIGIN` (CORS), `CREDENTIAL_MASTER_KEY` (32 random bytes, base64 — encrypts registered cloud-environment credentials at rest; see below).
+
+## External dependencies
+
+`@azure/identity` + `@azure/arm-resources` — the project's first outbound external/cloud dependency, added for the live cloud-environment integration (`server/src/services/environments.service.ts`, connectivity check). Both are pure JS/TS with no native bindings, deliberately chosen to avoid the same class of install failure as `better-sqlite3` below. Later discovery/broker phases add `@azure/arm-resourcegraph` and a Guacamole client — see the design plan referenced in `PROGRESS.txt`.
 
 ## Persistence note
 

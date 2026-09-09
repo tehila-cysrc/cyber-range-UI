@@ -43,6 +43,20 @@ Read before touching: the DB schema (`server/src/db/schema/*.sql`), the auth mid
 
 ---
 
+## Live cloud environment credentials
+
+### MUST
+
+- **A stored credential (`credentials.secret_ciphertext`) is never selected into any API response, under any role, including instructor.** Why: unlike this app's intentionally-plaintext training passwords, these are real external-blast-radius credentials (a cloud Service Principal today, VM login credentials later). How to apply: list/detail DTOs (`environments.service.ts`'s `toSummary`) select only non-secret columns plus a computed `hasSecret: true`; the secret is a write-only request field on create/rotate, never echoed back.
+- **The app's own Azure Service Principal is never assigned `Contributor`/`Owner` — `Reader` at resource-group scope, plus narrowly-scoped additive roles only, if a later feature needs more.** Why: the identity used to *build* a customer's Azure environment and the identity this app authenticates as are different trust levels; broadening the app's own SP turns a credential leak into a subscription-wide compromise instead of a bounded read-only one. How to apply: environment registration instructions should tell the instructor to assign `Reader` on the resource group, never suggest `Contributor` as a shortcut.
+- **`audit_log` is CONFIG and must never be touched by `POST /api/admin/event/reset`.** Why: it's a compliance/accountability trail whose value depends on surviving the very resets it may need to help investigate — RUN-scoping it would let a reset silently erase the record of who registered/rotated/deleted an environment before that reset. How to apply: reference RUN-scoped entities (team, user) as plain text in `metadata_json`/`actor_username`, never as a foreign key.
+
+### NEVER
+
+- **Never log `CREDENTIAL_MASTER_KEY`, a decrypted credential, or a raw Azure SDK error object** (the latter can echo request details). How to apply: `credential.service.ts#readCredentialPlaintext` is the only function in the codebase allowed to produce plaintext secret material, and its result must be used immediately (building an SDK credential object) and never stored in a variable that outlives that call, logged, or returned from a route handler. `environments.service.ts#classifyAzureError` maps SDK errors to a small safe enum before anything reaches the client/logs.
+
+---
+
 ## Adding a new invariant
 
 A new entry earns its place only if:

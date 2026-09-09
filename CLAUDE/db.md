@@ -6,7 +6,7 @@ SQLite via Node's built-in `node:sqlite` (`DatabaseSync`) — see `CLAUDE/servic
 
 Schema is split into two files, applied in order by `server/src/db/migrate.ts`:
 
-- **`server/src/db/schema/config.sql`** — reusable content. **Never touched by the event-reset operation.** `days`, `cyber_ranges`, `pressure_stages`, `documentation_categories`, `topology_nodes`, `topology_edges`, `scoring_config`.
+- **`server/src/db/schema/config.sql`** — reusable content. **Never touched by the event-reset operation.** `days`, `cyber_ranges`, `pressure_stages`, `documentation_categories`, `topology_nodes`, `topology_edges`, `scoring_config`, `credentials`, `cloud_environments`, `cyber_range_environments`, `audit_log`.
 - **`server/src/db/schema/run.sql`** — per-event data. **Wiped by `POST /api/admin/event/reset`** (not yet built — planned Phase 9). Everything cascades from `event_runs` via `ON DELETE CASCADE`: `event_runs`, `teams`, `users`, `auth_tokens`, `team_cyber_range_progress`, `documentation_entries`, `scores`, `help_requests`.
 
 > **Invariant:** no CONFIG table may ever gain a foreign key into a RUN table. This is what makes the reset operation safe by construction — if you're adding a new table, decide CONFIG vs RUN first and put it in the matching file.
@@ -18,6 +18,7 @@ Schema is split into two files, applied in order by `server/src/db/migrate.ts`:
 - `scores` — instructor-awarded points. `student_user_id` nullable = team-level award; `documentation_entry_id` nullable = standalone scoring event not tied to a specific doc entry. **There is no separate `milestones` table** — the PRD's US-007 replaced automatic milestones with free-form instructor scoring directly on student documentation (individual + team attribution). Leaderboard/individual/team totals are always **computed** (`SUM(points) GROUP BY ...`), never stored redundantly.
 - `users.password` is **plaintext, by explicit decision** — this is a low-stakes internal training tool, not public-internet-facing. Do not "fix" this into a hashed scheme without checking with the user first; it was an explicit tradeoff, not an oversight.
 - `auth_tokens` — opaque bearer tokens (not sessions/cookies), looked up by `server/src/middleware/auth.ts`.
+- `credentials` / `cloud_environments` / `cyber_range_environments` / `audit_log` — live cloud environment integration (Phase 1: registration + connectivity check; see `PROGRESS.txt` and `C:\Users\Liram\.claude\plans\rustling-seeking-wave.md` for the full multi-phase design). `credentials.secret_ciphertext` is AES-256-GCM encrypted (`server/src/services/credential.service.ts`, key from `CREDENTIAL_MASTER_KEY`) and is the only place a cloud Service Principal (or future VM login) secret is stored — never selected into any API response, see `CLAUDE/invariants.md`. All four are CONFIG despite `created_by_username`/`actor_username` looking like they "should" be a `users` FK — they're denormalized text snapshots instead, because `users` is a RUN table and a CONFIG table must never FK into RUN.
 
 ## Seeding
 

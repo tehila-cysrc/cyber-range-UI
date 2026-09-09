@@ -7,6 +7,7 @@ declare global {
         id: number;
         role: 'student' | 'instructor';
         teamId: number | null;
+        username: string;
       };
     }
   }

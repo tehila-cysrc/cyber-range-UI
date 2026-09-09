@@ -627,3 +627,72 @@ RESULT: verified — `npm run build -w client` clean (tsc -b + vite build, same 
   which for a pure numeric-literal substitution across already-tested layouts is a reasonable bar.
   Did not touch space-* tokens, container widths/padding, or the topology graph's own SVG/canvas text
   (React Flow node labels) — scope was specifically "content and letters", i.e. app chrome/body text.
+==================================================================
+[2026-09-09 16:10 IDT] session=live-cloud-environment-phase1
+TASK: User asked to connect the app to a real, live Azure environment for the AI day scenario.
+  Verified live az cli access to the user's actual environment (subscription "Sponsored with
+  Credits", resource group `rg-cyber-range-demo` with VMs incl. AIAGENT01/DC01/APP01/JUMP01/EDGE01/
+  FILE01/SYNC01/LOG01/QRADAR01, VNet, NSGs, Bastion, Key Vault, storage, Event Hub). Scope then grew
+  (user's explicit spec) into a full multi-phase design: environment registration, Azure resource
+  discovery -> dynamic topology, a student browser-based access broker (Guacamole), security/RBAC/
+  audit. Full design written to C:\Users\Liram\.claude\plans\rustling-seeking-wave.md (domain model,
+  schema, backend/frontend architecture, sequence diagrams, 5-phase roadmap) via plan mode, approved
+  by user. This session implemented Phase 1 (environment registration + credentials + on-demand
+  connectivity check) end-to-end.
+FILES:
+  M server/src/db/schema/config.sql (new CONFIG tables: `credentials` — generic encrypted-secret
+    store, one mechanism for both cloud Service Principal secrets and future VM login creds;
+    `cloud_environments` — a registered live cloud environment, provider-neutral; `cyber_range_environments`
+    — join table; `audit_log` — generic compliance trail, never touched by event reset)
+  A server/src/services/credential.service.ts (AES-256-GCM encrypt/decrypt via `CREDENTIAL_MASTER_KEY`
+    env var, node:crypto only, no new dependency — the ONLY module in the codebase that ever produces
+    plaintext secret material)
+  A server/src/services/audit.service.ts (single `writeAudit` used by every mutating environment action)
+  A server/src/services/environments.service.ts (CRUD for cloud_environments + `checkConnectivity`:
+    `@azure/identity` ClientSecretCredential + `@azure/arm-resources` `resourceGroups.get`, classifies
+    errors into `not_configured|auth|not_found|network|unknown` without ever leaking the raw SDK error
+    or the secret)
+  A server/src/routes/admin/environments.routes.ts (`GET/POST /admin/environments`,
+    `PATCH/DELETE /admin/environments/:id`, `POST /admin/environments/:id/connectivity-check` —
+    all `requireAuth, requireRole('instructor')`)
+  M server/src/app.ts (mounted the new router)
+  M server/src/middleware/auth.ts, server/src/types/express.d.ts (added `username` to `req.user` —
+    needed for CONFIG-table `created_by_username`/`actor_username` denormalized snapshots, since
+    `users` is a RUN table and CONFIG must never FK into RUN)
+  M server/package.json (+`@azure/identity`, `+@azure/arm-resources` — both pure JS/TS, no native
+    bindings, confirmed installs clean on this Windows box without VS Build Tools)
+  A client/src/features/environments/EnvironmentsAdminPage.tsx (register/list/delete environments,
+    "Check connectivity" button + inline TelemetryBadge result, following TeamsAdminPage's exact
+    form/mutation/query conventions)
+  M client/src/app/routes.tsx, client/src/app/AppShell.tsx (new `/admin/environments` instructor route
+    + nav item)
+  M .env.example, .env (new `CREDENTIAL_MASTER_KEY`, 32 random bytes base64 — generated a real one
+    for local dev; documented that losing/rotating it makes stored credentials undecryptable)
+  M CLAUDE/api.md, CLAUDE/db.md, CLAUDE/services.md, CLAUDE/invariants.md (new endpoints, schema,
+    external dependency, and 4 new MUST/NEVER invariants re: credential handling + least-privilege
+    Azure RBAC + audit-log CONFIG classification)
+RESULT: verified-live (real run, not just compile). `npx tsc -b` clean on both workspaces. Killed a
+  stale pre-existing `node` process that was squatting on port 4000 from an earlier session (confirmed
+  it was just the same stateless dev server before restarting it). With a fresh server: registered a
+  test environment via curl using the REAL subscription/tenant/client ids from the live `az cli`
+  session but a placeholder client secret (do not have the real Service Principal secret — az cli's
+  token cache does not expose it in plaintext, and rotating the user's real SP credential to obtain
+  one was not something to do without asking first); confirmed (a) `GET /admin/environments` and the
+  create response never include the secret in any form, (b) direct sqlite inspection shows
+  `credentials.secret_ciphertext` is genuine AES-256-GCM ciphertext (23 random-looking bytes for a
+  23-byte plaintext, 12-byte IV, 16-byte auth tag) not a passthrough, (c) `connectivity-check` against
+  the real Azure endpoint with the placeholder secret correctly returns `{ok:false, reason:'auth'}` in
+  463ms — proving the whole live round-trip (decrypt -> ClientSecretCredential -> ARM call -> error
+  classification) actually executes end-to-end, (d) delete cascades the credential row, (e) a student
+  token gets a 403 on every route, (f) `audit_log` gets a row for both the registration and the
+  connectivity check. Could not complete a genuine success-path live test (would need the real SP
+  secret from the user) or browser-click-test the new UI (browser tool still cannot reach
+  localhost:5173/4000 from this environment — same isolation noted in earlier session entries this
+  week); client type-checks clean and the component is a close pattern-match of TeamsAdminPage. Left
+  both dev servers running (server on :4000, client on :5173) for the user to try the real UI/secret
+  themselves.
+NOTES: Phases 2-5 (Azure discovery -> dynamic topology, Guacamole-based student access broker, full
+  RBAC/audit hardening) are designed in the plan file referenced above but not yet built — natural
+  next session's work. Known open item: to fully verify the success path, the user needs to either
+  share the real Service Principal client secret or rotate it themselves (`az ad sp credential reset`)
+  and share the new one — did not do this unprompted since it mutates their real Azure AD app.

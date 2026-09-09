@@ -18,6 +18,7 @@ import leaderboardRoutes from './routes/leaderboard.routes.js';
 import historyRoutes from './routes/history.routes.js';
 import adminEventRoutes from './routes/admin/event.routes.js';
 import adminUsersRoutes from './routes/admin/users.routes.js';
+import adminEnvironmentsRoutes from './routes/admin/environments.routes.js';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/api', historyRoutes);
   app.use('/api/admin', adminEventRoutes);
   app.use('/api/admin', adminUsersRoutes);
+  app.use('/api/admin', adminEnvironmentsRoutes);
 
   return app;
 }

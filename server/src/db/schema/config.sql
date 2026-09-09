@@ -57,3 +57,58 @@ CREATE TABLE IF NOT EXISTS scoring_config (
   method_key TEXT NOT NULL DEFAULT 'sum_points',
   gamified_effect TEXT NOT NULL DEFAULT 'confetti_and_sound'
 );
+
+-- Live cloud environment integration (see docs/plans/live-cloud-environment.md history / PROGRESS.txt).
+-- Generic secret store — used for both cloud Service Principal secrets and (future) VM login
+-- credentials, so there is exactly one secret-handling code path (server/src/services/credential.service.ts)
+-- rather than two. Never selected into any API response — see CLAUDE/invariants.md.
+CREATE TABLE IF NOT EXISTS credentials (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('service_principal', 'vm_login')),
+  secret_ciphertext BLOB NOT NULL,
+  secret_iv BLOB NOT NULL,
+  secret_auth_tag BLOB NOT NULL,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  created_by_username TEXT,
+  rotated_at TEXT
+);
+
+-- A registered live cloud environment (e.g. one Azure resource group). CONFIG because it's reusable
+-- infrastructure registration, not tied to one event run. created_by_username is a denormalized
+-- snapshot, not a FK, because `users` is a RUN table (see the CONFIG/RUN invariant).
+CREATE TABLE IF NOT EXISTS cloud_environments (
+  id INTEGER PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('azure', 'aws')),
+  name TEXT NOT NULL,
+  external_account_id TEXT NOT NULL,
+  external_scope TEXT,
+  credential_id INTEGER NOT NULL REFERENCES credentials(id),
+  default_vm_credential_id INTEGER REFERENCES credentials(id),
+  config_json TEXT,
+  discovery_mode TEXT NOT NULL DEFAULT 'on_demand' CHECK (discovery_mode IN ('on_demand', 'scheduled')),
+  discovery_interval_minutes INTEGER,
+  created_at TEXT NOT NULL,
+  created_by_username TEXT
+);
+
+-- Which cyber range(s) a cloud environment backs. Both sides CONFIG.
+CREATE TABLE IF NOT EXISTS cyber_range_environments (
+  id INTEGER PRIMARY KEY,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  environment_id INTEGER NOT NULL REFERENCES cloud_environments(id),
+  UNIQUE (cyber_range_id, environment_id)
+);
+
+-- Compliance/audit trail for environment + credential + access-session actions. CONFIG and never
+-- touched by POST /api/admin/event/reset — see CLAUDE/invariants.md for why a compliance trail must
+-- outlive the resets it may need to help investigate.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY,
+  actor_username TEXT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL
+);

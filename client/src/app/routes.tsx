@@ -14,6 +14,7 @@ import { CyberRangeSummaryPage } from '../features/history/CyberRangeSummaryPage
 import { EventSummaryPage } from '../features/history/EventSummaryPage';
 import { EventResetPage } from '../features/admin/EventResetPage';
 import { TeamsAdminPage } from '../features/admin/TeamsAdminPage';
+import { EnvironmentsAdminPage } from '../features/environments/EnvironmentsAdminPage';
 
 // React Flow (topology) is the single largest dependency in the bundle — code-split it into its
 // own chunk so it only loads for users who actually open a topology screen (see BACKLOG.md).
@@ -84,6 +85,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requireRole="instructor">
             <EventResetPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin/environments',
+        element: (
+          <ProtectedRoute requireRole="instructor">
+            <EnvironmentsAdminPage />
           </ProtectedRoute>
         ),
       },
