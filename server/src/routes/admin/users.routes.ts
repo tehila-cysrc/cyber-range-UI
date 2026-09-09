@@ -8,9 +8,8 @@ const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
-// Onboarding: create a student or instructor account in the current event run. No
-// self-registration by design (see CLAUDE/invariants.md) — this is the only way accounts get made
-// outside the seed script.
+// Manual account creation for the current event run — mainly for additional instructor accounts
+// or one-off overrides. Students normally self-register via POST /api/auth/register.
 router.post('/users', (req, res) => {
   const { username, password, role, teamId, displayName } = req.body ?? {};
 

@@ -451,3 +451,37 @@ NOTES: `npm run build -w client`: main bundle dropped from ~556KB to ~411KB gzip
   remaining open backlog item is the deliberate "student self-report scoring" v2 idea, which was
   always meant to stay deferred, not something to build now.
 ==================================================================
+==================================================================
+[2026-09-09 16:20 IDT] session=student-self-registration
+TASK: User-requested fix: instructor should only create teams, not student accounts — students
+  should see a team picker at login and create their own username/password. Previously
+  `server/src/routes/admin/users.routes.ts` was the only way to create an account ("no
+  self-registration by design" per its own stale comment, though this wasn't actually listed in
+  CLAUDE/invariants.md as a hard rule, so treated as changeable on user request).
+FILES:
+  M server/src/routes/auth.routes.ts (new public `GET /auth/teams` — id/name only, no member/account
+    leakage; new public `POST /auth/register` — {teamId, username, password, displayName?}, always
+    role 'student', validates team belongs to the active event run, 409 on duplicate username,
+    auto-issues a token like /login so registration doubles as sign-in)
+  M server/src/routes/admin/users.routes.ts (updated stale comment — manual creation still exists,
+    now framed as instructor/override path, not the only path)
+  M client/src/features/auth/LoginPage.tsx (added Sign in / Register toggle; register mode fetches
+    /auth/teams for a team `<select>`, plus username/password/optional display name; reuses existing
+    input styling)
+  M CLAUDE/api.md (documented the two new endpoints under Public/auth)
+RESULT: verified-live
+NOTES: tsc -b clean for both workspaces, `npm run build -w client` clean. Verified end-to-end via
+  curl against the already-running dev server (tsx watch picked up the change automatically):
+  registered a new student against Team Alpha -> got a token back -> GET /auth/me confirmed
+  role=student/teamId=1 -> logged in separately with the new creds -> instructor's GET /admin/teams
+  showed the new member in the roster -> deleted the test account via DELETE /admin/users/:id to
+  leave the dev DB clean. Also confirmed 409 on duplicate username and 400 on a teamId not in the
+  active run. Did NOT get a visual browser check of the new LoginPage toggle — the connected browser
+  tool this session is network-isolated from this machine's localhost (ERR_CONNECTION_REFUSED on
+  both :5173 and the :5174 instance vite fell back to), so the UI is compile-verified and reuses an
+  existing, already-shipped styling pattern (TeamsAdminPage's team `<select>`), but not click-tested
+  in a real browser this session. Killed the stray :5174 vite process I spawned trying to test this;
+  left the pre-existing :5173/:4000 dev servers untouched.
+  User said "several fixes" incoming — this addressed fix #1 only (team creation stays
+  instructor-only; account creation/team-join becomes student self-service).
+==================================================================

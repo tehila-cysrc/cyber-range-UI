@@ -9,6 +9,8 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | POST | `/auth/login` | — | `{username, password}` -> `{token, user}`. 409 if no active event run. |
+| GET | `/auth/teams` | — | `{teams: [{id, name}]}` for the active event run — names only, no member/account details. Powers the registration team picker. 409 if no active event run. |
+| POST | `/auth/register` | — | Self-registration for students. `{teamId, username, password, displayName?}` -> `{token, user}` (auto-logs in). Always creates role `student`; 400 if `teamId` isn't a team in the active run, 409 on a taken username. Instructor accounts are still created only via `POST /admin/users`. |
 | POST | `/auth/logout` | any | Deletes the presented token. |
 | GET | `/auth/me` | any | Current user from token. |
 

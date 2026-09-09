@@ -66,6 +66,93 @@ router.post('/login', (req, res) => {
   });
 });
 
+// Public roster for the registration team picker — names only, no member/account details.
+router.get('/teams', (_req, res) => {
+  const activeRun = db.prepare('SELECT id FROM event_runs WHERE is_active = 1').get() as
+    | { id: number }
+    | undefined;
+  if (!activeRun) {
+    res.status(409).json({ error: 'no active event run — ask an instructor to seed/reset the event' });
+    return;
+  }
+
+  const teams = db
+    .prepare('SELECT id, name FROM teams WHERE event_run_id = ? ORDER BY sort_order')
+    .all(activeRun.id) as { id: number; name: string }[];
+
+  res.json({ teams });
+});
+
+// Self-registration: instructors create teams, students pick one and create their own account.
+router.post('/register', (req, res) => {
+  const { teamId, username, password, displayName } = req.body ?? {};
+
+  if (typeof username !== 'string' || !username.trim()) {
+    res.status(400).json({ error: 'username is required' });
+    return;
+  }
+  if (typeof password !== 'string' || !password) {
+    res.status(400).json({ error: 'password is required' });
+    return;
+  }
+  if (typeof teamId !== 'number') {
+    res.status(400).json({ error: 'teamId is required' });
+    return;
+  }
+
+  const activeRun = db.prepare('SELECT id FROM event_runs WHERE is_active = 1').get() as
+    | { id: number }
+    | undefined;
+  if (!activeRun) {
+    res.status(409).json({ error: 'no active event run — ask an instructor to seed/reset the event' });
+    return;
+  }
+
+  const team = db
+    .prepare('SELECT id FROM teams WHERE id = ? AND event_run_id = ?')
+    .get(teamId, activeRun.id);
+  if (!team) {
+    res.status(400).json({ error: 'unknown team for the active event' });
+    return;
+  }
+
+  let userId: number;
+  try {
+    const result = db
+      .prepare(
+        `INSERT INTO users (event_run_id, username, password, role, team_id, display_name)
+         VALUES (?, ?, ?, 'student', ?, ?)`,
+      )
+      .run(activeRun.id, username.trim(), password, teamId, (displayName || username).trim());
+    userId = Number(result.lastInsertRowid);
+  } catch (err) {
+    res.status(409).json({ error: `username "${username}" is already taken this run` });
+    return;
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + TOKEN_TTL_HOURS * 60 * 60 * 1000);
+
+  db.prepare('INSERT INTO auth_tokens (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(
+    token,
+    userId,
+    createdAt.toISOString(),
+    expiresAt.toISOString(),
+  );
+
+  res.status(201).json({
+    token,
+    user: {
+      id: userId,
+      username: username.trim(),
+      role: 'student',
+      teamId,
+      displayName: (displayName || username).trim(),
+    },
+  });
+});
+
 router.post('/logout', requireAuth, (req, res) => {
   const token = req.headers.authorization!.slice(7);
   db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
