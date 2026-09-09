@@ -529,3 +529,27 @@ NOTES: tsc -b clean both workspaces, client build clean (~414KB main bundle, no 
   This was fix #2 of the user's "several fixes" list; fix #1 was student self-registration
   (see previous entry).
 ==================================================================
+==================================================================
+[2026-09-09 17:05 IDT] session=student-self-registration
+TASK: User-requested fix #3: instructor should be able to choose/assign a scenario for a team. This
+  is exactly the gap flagged in the previous entry's BACKLOG.md addition — the instructor override
+  endpoint (`POST /admin/teams/:teamId/cyber-ranges/:cyberRangeId/start`) existed but had no UI.
+FILES:
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (added a per-team
+    "Assign/Switch scenario…" `<select>` populated from `GET /cyber-ranges`; on change, calls the
+    admin start endpoint for that team and invalidates the `instructor-dashboard` query. Select is
+    keyed on `team.active?.cyberRangeId` so it resets to the placeholder after a successful
+    assign/switch instead of showing a stale selection.)
+  M BACKLOG.md (moved the "no admin UI for instructor override" item from Open to Done)
+RESULT: verified-live
+NOTES: `npm run build -w client` clean (tsc -b + vite build, ~415KB main bundle, no new warnings).
+  Verified via curl against the running dev server (same endpoint the new UI calls): assigned cyber
+  range 3 to Team Bravo -> dashboard showed it active -> assigned range 4 to the same team -> dashboard
+  showed ONLY range 4 active (confirms the shared startCyberRangeForTeam pause-logic from the
+  previous entry also covers this UI path). Cleaned up test progress rows for team 2 afterward.
+  Did not visually browser-test the new <select> (same browser-tool network isolation as the last two
+  entries) — compile-verified, follows the identical pattern already used in the student-facing
+  ActiveCyberRangePage.tsx picker added in the previous fix.
+  This was fix #3 of the user's "several fixes" list. Fix #1: student self-registration. Fix #2:
+  student self-service scenario start/switch.
+==================================================================

@@ -27,6 +27,13 @@ interface HelpRequest {
   requestedByName: string;
 }
 
+interface CatalogCyberRange {
+  id: number;
+  name: string;
+  difficulty: string;
+  dayLabel: string;
+}
+
 function formatRemaining(seconds: number | null) {
   if (seconds == null) return '—';
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -58,6 +65,19 @@ export function InstructorDashboardPage() {
   const { data: helpData } = useQuery({
     queryKey: ['help-requests', 'open'],
     queryFn: () => apiFetch<{ helpRequests: HelpRequest[] }>('/admin/help-requests?status=open'),
+  });
+
+  const { data: catalogData } = useQuery({
+    queryKey: ['cyber-ranges-catalog'],
+    queryFn: () => apiFetch<{ cyberRanges: CatalogCyberRange[] }>('/cyber-ranges'),
+  });
+
+  // Override of a team's self-service choice (see client/src/features/activeCyberRange) — for
+  // getting a stuck team unstuck without needing curl.
+  const assignScenario = useMutation({
+    mutationFn: ({ teamId, cyberRangeId }: { teamId: number; cyberRangeId: number }) =>
+      apiFetch(`/admin/teams/${teamId}/cyber-ranges/${cyberRangeId}/start`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] }),
   });
 
   const resolveMutation = useMutation({
@@ -163,6 +183,34 @@ export function InstructorDashboardPage() {
             <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>
               Completed: {team.completedCount}
             </div>
+            <select
+              key={team.active?.cyberRangeId ?? 'none'}
+              defaultValue=""
+              disabled={assignScenario.isPending}
+              onChange={(e) => {
+                const cyberRangeId = Number(e.target.value);
+                if (!cyberRangeId) return;
+                assignScenario.mutate({ teamId: team.teamId, cyberRangeId });
+              }}
+              style={{
+                marginTop: 4,
+                background: 'transparent',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 'var(--radius-control)',
+                padding: '4px 6px',
+                color: 'var(--text-primary)',
+                fontSize: 12,
+              }}
+            >
+              <option value="" disabled>
+                {team.active ? 'Switch scenario…' : 'Assign scenario…'}
+              </option>
+              {catalogData?.cyberRanges.map((range) => (
+                <option key={range.id} value={range.id}>
+                  {range.dayLabel} — {range.name} ({range.difficulty})
+                </option>
+              ))}
+            </select>
           </div>
         ))}
       </div>
