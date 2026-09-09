@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { startCyberRangeForTeam } from '../services/cyberRangeProgress.service.js';
 
 const router = Router();
 
@@ -99,22 +98,6 @@ router.get('/me/active-cyber-range', (req, res) => {
       remainingSeconds,
     },
   });
-});
-
-// Student self-service: pick which scenario is "current" for their own team (US-001 counterpart to
-// the instructor-only /admin/teams/:teamId/cyber-ranges/:id/start override).
-router.post('/me/cyber-ranges/:cyberRangeId/start', (req, res) => {
-  const teamId = requireTeam(req, res);
-  if (teamId === null) return;
-
-  const cyberRangeId = Number(req.params.cyberRangeId);
-  const result = startCyberRangeForTeam(teamId, cyberRangeId);
-  if (!result.ok) {
-    res.status(result.status).json({ error: result.error });
-    return;
-  }
-
-  res.json({ ok: true });
 });
 
 // US-007: student view of scoring — individual + team attribution, no separate milestones entity.

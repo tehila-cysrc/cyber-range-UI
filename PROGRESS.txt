@@ -553,3 +553,38 @@ NOTES: `npm run build -w client` clean (tsc -b + vite build, ~415KB main bundle,
   This was fix #3 of the user's "several fixes" list. Fix #1: student self-registration. Fix #2:
   student self-service scenario start/switch.
 ==================================================================
+==================================================================
+[2026-09-09 17:30 IDT] session=student-self-registration
+TASK: User correction/fix #4: reported the student-facing scenario dropdown (added in fix #2)
+  "doesn't work" and, more importantly, that students should never have had this ability at all —
+  a student should only ever see whatever scenario the instructor assigned to their team (matches
+  fix #3's instructor-only picker). This reverses fix #2's client-visible surface while keeping
+  fix #3 (instructor assignment) intact.
+FILES:
+  M client/src/features/activeCyberRange/ActiveCyberRangePage.tsx (removed the "Choose your
+    scenario"/"Switch scenario" picker, the `/cyber-ranges` catalog query, and the start mutation —
+    reverted to a pure read-only view of `GET /teams/me/active-cyber-range`, same as before fix #2)
+  M server/src/routes/teams.routes.ts (deleted `POST /me/cyber-ranges/:cyberRangeId/start` and the
+    now-unused `startCyberRangeForTeam` import — no student-facing route left to start/switch a
+    scenario)
+  M CLAUDE/api.md (removed the reverted student endpoint row; reworded the instructor
+    `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` entry — it's no longer an "override" of
+    a student path, it's the only path)
+  M CLAUDE/invariants.md (added a new MUST under Product model: students never choose/switch their
+    own team's scenario — instructor-only, via the dashboard picker from fix #3. This was built,
+    shipped, and then explicitly reverted by the user in this same session, so it earns a permanent
+    invariant to stop it from being silently reintroduced later.)
+FILES UNCHANGED (kept): server/src/services/cyberRangeProgress.service.ts (still used by the
+  instructor-only admin route from fix #3) and server/src/routes/admin/progress.routes.ts.
+RESULT: verified-live
+NOTES: tsc -b clean both workspaces, client build clean (~414KB, back down from the picker's ~415KB).
+  Verified via curl: registered a throwaway student -> POST to the now-deleted
+  /teams/me/cyber-ranges/:id/start returned 404 (confirms it's gone) -> GET
+  /teams/me/active-cyber-range still returns the read-only view correctly -> instructor's
+  POST /admin/teams/:teamId/cyber-ranges/:cyberRangeId/start still works and dashboard reflects it.
+  Cleaned up the test user and test progress rows afterward.
+  Did not root-cause exactly why the student's old dropdown "didn't work" in the user's own testing
+  (curl against the same backend endpoint it called succeeded in the fix #2 verification) — moot
+  since the feature is now removed entirely rather than debugged.
+  Saved a feedback memory: this user reverses course quickly on product-control questions (who gets
+  to control what) — check before assuming a "self-service" framing extends to students by default.
