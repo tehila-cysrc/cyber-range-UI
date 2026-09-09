@@ -8,3 +8,4 @@ server/data/*.db-wal
 server/data/*.db-shm
 *.log
 .DS_Store
+*.tsbuildinfo
