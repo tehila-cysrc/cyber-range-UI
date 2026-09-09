@@ -485,3 +485,47 @@ NOTES: tsc -b clean for both workspaces, `npm run build -w client` clean. Verifi
   User said "several fixes" incoming — this addressed fix #1 only (team creation stays
   instructor-only; account creation/team-join becomes student self-service).
 ==================================================================
+==================================================================
+[2026-09-09 16:45 IDT] session=student-self-registration
+TASK: User-requested fix #2: a student should be able to assign/start the "current scenario"
+  (cyber range) for their own team, rather than only the instructor. Investigation found this was a
+  bigger gap than expected: `POST /admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` existed on
+  the backend but NO client UI anywhere (student or instructor) ever called it — starting a Cyber
+  Range for a team was previously only possible via raw API/curl. Also found a latent bug on the way:
+  nothing stopped two progress rows from being `active` for the same team at once (the "one current
+  scenario" assumption baked into `GET /teams/me/active-cyber-range`'s `LIMIT 1` with no `ORDER BY`
+  and the instructor dashboard's per-team `active` field), which self-service switching would have
+  hit immediately.
+FILES:
+  A server/src/services/cyberRangeProgress.service.ts (new `startCyberRangeForTeam(teamId,
+    cyberRangeId)` — pauses any other `active` progress row for the team first (status only, row
+    kept, so re-starting later resumes clean history), then upserts the target row to `active`,
+    wrapped in `BEGIN`/`COMMIT`/`ROLLBACK` per the node:sqlite multi-statement-write gotcha in
+    CLAUDE/invariants.md)
+  M server/src/routes/admin/progress.routes.ts (refactored the existing instructor `/start` route to
+    call the shared service instead of its own INSERT, so the "only one active per team" fix applies
+    to the instructor override path too, not just the new student one)
+  M server/src/routes/teams.routes.ts (new student route `POST /teams/me/cyber-ranges/:id/start`,
+    team-scoped via the existing `requireTeam` helper — same service call, no admin bypass)
+  M client/src/features/activeCyberRange/ActiveCyberRangePage.tsx (students now see a "Choose your
+    scenario" / "Switch scenario" list below the active-range card, fetched from the existing
+    `GET /cyber-ranges` catalog, grouped implicitly by the catalog's day ordering; clicking a
+    non-current range calls the new start endpoint and invalidates the active-cyber-range query)
+  M CLAUDE/api.md (documented the new student endpoint; noted the admin one is now the "override")
+  M BACKLOG.md (added: instructor override path still has no admin UI button — low priority since
+    students can now self-serve)
+RESULT: verified-live
+NOTES: tsc -b clean both workspaces, client build clean (~414KB main bundle, no new warnings).
+  Verified end-to-end via curl against the running dev server: registered a throwaway student on
+  Team Alpha -> started cyber_range 1 -> GET active-cyber-range showed it -> started cyber_range 2 ->
+  GET active-cyber-range showed ONLY range 2 (confirms the pause-other-actives logic works) ->
+  instructor's GET /admin/dashboard also showed exactly one active scenario for Team Alpha, not two.
+  Cleaned up afterward: deleted the test user via DELETE /admin/users/:id and cleared the test
+  team_cyber_range_progress rows directly (`DELETE FROM team_cyber_range_progress WHERE team_id = 1`)
+  to leave the dev DB back at its pre-test state. Did not visually browser-test the new picker UI in
+  ActiveCyberRangePage.tsx for the same reason as the prior session's entry (browser tool is
+  network-isolated from this machine's dev server ports) — compile-verified + reuses existing
+  TelemetryBadge/Button patterns from the same file and TeamsAdminPage.
+  This was fix #2 of the user's "several fixes" list; fix #1 was student self-registration
+  (see previous entry).
+==================================================================

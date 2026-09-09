@@ -20,6 +20,7 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 |---|---|---|
 | GET | `/teams/me` | Own team + members (US-002). |
 | GET | `/teams/me/active-cyber-range` | Active `team_cyber_range_progress` for own team, joined with cyber range + day, with computed `remainingSeconds` (US-001). `{active: null}` if none active. |
+| POST | `/teams/me/cyber-ranges/:cyberRangeId/start` | Student self-service: assigns/starts this scenario as the team's current one. Pauses (not deletes) whatever else was `active` for the team first, so at most one scenario is current at a time. Shares `startCyberRangeForTeam` with the instructor override below. |
 | GET | `/documentation-categories` | Active categories, any authenticated user. |
 | GET | `/cyber-ranges/:cyberRangeId/documentation` | Own team's entries for that range, chronological (US-003). Instructor must pass `?teamId=`. |
 | POST | `/cyber-ranges/:cyberRangeId/documentation` | Student only. `{body, categoryId?, isImportantFinding?}`. |
@@ -41,7 +42,7 @@ Kept in sync with `server/src/app.ts`'s route mounts — update this table in th
 | DELETE | `/admin/teams/:id` | Cascades to that team's users/progress/documentation/scores/help_requests. |
 | POST | `/admin/users` | `{username, password, role, teamId?, displayName?}` — onboards a student/instructor into the current run. `teamId` required when `role: 'student'`. 409 on duplicate username within the run. |
 | DELETE | `/admin/users/:id` | |
-| POST | `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` | Upserts `team_cyber_range_progress` to `active`, sets `started_at`/`time_limit_seconds` from the range's `expected_duration_minutes` (null if not configured, e.g. AWS ranges). |
+| POST | `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` | Instructor override of the student self-service `/teams/me/cyber-ranges/:id/start` above — upserts `team_cyber_range_progress` to `active`, sets `started_at`/`time_limit_seconds` from the range's `expected_duration_minutes` (null if not configured, e.g. AWS ranges). |
 | POST | `/admin/teams/:teamId/cyber-ranges/:cyberRangeId/complete` | Sets status `completed` + `completed_at`. 404 if no progress row exists yet. |
 | POST | `/admin/cyber-ranges/:cyberRangeId/topology/nodes` | `{label, nodeType, posX?, posY?, metadata?}`. `external_key` is set to the new row's id after insert (used as the React Flow node id). |
 | PATCH | `/admin/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId` | Partial update (label/nodeType/posX/posY) — used for admin drag-to-reposition. |

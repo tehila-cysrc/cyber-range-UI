@@ -12,6 +12,7 @@ Format:
 ## Open
 
 - [ ] 2026-09-09 | manual | Student self-report of own progress (vs. instructor-only manual scoring, the current MVP assumption) is a plausible v2 — nothing in the PRD forbids it, just deferred for scope.
+- [ ] 2026-09-09 | manual | Instructor's `POST /admin/teams/:teamId/cyber-ranges/:cyberRangeId/start` override has no admin UI button (found while adding student self-service start) — instructor would need curl/API to force-start a scenario for a stuck team. Low priority since students can now self-serve.
 
 ## Done
 

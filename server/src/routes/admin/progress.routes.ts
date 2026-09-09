@@ -2,37 +2,23 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { startCyberRangeForTeam } from '../../services/cyberRangeProgress.service.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
+// Students normally start their own team's scenario via POST /api/teams/me/cyber-ranges/:id/start —
+// this instructor path stays available for overrides (e.g. re-starting a team stuck mid-range).
 router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', (req, res) => {
   const teamId = Number(req.params.teamId);
   const cyberRangeId = Number(req.params.cyberRangeId);
 
-  const cyberRange = db
-    .prepare('SELECT expected_duration_minutes AS expectedDurationMinutes FROM cyber_ranges WHERE id = ?')
-    .get(cyberRangeId) as { expectedDurationMinutes: number | null } | undefined;
-
-  if (!cyberRange) {
-    res.status(404).json({ error: 'cyber range not found' });
+  const result = startCyberRangeForTeam(teamId, cyberRangeId);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
-
-  const timeLimitSeconds =
-    cyberRange.expectedDurationMinutes != null ? cyberRange.expectedDurationMinutes * 60 : null;
-  const startedAt = new Date().toISOString();
-
-  db.prepare(
-    `INSERT INTO team_cyber_range_progress (team_id, cyber_range_id, status, started_at, time_limit_seconds)
-     VALUES (?, ?, 'active', ?, ?)
-     ON CONFLICT (team_id, cyber_range_id) DO UPDATE SET
-       status = 'active',
-       started_at = excluded.started_at,
-       time_limit_seconds = excluded.time_limit_seconds,
-       completed_at = NULL`,
-  ).run(teamId, cyberRangeId, startedAt, timeLimitSeconds);
 
   res.json({ ok: true });
 });
