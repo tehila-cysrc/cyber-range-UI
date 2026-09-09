@@ -68,7 +68,7 @@ export function ActiveCyberRangePage() {
       <div
         style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: 11,
+          fontSize: 13,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           color: 'var(--text-telemetry)',
@@ -109,14 +109,14 @@ export function ActiveCyberRangePage() {
               {active.difficulty}
             </TelemetryBadge>
           </div>
-          <h1 style={{ fontSize: 26, margin: 0, color: 'var(--text-primary)' }}>{active.name}</h1>
-          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <h1 style={{ fontSize: 28, margin: 0, color: 'var(--text-primary)' }}>{active.name}</h1>
+          <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>
             Expected time: {formatMinutes(active.expectedDurationMinutes)}
           </div>
           {remainingSeconds != null && (
             <div
               className="tabular"
-              style={{ fontSize: 20, color: timeUp ? 'var(--signal-alert)' : 'var(--signal-primary)' }}
+              style={{ fontSize: 22, color: timeUp ? 'var(--signal-alert)' : 'var(--signal-primary)' }}
             >
               {timeUp
                 ? "Time's up"

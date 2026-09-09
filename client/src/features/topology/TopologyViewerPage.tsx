@@ -42,10 +42,10 @@ export function TopologyViewerPage() {
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
           Topology — {active.name}
         </h1>
-        <Link to="/investigation" style={{ fontSize: 12, color: 'var(--signal-secondary)' }}>
+        <Link to="/investigation" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
           ← Back to investigation
         </Link>
       </div>

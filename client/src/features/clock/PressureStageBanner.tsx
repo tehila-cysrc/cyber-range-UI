@@ -14,7 +14,7 @@ export function PressureStageBanner({ label, visualStyle }: { label: string; vis
         borderRadius: 'var(--radius-control)',
         color,
         fontFamily: 'var(--font-mono)',
-        fontSize: 12,
+        fontSize: 14,
         textTransform: 'uppercase',
         letterSpacing: '0.05em',
       }}

@@ -38,7 +38,7 @@ export function TopologyGraph({ nodes, edges, editable = false, onNodeDragStop }
           borderRadius: 6,
           color: 'var(--text-primary)',
           fontFamily: 'var(--font-mono)',
-          fontSize: 12,
+          fontSize: 14,
           padding: 8,
         },
       })),

@@ -37,7 +37,7 @@ export function EventResetPage() {
   if (result) {
     return (
       <div style={{ padding: 'var(--space-xl)' }}>
-        <h1 style={{ fontSize: 20, color: 'var(--signal-primary)' }}>Event reset complete</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--signal-primary)' }}>Event reset complete</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           All teams, accounts, documentation, scores, and help requests have been wiped. Cyber Range
           definitions, topology, and categories were preserved.
@@ -55,15 +55,15 @@ export function EventResetPage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)', maxWidth: 480 }}>
-      <h1 style={{ fontSize: 20, color: 'var(--signal-alert)', margin: '0 0 var(--space-sm)' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--signal-alert)', margin: '0 0 var(--space-sm)' }}>
         Reset Event
       </h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
         This permanently deletes every team, student/instructor account, documentation entry, score,
         and help request for the current event run. Cyber Range definitions, topology, and
         documentation categories are kept. This cannot be undone.
       </p>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
         Type <strong style={{ color: 'var(--text-primary)' }}>{CONFIRMATION_PHRASE}</strong> to
         confirm.
       </p>
@@ -82,7 +82,7 @@ export function EventResetPage() {
           marginBottom: 'var(--space-sm)',
         }}
       />
-      {error && <div style={{ color: 'var(--signal-alert)', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--signal-alert)', fontSize: 15, marginBottom: 8 }}>{error}</div>}
       <Button
         variant="destructive"
         disabled={confirmText !== CONFIRMATION_PHRASE || mutation.isPending}

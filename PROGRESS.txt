@@ -604,3 +604,26 @@ RESULT: verified-live (build only — this is a pure style fix, confirmed by gre
   `<select>` in client/src to confirm they all use `var(--surface-1)` and none share this bug;
   `npm run build -w client` clean, ~414KB, same as before fix #3's addition).
 NOTES: This was fix #5 — a bug in fix #3's own delivery, not a new feature request.
+==================================================================
+[2026-09-09 17:55 IDT] session=student-self-registration
+TASK: Fix #6: user reported all content/text across the app is too small, asked to make it bigger.
+FILES: bumped every inline `fontSize` numeric literal across `client/src/**/*.tsx` (89 occurrences
+  in 21 files) plus the base `body { font-size }` in `client/src/index.css`, via a one-off Node script
+  (not committed — scratchpad-only) applying a fixed old->new lookup so every occurrence of a given
+  size moved together and no value got double-shifted:
+    11->13, 12->14, 13->15, 14->16 (also base body), 16->18, 18->20, 20->22, 22->24, 26->28
+  Files touched: AppShell, Button, TelemetryBadge, ActiveCyberRangePage, EventResetPage,
+  TeamsAdminPage, LoginPage, PressureStageBanner, InvestigationPage, HelpRequestButton,
+  CyberRangeSummaryPage, EventSummaryPage, HistoryPage, InstructorDashboardPage, LeaderboardPage,
+  InstructorScoringPanel, ScoreHistoryList, TeamWorkspacePage, TopologyGraph, TopologyViewerPage,
+  TopologyAdminPage, index.css.
+RESULT: verified — `npm run build -w client` clean (tsc -b + vite build, same ~414KB bundle, no new
+  warnings — this is a pure value change, no new code paths). Re-grepped every `fontSize:` occurrence
+  afterward to confirm the full old distribution (11/12/13/14/16/18/20/22/26) mapped 1:1 to the new
+  one (13/14/15/16/18/20/22/24/28) with none left over, and spot-diffed a few files
+  (AppShell.tsx, InvestigationPage.tsx) to confirm sane, well-formed edits. Did not visually
+  browser-verify the rendered result (same browser-tool network isolation noted in earlier entries
+  this session) — confirmed instead by full-repo grep + representative diffs + clean typecheck/build,
+  which for a pure numeric-literal substitution across already-tested layouts is a reasonable bar.
+  Did not touch space-* tokens, container widths/padding, or the topology graph's own SVG/canvas text
+  (React Flow node labels) — scope was specifically "content and letters", i.e. app chrome/body text.

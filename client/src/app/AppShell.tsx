@@ -30,7 +30,7 @@ function NavItem({ to, label, end, alert }: { to: string; label: string; end?: b
       to={to}
       end={end}
       style={({ isActive }) => ({
-        fontSize: 13,
+        fontSize: 15,
         fontWeight: 500,
         textDecoration: 'none',
         color: isActive ? (alert ? 'var(--signal-alert)' : 'var(--text-primary)') : 'var(--text-muted)',
@@ -89,7 +89,7 @@ export function AppShell() {
             alignItems: 'center',
             gap: 'var(--space-md)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 12,
+            fontSize: 14,
             color: 'var(--text-telemetry)',
           }}
         >

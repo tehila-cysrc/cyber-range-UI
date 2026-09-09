@@ -114,16 +114,16 @@ export function InvestigationPage() {
     >
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
             Timeline — {active.name}
           </h1>
-          <Link to="/topology" style={{ fontSize: 12, color: 'var(--signal-secondary)' }}>
+          <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
             View topology →
           </Link>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           {entriesData?.entries.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No entries yet.</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No entries yet.</div>
           )}
           {entriesData?.entries.map((entry) => (
             <div
@@ -143,7 +143,7 @@ export function InvestigationPage() {
                   display: 'flex',
                   justifyContent: 'space-between',
                   marginBottom: 4,
-                  fontSize: 11,
+                  fontSize: 13,
                   color: 'var(--text-telemetry)',
                   fontFamily: 'var(--font-mono)',
                 }}
@@ -156,14 +156,14 @@ export function InvestigationPage() {
                   {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
                 </span>
               </div>
-              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{entry.body}</div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
             </div>
           ))}
         </div>
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-        <h2 style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>Add entry</h2>
+        <h2 style={{ fontSize: 16, color: 'var(--text-muted)', margin: 0 }}>Add entry</h2>
         <textarea
           value={body}
           onChange={(e) => active && setDraft(active.cyberRangeId, e.target.value)}
@@ -196,7 +196,7 @@ export function InvestigationPage() {
             </option>
           ))}
         </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 15, color: 'var(--text-muted)' }}>
           <input type="checkbox" checked={isImportant} onChange={(e) => setIsImportant(e.target.checked)} />
           Mark as important finding
         </label>

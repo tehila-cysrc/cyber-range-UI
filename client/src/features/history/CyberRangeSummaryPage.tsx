@@ -28,7 +28,7 @@ export function CyberRangeSummaryPage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <Link to="/debrief" style={{ fontSize: 12, color: 'var(--signal-secondary)' }}>
+      <Link to="/debrief" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
         ← Back to history
       </Link>
 
@@ -40,19 +40,19 @@ export function CyberRangeSummaryPage() {
               {data.cyberRange.difficulty}
             </TelemetryBadge>
           </div>
-          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '8px 0' }}>
+          <h1 style={{ fontSize: 24, color: 'var(--text-primary)', margin: '8px 0' }}>
             {data.cyberRange.name}
           </h1>
-          <div className="tabular" style={{ fontSize: 14, color: 'var(--signal-primary)', marginBottom: 'var(--space-lg)' }}>
+          <div className="tabular" style={{ fontSize: 16, color: 'var(--signal-primary)', marginBottom: 'var(--space-lg)' }}>
             Team score: {data.scoreTotal}
           </div>
 
-          <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
             Documentation
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {data.documentation.length === 0 && (
-              <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No documentation was recorded.</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No documentation was recorded.</div>
             )}
             {data.documentation.map((entry) => (
               <div
@@ -67,11 +67,11 @@ export function CyberRangeSummaryPage() {
                   background: 'var(--surface-1)',
                 }}
               >
-                <div style={{ fontSize: 11, color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)' }}>
                   {entry.authorName} · {new Date(entry.createdAt).toLocaleString()}
                   {entry.categoryLabel ? ` · ${entry.categoryLabel}` : ''}
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{entry.body}</div>
+                <div style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
               </div>
             ))}
           </div>

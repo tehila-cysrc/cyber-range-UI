@@ -36,7 +36,7 @@ export function LeaderboardPage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
         Leaderboard
       </h1>
       <div
@@ -55,7 +55,7 @@ export function LeaderboardPage() {
               justifyContent: 'space-between',
               padding: '10px 16px',
               borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
-              fontSize: 13,
+              fontSize: 15,
             }}
           >
             <span style={{ color: 'var(--text-primary)' }}>

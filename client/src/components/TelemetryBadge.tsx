@@ -16,7 +16,7 @@ export function TelemetryBadge({ tone = 'muted', children }: { tone?: Tone; chil
     <span
       style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 11,
+        fontSize: 13,
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
         padding: '2px 6px',

@@ -25,11 +25,11 @@ export function HelpRequestButton() {
         {mutation.isPending ? 'Sending…' : 'Request instructor help'}
       </Button>
       {justSent && (
-        <span style={{ fontSize: 12, color: 'var(--signal-primary)' }}>
+        <span style={{ fontSize: 14, color: 'var(--signal-primary)' }}>
           Sent — the instructor has been notified.
         </span>
       )}
-      {error && <span style={{ fontSize: 12, color: 'var(--signal-alert)' }}>{error}</span>}
+      {error && <span style={{ fontSize: 14, color: 'var(--signal-alert)' }}>{error}</span>}
     </div>
   );
 }

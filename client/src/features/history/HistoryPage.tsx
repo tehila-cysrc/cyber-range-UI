@@ -21,10 +21,10 @@ export function HistoryPage() {
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
           History
         </h1>
-        <Link to="/debrief/event-summary" style={{ fontSize: 12, color: 'var(--signal-secondary)' }}>
+        <Link to="/debrief/event-summary" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
           Event summary →
         </Link>
       </div>
@@ -46,7 +46,7 @@ export function HistoryPage() {
               borderRadius: 'var(--radius-control)',
               background: 'var(--surface-1)',
               textDecoration: 'none',
-              fontSize: 13,
+              fontSize: 15,
             }}
           >
             <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

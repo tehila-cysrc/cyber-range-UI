@@ -99,10 +99,10 @@ export function InstructorDashboardPage() {
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
           Instructor Dashboard
         </h1>
-        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <label style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
             type="checkbox"
             checked={scoringConfig?.config.leaderboardEnabled === 1}
@@ -114,7 +114,7 @@ export function InstructorDashboardPage() {
 
       {helpData && helpData.helpRequests.length > 0 && (
         <div style={{ marginBottom: 'var(--space-xl)' }}>
-          <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
             Open help requests
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -131,7 +131,7 @@ export function InstructorDashboardPage() {
                   background: 'var(--surface-1)',
                 }}
               >
-                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>
                   <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>{' '}
                   {hr.requestedByName} needs help on {hr.cyberRangeName}
                 </span>
@@ -165,22 +165,22 @@ export function InstructorDashboardPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{team.teamName}</strong>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.teamName}</strong>
               {team.openHelpCount > 0 && <TelemetryBadge tone="alert">{team.openHelpCount} help</TelemetryBadge>}
             </div>
             {team.active ? (
               <>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
                   {team.active.dayLabel} — {team.active.name} ({team.active.difficulty})
                 </div>
-                <div className="tabular" style={{ fontSize: 16, color: 'var(--signal-primary)' }}>
+                <div className="tabular" style={{ fontSize: 18, color: 'var(--signal-primary)' }}>
                   {formatRemaining(team.active.remainingSeconds)}
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>No active Cyber Range</div>
+              <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No active Cyber Range</div>
             )}
-            <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
               Completed: {team.completedCount}
             </div>
             <select
@@ -199,7 +199,7 @@ export function InstructorDashboardPage() {
                 borderRadius: 'var(--radius-control)',
                 padding: '4px 6px',
                 color: 'var(--text-primary)',
-                fontSize: 12,
+                fontSize: 14,
               }}
             >
               <option value="" disabled>

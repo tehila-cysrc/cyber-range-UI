@@ -59,7 +59,7 @@ function ScoreForm({
           color: 'var(--text-primary)',
         }}
       />
-      <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 4, alignItems: 'center' }}>
+      <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', gap: 4, alignItems: 'center' }}>
         <input type="checkbox" checked={isGamified} onChange={(e) => setIsGamified(e.target.checked)} />
         gamified
       </label>
@@ -96,7 +96,7 @@ export function InstructorScoringPanel() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
         Progress — Scoring
       </h1>
 
@@ -121,19 +121,19 @@ export function InstructorScoringPanel() {
       </select>
 
       {selectedTeam && !selectedTeam.active && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No active Cyber Range for this team.</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No active Cyber Range for this team.</div>
       )}
 
       {selectedTeam?.active && (
         <>
           <div style={{ marginBottom: 'var(--space-lg)' }}>
-            <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 6px' }}>
+            <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 6px' }}>
               Standalone team award
             </h2>
             <ScoreForm teamId={selectedTeam.teamId} cyberRangeId={selectedTeam.active.cyberRangeId} onDone={refresh} />
           </div>
 
-          <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
             Documentation — {selectedTeam.active.name}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -150,7 +150,7 @@ export function InstructorScoringPanel() {
                   gap: 6,
                 }}
               >
-                <div style={{ fontSize: 11, color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)' }}>
                   {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
                   {entry.isImportantFinding ? (
                     <span style={{ marginLeft: 8 }}>
@@ -158,7 +158,7 @@ export function InstructorScoringPanel() {
                     </span>
                   ) : null}
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{entry.body}</div>
+                <div style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
                 <ScoreForm
                   teamId={selectedTeam.teamId}
                   studentUserId={entry.authorUserId}

@@ -117,7 +117,7 @@ export function LoginPage() {
           <div
             style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: 11,
+              fontSize: 13,
               letterSpacing: '0.08em',
               textTransform: 'uppercase',
               color: 'var(--text-telemetry)',
@@ -125,12 +125,12 @@ export function LoginPage() {
           >
             Cyber Range
           </div>
-          <h1 style={{ fontSize: 22, margin: '4px 0 0', color: 'var(--text-primary)' }}>
+          <h1 style={{ fontSize: 24, margin: '4px 0 0', color: 'var(--text-primary)' }}>
             {mode === 'signin' ? 'Sign in' : 'Join a team'}
           </h1>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: 14 }}>
           <button
             type="button"
             onClick={() => switchMode('signin')}
@@ -166,7 +166,7 @@ export function LoginPage() {
 
         {mode === 'register' && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Team</span>
+            <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Team</span>
             <select
               value={teamId}
               onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : '')}
@@ -183,12 +183,12 @@ export function LoginPage() {
         )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Username</span>
+          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Username</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus style={inputStyle} />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Password</span>
+          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Password</span>
           <input
             type="password"
             value={password}
@@ -199,12 +199,12 @@ export function LoginPage() {
 
         {mode === 'register' && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Display name (optional)</span>
+            <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Display name (optional)</span>
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={inputStyle} />
           </label>
         )}
 
-        {error && <div style={{ color: 'var(--signal-alert)', fontSize: 13 }}>{error}</div>}
+        {error && <div style={{ color: 'var(--signal-alert)', fontSize: 15 }}>{error}</div>}
 
         <Button type="submit" disabled={submitting}>
           {submitting

@@ -34,7 +34,7 @@ export function ScoreHistoryList() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
         Progress
       </h1>
 
@@ -47,8 +47,8 @@ export function ScoreHistoryList() {
             background: 'var(--surface-1)',
           }}
         >
-          <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>Team total</div>
-          <div className="tabular" style={{ fontSize: 22, color: 'var(--signal-primary)' }}>
+          <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>Team total</div>
+          <div className="tabular" style={{ fontSize: 24, color: 'var(--signal-primary)' }}>
             {data?.teamTotal ?? 0}
           </div>
         </div>
@@ -62,8 +62,8 @@ export function ScoreHistoryList() {
               background: 'var(--surface-1)',
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>{s.studentName}</div>
-            <div className="tabular" style={{ fontSize: 18, color: 'var(--text-primary)' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>{s.studentName}</div>
+            <div className="tabular" style={{ fontSize: 20, color: 'var(--text-primary)' }}>
               {s.total}
             </div>
           </div>
@@ -72,7 +72,7 @@ export function ScoreHistoryList() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
         {data?.entries.length === 0 && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No scoring yet.</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No scoring yet.</div>
         )}
         {data?.entries.map((entry) => (
           <div
@@ -84,7 +84,7 @@ export function ScoreHistoryList() {
               border: '1px solid var(--surface-border)',
               borderRadius: 'var(--radius-control)',
               background: 'var(--surface-1)',
-              fontSize: 13,
+              fontSize: 15,
             }}
           >
             <span style={{ color: 'var(--text-primary)' }}>

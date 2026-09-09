@@ -86,7 +86,7 @@ export function TopologyAdminPage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
         Topology Admin
       </h1>
 
@@ -121,7 +121,7 @@ export function TopologyAdminPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
             <form onSubmit={handleAddNode} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-              <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Add node</h2>
+              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Add node</h2>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -153,7 +153,7 @@ export function TopologyAdminPage() {
             </form>
 
             <form onSubmit={handleAddEdge} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-              <h2 style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Add connection</h2>
+              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Add connection</h2>
               <select
                 value={fromNodeId}
                 onChange={(e) => setFromNodeId(e.target.value ? Number(e.target.value) : '')}

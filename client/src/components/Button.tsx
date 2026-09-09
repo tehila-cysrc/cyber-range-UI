@@ -9,7 +9,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const base: React.CSSProperties = {
   fontFamily: 'var(--font-sans)',
   fontWeight: 500,
-  fontSize: '13px',
+  fontSize: '15px',
   borderRadius: 'var(--radius-control)',
   padding: '8px 16px',
   cursor: 'pointer',

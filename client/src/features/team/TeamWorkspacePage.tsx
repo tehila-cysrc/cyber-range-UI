@@ -18,7 +18,7 @@ export function TeamWorkspacePage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+      <h1 style={{ fontSize: 24, color: 'var(--text-primary)', margin: '0 0 4px' }}>
         {data?.team.name}
       </h1>
       <p style={{ color: 'var(--text-muted)', margin: '0 0 var(--space-lg)' }}>
@@ -41,7 +41,7 @@ export function TeamWorkspacePage() {
               borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
               display: 'flex',
               justifyContent: 'space-between',
-              fontSize: 13,
+              fontSize: 15,
             }}
           >
             <span style={{ color: 'var(--text-primary)' }}>{member.displayName}</span>

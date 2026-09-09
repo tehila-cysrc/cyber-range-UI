@@ -18,11 +18,11 @@ export function EventSummaryPage() {
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <Link to="/debrief" style={{ fontSize: 12, color: 'var(--signal-secondary)' }}>
+      <Link to="/debrief" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
         ← Back to history
       </Link>
 
-      <h1 style={{ fontSize: 20, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
         Event Summary
       </h1>
 
@@ -42,14 +42,14 @@ export function EventSummaryPage() {
               minWidth: 160,
             }}
           >
-            <div style={{ fontSize: 11, color: 'var(--text-telemetry)', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-telemetry)', textTransform: 'uppercase' }}>
               {day.dayLabel}
             </div>
-            <div className="tabular" style={{ fontSize: 22, color: 'var(--text-primary)', margin: '4px 0' }}>
+            <div className="tabular" style={{ fontSize: 24, color: 'var(--text-primary)', margin: '4px 0' }}>
               {day.completedCount}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Cyber Ranges completed</div>
-            <div className="tabular" style={{ fontSize: 14, color: 'var(--signal-primary)', marginTop: 6 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Cyber Ranges completed</div>
+            <div className="tabular" style={{ fontSize: 16, color: 'var(--signal-primary)', marginTop: 6 }}>
               {day.totalPoints} pts
             </div>
           </div>
