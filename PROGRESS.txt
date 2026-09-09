@@ -588,3 +588,19 @@ NOTES: tsc -b clean both workspaces, client build clean (~414KB, back down from 
   since the feature is now removed entirely rather than debugged.
   Saved a feedback memory: this user reverses course quickly on product-control questions (who gets
   to control what) — check before assuming a "self-service" framing extends to students by default.
+==================================================================
+[2026-09-09 17:40 IDT] session=student-self-registration
+TASK: Fix #5: user reported the instructor's "Assign/Switch scenario" dropdown (fix #3) rendered
+  with white background and unreadable text.
+FILES:
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (the new `<select>`'s style
+    used `background: 'transparent'` instead of the `var(--surface-1)` (#0f172a dark navy) every
+    other `<select>` in the codebase uses — TeamsAdminPage, LoginPage, InstructorScoringPanel,
+    TopologyAdminPage, InvestigationPage all set an explicit solid background. With `transparent`,
+    the browser renders the native options popup with its default white background while the text
+    color stays `--text-primary` (#f8fafc, near-white) — white-on-white, unreadable. Root cause: I
+    didn't check the codebase's own established `<select>` pattern before writing fix #3.)
+RESULT: verified-live (build only — this is a pure style fix, confirmed by grepping every other
+  `<select>` in client/src to confirm they all use `var(--surface-1)` and none share this bug;
+  `npm run build -w client` clean, ~414KB, same as before fix #3's addition).
+NOTES: This was fix #5 — a bug in fix #3's own delivery, not a new feature request.

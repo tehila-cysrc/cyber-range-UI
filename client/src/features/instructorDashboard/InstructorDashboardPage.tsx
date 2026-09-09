@@ -194,7 +194,7 @@ export function InstructorDashboardPage() {
               }}
               style={{
                 marginTop: 4,
-                background: 'transparent',
+                background: 'var(--surface-1)',
                 border: '1px solid var(--surface-border)',
                 borderRadius: 'var(--radius-control)',
                 padding: '4px 6px',
