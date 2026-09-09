@@ -1,0 +1,367 @@
+PROGRESS LOG — append-only. Newest entries at bottom. Rotate as PROGRESS_OLD_<date>.txt when this file gets unwieldy.
+
+Entry format:
+
+==================================================================
+[YYYY-MM-DD HH:MM TZ] session=<id-or-tag>
+TASK: <one-line summary>
+FILES:
+  M <path>
+  A <path>
+  D <path>
+RESULT: <verified-live | compiles-untested | reverted | partial>
+NOTES: <optional — anything a future session would want to grep for>
+==================================================================
+
+==================================================================
+[2026-09-09 09:30 IDT] session=phase0-scaffolding
+TASK: Phase 0 of the cyber-range-UI implementation plan — full-stack scaffolding (client + server), no features yet.
+FILES:
+  A package.json (root, npm workspaces client+server)
+  A .gitignore
+  A .env.example
+  A client/ (Vite React+TS scaffold, generated via `npm create vite@latest client -- --template react-ts`)
+  A server/package.json
+  A server/tsconfig.json
+  A server/src/app.ts (Express app, CORS, /api/health)
+  A server/src/server.ts (http server + socket.io attach)
+  A server/data/.gitkeep
+RESULT: verified-live
+NOTES: DEVIATION FROM PLAN — better-sqlite3 could not install on this machine: no prebuilt binary for
+  Node 24.11.0 on win32/x64, and no Visual Studio Build Tools present for node-gyp to compile from source.
+  Switched persistence to Node's built-in `node:sqlite` (DatabaseSync) instead — same synchronous
+  prepare/run/get/all API shape, ships with Node (>=22.5, we have 24.11), no native compilation needed.
+  Marked experimental by Node but functional; verified with a smoke test (CREATE TABLE/INSERT/SELECT via
+  node -e). All later phases (1+) will use `node:sqlite` in server/src/db/index.ts instead of
+  better-sqlite3. Verified live: `npm run dev -w server` -> GET /api/health returns {"ok":true};
+  `npm run dev -w client` -> Vite serves 200 on http://localhost:5173.
+==================================================================
+
+==================================================================
+[2026-09-09 13:00 IDT] session=phase1-auth-schema-seed
+TASK: Phase 1 of the cyber-range-UI plan — SQLite schema (CONFIG/RUN split), seed script, bearer-token
+  auth, and a minimal login UI/app shell on the client.
+FILES:
+  A server/src/db/schema/config.sql (days, cyber_ranges, pressure_stages, documentation_categories,
+    topology_nodes/edges, scoring_config)
+  A server/src/db/schema/run.sql (event_runs, teams, users, auth_tokens, team_cyber_range_progress,
+    documentation_entries, scores, help_requests — all FK-cascade from event_runs)
+  A server/src/db/index.ts (node:sqlite connection, PRAGMA foreign_keys/WAL)
+  A server/src/db/migrate.ts
+  A server/src/db/seed.ts (seeds PRD §9 catalog + demo run: 2 teams, instructor + 4 students)
+  A server/src/env.ts (loads repo-root .env; workspace scripts run with cwd=server/)
+  A server/src/middleware/auth.ts, server/src/middleware/requireRole.ts
+  A server/src/routes/auth.routes.ts (POST /login, POST /logout, GET /me)
+  A server/src/types/express.d.ts (req.user augmentation)
+  M server/src/app.ts (mounted /api/auth)
+  M server/src/server.ts (loads env.ts first)
+  A client: react-router-dom, @tanstack/react-query, zustand, socket.io-client, reactflow,
+    canvas-confetti added as deps (per plan's library choices)
+  M client/vite.config.ts (dev proxy: /api and /socket.io -> localhost:4000)
+  A client/src/styles/tokens.css (Obsidian Telemetry design tokens from docs/DESIGN.md)
+  M client/src/index.css (replaced Vite template styles with token-based reset)
+  D client/src/App.tsx, client/src/App.css, client/src/assets/* (unused template scaffolding)
+  A client/src/lib/apiClient.ts, client/src/lib/queryClient.ts
+  A client/src/stores/authStore.ts (zustand, persisted to localStorage)
+  A client/src/app/routes.tsx, client/src/app/AppShell.tsx, client/src/app/ProtectedRoute.tsx
+  A client/src/features/auth/LoginPage.tsx
+  A client/src/components/Button.tsx, client/src/components/PlaceholderPage.tsx
+  M client/src/main.tsx (QueryClientProvider + RouterProvider)
+  M client/index.html (title -> "Cyber Range")
+RESULT: verified-live (backend) / compiles-and-builds (frontend UI interaction not yet browser-tested)
+NOTES: Backend verified live via curl: login succeeds for seeded student (alice/student123) and
+  instructor (instructor/instructor123), wrong password -> 401, /api/auth/me without token -> 401,
+  with valid bearer token -> correct user. Client verified via `tsc -b` (clean), `vite build` (clean,
+  315KB bundle), and the dev-server proxy: GET http://localhost:5173/api/health -> {"ok":true},
+  confirming the client->backend wiring the browser UI will use. Did NOT verify the actual
+  login-form-click-through in a live browser: the lean-chronoscope MCP server failed to connect this
+  session, and the user chose to continue without the Claude-in-Chrome extension when prompted. A
+  human should manually click through login once before trusting the UI fully. Top nav renamed
+  "Milestones" -> "Progress" per the PRD's US-007 change (see comment in client/src/app/AppShell.tsx).
+  Dev servers left running in background this session: server on :4000 (PID varies, tsx watch), client
+  on :5173 (vite). `npm run dev` at repo root now boots both via concurrently for future sessions.
+==================================================================
+
+==================================================================
+[2026-09-09 13:10 IDT] session=phase2-student-core-views
+TASK: Phase 2 of the cyber-range-UI plan — student core views, non-realtime: US-001 (active Cyber
+  Range), US-002 (team workspace), US-003 (documentation timeline, REST-only for now). Also added the
+  minimal instructor "start/complete a team's cyber range" admin action needed to exercise US-001 at
+  all (nothing else can put a team into 'active' state yet).
+FILES:
+  A server/src/routes/teams.routes.ts (GET /teams/me, GET /teams/me/active-cyber-range)
+  A server/src/routes/documentation.routes.ts (GET /documentation-categories,
+    GET/POST /cyber-ranges/:id/documentation)
+  A server/src/routes/cyberRanges.routes.ts (GET /cyber-ranges catalog)
+  A server/src/routes/admin/teams.routes.ts (GET /admin/teams, instructor-only)
+  A server/src/routes/admin/progress.routes.ts (POST /admin/teams/:teamId/cyber-ranges/:crId/start
+    and .../complete, instructor-only)
+  M server/src/app.ts (mounted the above)
+  A client/src/features/activeCyberRange/ActiveCyberRangePage.tsx (Home route)
+  A client/src/features/team/TeamWorkspacePage.tsx (Team route)
+  A client/src/features/documentation/InvestigationPage.tsx (Investigation route — 60/40 split,
+    non-realtime: posts go through TanStack Query mutation + invalidate, no socket yet)
+  A client/src/components/TelemetryBadge.tsx
+  M client/src/app/routes.tsx (wired the three real pages in over their placeholders)
+RESULT: verified-live
+NOTES: Full curl-driven end-to-end run through the Vite dev proxy (http://localhost:5173/api/...,
+  same path the browser UI hits): logged in as instructor + all 4 seeded students; instructor started
+  TJS (cyber_range_id=1) for Team Alpha; alice's GET /teams/me/active-cyber-range showed correct
+  day=AI/difficulty=advanced/name=TJS/remainingSeconds counting down from 10800; carol (Team Bravo,
+  no active range) correctly got {active:null}; alice posted a categorized+important-flagged doc
+  entry, bob (same team) saw it, carol (other team) got an empty list for the same cyber_range_id —
+  confirms the US-002/US-003 team-isolation requirement holds at the query level (scoped by
+  req.user.teamId, not by client-supplied team). Client type-checks and production-builds cleanly.
+  Actual browser click-through still not done this session (no browser automation tool available —
+  see phase1 note); the API-level verification above exercises the identical HTTP path the React
+  pages call via apiFetch, which is the strongest check available without one.
+==================================================================
+
+==================================================================
+[2026-09-09 13:20 IDT] session=phase3-realtime-timeline
+TASK: Phase 3 of the cyber-range-UI plan — wire Socket.io so new documentation entries appear live
+  for teammates without a refetch, scoped so the competing team never sees it (US-003).
+FILES:
+  A server/src/sockets/io.ts (module-level getIo/setIo singleton — avoids a server.ts<->routes
+    circular import; routes call getIo() lazily inside request handlers, never at module load time)
+  A server/src/sockets/rooms.ts (teamRoom(id), INSTRUCTOR_ROOM)
+  A server/src/sockets/emitters.ts (emitDocumentationNew)
+  A server/src/sockets/index.ts (io.use() bearer-token handshake auth against auth_tokens/users,
+    joins team:{teamId} or instructor room on connection)
+  M server/src/server.ts (setIo + setupSockets after creating the socket.io server)
+  M server/src/routes/documentation.routes.ts (emits documentation:new after a successful POST)
+  A client/src/lib/socketClient.ts (getSocket() lazily connects with the current auth token;
+    disconnectSocket() called on logout)
+  A client/src/hooks/useSocketEvent.ts (generic subscribe hook, ref-based to avoid stale closures)
+  M client/src/features/documentation/InvestigationPage.tsx (merges documentation:new into the
+    TanStack Query cache, deduped by entry id)
+  M client/src/app/AppShell.tsx (disconnectSocket() on sign-out)
+RESULT: verified-live
+NOTES: Verified with a real socket.io-client test (two live socket connections, not curl) against the
+  running dev server: logged in bob (Team Alpha) and carol (Team Bravo), opened sockets for both,
+  then posted a documentation entry as alice (Team Alpha) via REST. Bob's socket received
+  `documentation:new` with the correct entry id; carol's socket received nothing at all — confirms
+  the room-scoping is enforced server-side (a client can't just claim a team, the room comes from the
+  authenticated token). Client type-checks and production-builds cleanly (115 modules, no errors).
+  Browser click-through still not verified this session (no browser automation tool available).
+==================================================================
+
+==================================================================
+[2026-09-09 13:35 IDT] session=phase4-topology
+TASK: Phase 4 of the cyber-range-UI plan — network topology read-only viewer (US-004) + instructor
+  admin editor. Also added a persistent draft store so an in-progress documentation entry survives
+  navigating to Topology and back (US-004's explicit "don't lose your work state" AC).
+FILES:
+  A server/src/routes/topology.routes.ts (GET /cyber-ranges/:id/topology, any authenticated user —
+    topology is CONFIG data, not team-scoped)
+  A server/src/routes/admin/topology.routes.ts (instructor CRUD: nodes POST/PATCH/DELETE,
+    edges POST/DELETE)
+  M server/src/app.ts (mounted both)
+  A client/src/features/topology/TopologyGraph.tsx (React Flow wrapper, editable prop toggles
+    drag/select; used by both the read-only viewer and the admin editor)
+  A client/src/features/topology/TopologyViewerPage.tsx (empty-state per US-004 AC when no topology
+    configured, "back to investigation" link)
+  A client/src/features/topology/admin/TopologyAdminPage.tsx (pick a cyber range, add nodes/edges,
+    drag-to-reposition persists via PATCH)
+  A client/src/components/EmptyState.tsx
+  A client/src/stores/draftStore.ts (zustand, keyed by cyberRangeId — replaces InvestigationPage's
+    local useState for the entry body so it isn't lost on route change)
+  M client/src/features/documentation/InvestigationPage.tsx (uses draftStore; added a Topology link)
+  M client/src/app/routes.tsx (/topology now real; added instructor-only /admin/topology)
+  M client/src/app/AppShell.tsx (added an "Admin" nav link for instructors, stopgap until a proper
+    admin section/dropdown exists — will likely get folded into a nicer instructor nav in a later
+    phase alongside categories/scoring/event-reset admin pages)
+RESULT: verified-live
+NOTES: Verified via curl end-to-end (both directly on :4000 and through the :5173 Vite proxy, the
+  same path the browser hits): range with no topology returns {nodes:[],edges:[]}; instructor created
+  2 nodes + 1 edge on TJS (cyber_range_id=1); student GET returned both nodes and the edge correctly.
+  Client type-checks and production-builds cleanly (284 modules; one build-time bundle-size warning
+  from React Flow, ~520KB — not a concern for this tool's scale, noted here rather than in BACKLOG.md
+  since it's a non-blocking observation, not a deferred feature). Browser click-through (actually
+  dragging a node, seeing the graph render) still not done this session — no browser automation tool
+  connected; the empty-state/CRUD/read-scoping logic is what's verified, not the visual rendering.
+==================================================================
+
+==================================================================
+[2026-09-09 13:50 IDT] session=phase5-help-requests-instructor-dashboard
+TASK: Phase 5 of the cyber-range-UI plan — US-005 (student help requests, no auto-hint) and US-006
+  (instructor real-time N-team dashboard).
+FILES:
+  A server/src/routes/helpRequests.routes.ts (POST /help-requests — student only; cyberRangeId
+    resolved server-side from the team's active progress row, never trusted from the client)
+  A server/src/routes/admin/helpRequests.routes.ts (GET /admin/help-requests?status=,
+    POST /admin/help-requests/:id/resolve)
+  A server/src/routes/admin/dashboard.routes.ts (GET /admin/dashboard — array of all teams with
+    active range/day/difficulty/remainingSeconds/openHelpCount/completedCount; deliberately an array,
+    not team1/team2 fields, per the N-teams invariant)
+  M server/src/sockets/emitters.ts (added emitHelpRequestNew, emitHelpRequestResolved)
+  M server/src/app.ts (mounted the three new route files)
+  A client/src/features/helpRequests/HelpRequestButton.tsx (sent-confirmation toast, auto-clears
+    after 8s; no hint text anywhere in the component)
+  M client/src/features/activeCyberRange/ActiveCyberRangePage.tsx (renders the button for students
+    only, when a range is active)
+  A client/src/features/instructorDashboard/InstructorDashboardPage.tsx (open-help-requests feed +
+    CSS grid `auto-fill` team-status cards — reflows for any N, not hardcoded to 2; 5s poll as a
+    dashboard-freshness floor plus socket-driven invalidation for near-instant updates)
+  M client/src/app/routes.tsx (wired the real InstructorDashboardPage in over its placeholder)
+RESULT: verified-live
+NOTES: curl end-to-end: alice's active TJS run let bob request help; instructor's GET
+  ?status=open showed it with team+range+requester name; GET /admin/dashboard correctly showed
+  Team Alpha active/1-open-help and Team Bravo idle/0-open-help (N-team array, not fixed fields);
+  resolve flipped status and the open list went empty. Realtime verified with two live socket.io
+  connections (not curl): instructor's socket received `help_request:new` the instant bob's REST POST
+  landed; after the instructor resolved it via REST, bob's socket received `help_request:resolved`
+  with the correct id. Client type-checks and production-builds cleanly (286 modules). Browser
+  click-through still not done this session — no browser automation tool connected.
+==================================================================
+
+==================================================================
+[2026-09-09 14:05 IDT] session=phase6-clock-pressure
+TASK: Phase 6 of the cyber-range-UI plan — US-009 server-authoritative countdown clock + pressure
+  stages.
+FILES:
+  A server/src/routes/admin/pressureThresholds.routes.ts (GET/POST per-range thresholds, DELETE by id)
+  A server/src/services/clock.service.ts (1s interval over all `active` progress rows with a time
+    limit; derives remaining from started_at, never trusts a client timer; picks the most-urgent
+    reached pressure_stages threshold; dedupes clock:time_up with an in-memory Set so it fires once,
+    not every second an expired range stays active)
+  M server/src/sockets/emitters.ts (added emitClockTick, emitPressureStage, emitTimeUp)
+  M server/src/server.ts (calls startClock() after socket setup)
+  M server/src/app.ts (mounted pressureThresholds admin routes)
+  A client/src/stores/clockStore.ts (zustand: remainingSeconds/stageLabel/stageVisualStyle/timeUp)
+  A client/src/features/clock/PressureStageBanner.tsx
+  M client/src/features/activeCyberRange/ActiveCyberRangePage.tsx (subscribes to clock:tick/
+    pressure_stage/time_up, prefers live values over the initial REST snapshot; shows the banner and
+    a "Time's up" state)
+  A client/src/app/HomeRoute.tsx (instructor hitting "/" now redirects to /instructor instead of
+    500ing on the student-only active-cyber-range query — pre-existing gap surfaced while testing
+    this phase, fixed here since it's one line and blocks any instructor manual testing of "/")
+  M client/src/app/routes.tsx (uses HomeRoute for "/")
+RESULT: verified-live
+NOTES: Verified with a real ~65s live socket.io run against a temporary test Cyber Range (1-minute
+  duration, one pressure threshold at 45s remaining, inserted directly via a throwaway script against
+  the same SQLite file, then cleaned up afterward — no leftover test data in cyber_ranges): observed
+  clock:tick counting down every second, exactly one clock:pressure_stage event when remaining crossed
+  45s, and clock:time_up at 0. Initially time_up fired every subsequent tick while the range sat
+  expired-but-active — fixed with the in-memory dedup Set, then re-verified 0 repeats in an 8s window
+  post-fix. Client type-checks and production-builds cleanly (289 modules). Browser click-through
+  (seeing the banner/colors render) still not done this session — no browser automation tool
+  connected.
+==================================================================
+
+==================================================================
+[2026-09-09 14:20 IDT] session=phase7-scoring-leaderboard-gamification
+TASK: Phase 7 of the cyber-range-UI plan — US-007 (instructor free-form scoring, individual+team
+  attribution, no milestones), US-008/FR-6/FR-7 (leaderboard gated on a config flag, gamified
+  confetti/sound effect).
+FILES:
+  A server/src/services/scoring.service.ts (computeLeaderboard/isLeaderboardEnabled/teamTotal/
+    studentTotal — pluggable by design per scoring_config.method_key, only sum_points implemented)
+  A server/src/routes/admin/scoring.routes.ts (POST /admin/scores)
+  A server/src/routes/admin/scoringConfig.routes.ts (GET/PUT /admin/scoring-config)
+  A server/src/routes/leaderboard.routes.ts (GET /leaderboard, gated on leaderboard_enabled)
+  M server/src/routes/teams.routes.ts (added GET /teams/me/scores — student progress view)
+  M server/src/routes/documentation.routes.ts (added authorUserId to both SELECTs so the instructor
+    scoring UI can attribute points to the entry's author without a second lookup)
+  M server/src/sockets/emitters.ts (added emitScoreAwarded, emitLeaderboardUpdate)
+  M server/src/app.ts (mounted the new route files)
+  A client/src/features/scoring/{ProgressPage,InstructorScoringPanel,ScoreHistoryList}.tsx (role
+    branches at /progress: instructor scores documentation entries or awards standalone team points;
+    student sees team+per-student totals and history)
+  A client/src/features/leaderboard/{LeaderboardPage,GamifiedEffects}.tsx (leaderboard shows an
+    empty-state until enabled; GamifiedEffects mounted globally in AppShell, fires canvas-confetti +
+    an Audio() play attempt on score:awarded when isGamified, student role only)
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (added a "Leaderboard
+    enabled" checkbox wired to PUT /admin/scoring-config)
+  M client/src/app/routes.tsx, client/src/app/AppShell.tsx (wired /progress, /leaderboard, mounted
+    GamifiedEffects)
+  M BACKLOG.md (replaced the placeholder example row with three real items: missing sound asset,
+    deferred student-self-report-scoring idea, and a bundle-size note)
+RESULT: verified-live
+NOTES: curl end-to-end: leaderboard returns {enabled:false} while disabled; enabling it via PUT
+  shows both teams at 0; scoring alice's documentation entry for 5 gamified points correctly updated
+  Team Alpha's total to 5 and alice's per-student total to 5 in GET /teams/me/scores. Realtime verified
+  with two live socket connections: a standalone 3-point gamified team award landed on bob's
+  (Team Alpha) socket as score:awarded with the correct updated teamTotal=8, and carol's (Team Bravo)
+  socket received leaderboard:update with both teams' current totals — confirming the leaderboard
+  broadcast is intentionally NOT team-scoped (everyone sees it) while score:awarded IS team-scoped.
+  Client type-checks and production-builds cleanly (295 modules, ~545KB bundle — noted in BACKLOG.md,
+  not a blocker for this tool's scale). Browser click-through (actually seeing confetti fire) still
+  not done this session — no browser automation tool connected; the socket-driven trigger logic is
+  what's verified, not the visual/audio playback itself.
+==================================================================
+
+==================================================================
+[2026-09-09 14:35 IDT] session=phase8-history-debrief
+TASK: Phase 8 of the cyber-range-UI plan — US-010/FR-8 history and debrief: completed-range list,
+  per-range documentation+score summary, cross-day (AI/Azure/AWS) event summary. All read-only.
+FILES:
+  A server/src/routes/history.routes.ts (GET /history, GET /history/event-summary,
+    GET /history/:cyberRangeId — event-summary deliberately declared BEFORE the :cyberRangeId route
+    so Express doesn't capture the literal string "event-summary" as an id; noted inline and in
+    CLAUDE/api.md so this ordering isn't "cleaned up" into a bug later)
+  M server/src/app.ts (mounted historyRoutes)
+  A client/src/features/history/{HistoryPage,CyberRangeSummaryPage,EventSummaryPage}.tsx
+  M client/src/app/routes.tsx (/debrief, /debrief/event-summary, /debrief/:cyberRangeId; removed the
+    now-fully-replaced PlaceholderPage import)
+  D client/src/components/PlaceholderPage.tsx (no routes reference it anymore — every screen in the
+    nav is now a real feature page as of this phase)
+RESULT: verified-live
+NOTES: curl end-to-end (direct :4000 and through the :5173 proxy): GET /history returned empty before
+  completing a range; instructor completed TJS for Team Alpha; GET /history then showed it with
+  correct day=AI/difficulty=advanced/completedAt; GET /history/1 returned the team's 2 real
+  documentation entries + scoreTotal=5 (matching Phase 7's scoring test), nothing fabricated;
+  GET /history/event-summary correctly showed only the AI day (Team Alpha has never touched
+  Azure/AWS) rather than zeroed entries for all three — satisfies the PRD's explicit "summary shows
+  only data actually collected" AC. Client type-checks and production-builds cleanly (297 modules).
+  Browser click-through still not done this session — no browser automation tool connected.
+
+  All 8 core PRD user stories (US-001 through US-010, minus the milestones concept removed by the
+  PRD's own revision) now have working backend + frontend. Remaining: Phase 9 (event reset).
+==================================================================
+
+==================================================================
+[2026-09-09 14:50 IDT] session=phase9-event-reset
+TASK: Phase 9 of the cyber-range-UI plan — the event-reset admin action. This was the final phase in
+  the approved plan; all 10 phases (0-9) are now implemented.
+FILES:
+  M server/src/db/seed.ts (extracted `createFreshEventRun()` — creates a new active event_runs row
+    plus exactly one default instructor account; exported alongside `getActiveEventRunId()`,
+    `DEFAULT_INSTRUCTOR_USERNAME`, `DEFAULT_INSTRUCTOR_PASSWORD` for reuse by the reset endpoint.
+    `seedDemoRunData()` now calls this helper instead of duplicating the event_runs insert)
+  A server/src/routes/admin/event.routes.ts (POST /admin/event/reset — requires the exact
+    confirmation phrase "RESET EVENT", else 400 with nothing changed; on success, wraps the delete
+    +recreate in an explicit BEGIN/COMMIT/ROLLBACK since node:sqlite's DatabaseSync has no built-in
+    `.transaction()` helper the way better-sqlite3 does)
+  M server/src/app.ts (mounted adminEventRoutes)
+  A client/src/features/admin/EventResetPage.tsx (type-to-confirm destructive UI; deliberately does
+    NOT clear local auth state on success — see inline comment — because doing so would immediately
+    trip ProtectedRoute's redirect-to-login before the instructor can read the new credentials shown
+    on the same screen; the dead token is cleaned up naturally by apiClient's existing 401 handling
+    or by the "Go to login" link's full navigation)
+  M client/src/app/routes.tsx, client/src/app/AppShell.tsx (added /admin/event-reset + a "Reset" nav
+    link, styled in the alert color since it's destructive)
+  M BACKLOG.md (added: no admin UI/API exists to create teams/accounts for a new cohort after reset —
+    currently requires the seed script and direct DB/shell access; flagged as a natural follow-up,
+    deliberately NOT built now since it wasn't part of the approved Phase 9 scope)
+RESULT: verified-live
+NOTES: Full curl end-to-end run against the live server (this was the most consequential test in the
+  whole build, since it's destructive): (1) wrong confirm phrase → 400, verified all teams/users
+  still present afterward; (2) correct phrase → 200 with new instructor credentials; (3) the
+  instructor's OWN token that made the request immediately returned 401 on the next call, confirming
+  the cascade actually deleted their own user row; (4) old student alice's login now fails with
+  "invalid credentials" — full wipe confirmed; (5) logged in as the new default instructor
+  successfully; (6) GET /admin/teams returned an empty array — RUN data gone; (7) GET /cyber-ranges,
+  GET /cyber-ranges/1/topology, and GET /documentation-categories all still returned their exact
+  pre-reset data — CONFIG data fully intact, confirming the schema split is correct by construction
+  as designed back in the planning phase. Re-populated demo teams afterward (via a throwaway script,
+  deleted immediately after) purely to leave the local dev DB in a convenient state for future manual
+  testing — not part of the shipped code. Client type-checks and production-builds cleanly (298
+  modules). Browser click-through still not done this session — no browser automation tool connected
+  at any point in this build; all verification across all 10 phases was via direct HTTP/WebSocket
+  calls against the live dev server through the same paths (including the Vite proxy) the browser UI
+  uses, plus `tsc -b` and `vite build` for the frontend. A human should do one real click-through
+  pass (login → post documentation → view topology → request help → resolve → score → view
+  leaderboard → complete a range → view history → reset) before treating this as production-ready
+  for the actual event.
+==================================================================

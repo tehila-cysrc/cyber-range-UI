@@ -1,0 +1,32 @@
+/* Design tokens sourced from docs/DESIGN.md ("Obsidian Telemetry"). */
+:root {
+  --surface-floor: #090d12;
+  --surface-1: #0f172a;
+  --surface-2: #1e293b;
+  --surface-border: rgba(51, 65, 85, 0.4);
+  --surface-border-strong: rgba(100, 116, 139, 0.35);
+
+  --signal-primary: #10b981; /* emerald: solved / active / verified */
+  --signal-secondary: #38bdf8; /* cyan: topology / recon / routing */
+  --signal-tertiary: #f59e0b; /* amber: in-progress / time-sensitive */
+  --signal-alert: #f43f5e; /* crimson: alerts / breaches / unverified */
+
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-telemetry: #64748b;
+
+  --font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  --radius-control: 0.25rem;
+  --radius-container: 0.5rem;
+
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+
+  --layout-max-width: 88rem;
+}

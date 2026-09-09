@@ -1,0 +1,50 @@
+import express from 'express';
+import cors from 'cors';
+import authRoutes from './routes/auth.routes.js';
+import teamsRoutes from './routes/teams.routes.js';
+import documentationRoutes from './routes/documentation.routes.js';
+import cyberRangesRoutes from './routes/cyberRanges.routes.js';
+import topologyRoutes from './routes/topology.routes.js';
+import helpRequestsRoutes from './routes/helpRequests.routes.js';
+import adminTeamsRoutes from './routes/admin/teams.routes.js';
+import adminProgressRoutes from './routes/admin/progress.routes.js';
+import adminTopologyRoutes from './routes/admin/topology.routes.js';
+import adminHelpRequestsRoutes from './routes/admin/helpRequests.routes.js';
+import adminDashboardRoutes from './routes/admin/dashboard.routes.js';
+import adminPressureThresholdsRoutes from './routes/admin/pressureThresholds.routes.js';
+import adminScoringRoutes from './routes/admin/scoring.routes.js';
+import adminScoringConfigRoutes from './routes/admin/scoringConfig.routes.js';
+import leaderboardRoutes from './routes/leaderboard.routes.js';
+import historyRoutes from './routes/history.routes.js';
+import adminEventRoutes from './routes/admin/event.routes.js';
+
+export function createApp() {
+  const app = express();
+
+  app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173' }));
+  app.use(express.json());
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  app.use('/api/auth', authRoutes);
+  app.use('/api/teams', teamsRoutes);
+  app.use('/api', documentationRoutes);
+  app.use('/api', cyberRangesRoutes);
+  app.use('/api', topologyRoutes);
+  app.use('/api', helpRequestsRoutes);
+  app.use('/api/admin', adminTeamsRoutes);
+  app.use('/api/admin', adminProgressRoutes);
+  app.use('/api/admin', adminTopologyRoutes);
+  app.use('/api/admin', adminHelpRequestsRoutes);
+  app.use('/api/admin', adminDashboardRoutes);
+  app.use('/api/admin', adminPressureThresholdsRoutes);
+  app.use('/api/admin', adminScoringRoutes);
+  app.use('/api/admin', adminScoringConfigRoutes);
+  app.use('/api', leaderboardRoutes);
+  app.use('/api', historyRoutes);
+  app.use('/api/admin', adminEventRoutes);
+
+  return app;
+}

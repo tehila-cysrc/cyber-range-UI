@@ -1,0 +1,30 @@
+{
+  "_comment": "Merge the contents of this `hooks` block into your ~/.claude/settings.json. Adjust paths to where you placed the scripts.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/block-destructive-docker.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/plan-to-backlog.sh",
+            "timeout": 5,
+            "statusMessage": "Syncing plan out-of-scope to BACKLOG.md..."
+          }
+        ]
+      }
+    ]
+  }
+}
