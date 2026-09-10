@@ -16,6 +16,7 @@ import { EventResetPage } from '../features/admin/EventResetPage';
 import { TeamsAdminPage } from '../features/admin/TeamsAdminPage';
 import { EnvironmentsAdminPage } from '../features/environments/EnvironmentsAdminPage';
 import { AuditLogPage } from '../features/admin/AuditLogPage';
+import { ScriptLibraryPage } from '../features/scripts/ScriptLibraryPage';
 
 // React Flow (topology) is the single largest dependency in the bundle — code-split it into its
 // own chunk so it only loads for users who actually open a topology screen (see BACKLOG.md).
@@ -102,6 +103,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requireRole="instructor">
             <AuditLogPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin/scripts',
+        element: (
+          <ProtectedRoute requireRole="instructor">
+            <ScriptLibraryPage />
           </ProtectedRoute>
         ),
       },

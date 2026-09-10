@@ -24,6 +24,7 @@ const NAV_ITEMS = [
 const INSTRUCTOR_NAV_ITEMS = [
   { to: '/instructor', label: 'Instructor' },
   { to: '/admin/topology', label: 'Topology Admin' },
+  { to: '/admin/scripts', label: 'Script Library' },
   { to: '/admin/teams', label: 'Roster' },
   { to: '/admin/environments', label: 'Environments' },
   { to: '/admin/audit-log', label: 'Audit Log' },

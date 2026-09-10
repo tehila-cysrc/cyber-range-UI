@@ -159,6 +159,26 @@ CREATE TABLE IF NOT EXISTS access_targets (
   credential_id INTEGER REFERENCES credentials(id)
 );
 
+-- Instructor-authored reusable script library (Phase 3 — Run Script). CONFIG: a script is
+-- infrastructure the instructor curates once and reuses across cyber ranges/cohorts (e.g. "Normal AI
+-- Agent Activity"), not tied to one event run or one cyber range — same reasoning as cyber_ranges
+-- itself. Deliberately global rather than cyber-range-scoped, per the design doc's category examples
+-- (Azure Activity/AWS Activity/...) spanning the whole catalog, not one range. Unlike script_executions
+-- below, raw content here IS meant to be persisted — that's the entire point of a library entry; the
+-- "don't persist raw script text" rule applies only to the execution log, not to a script an instructor
+-- deliberately chose to save for reuse.
+CREATE TABLE IF NOT EXISTS scripts (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  content TEXT NOT NULL,
+  script_type TEXT NOT NULL CHECK (script_type IN ('powershell', 'bash')),
+  category TEXT,
+  created_at TEXT NOT NULL,
+  created_by_username TEXT,
+  updated_at TEXT
+);
+
 -- Compliance/audit trail for environment + credential + access-session actions. CONFIG and never
 -- touched by POST /api/admin/event/reset — see CLAUDE/invariants.md for why a compliance trail must
 -- outlive the resets it may need to help investigate.

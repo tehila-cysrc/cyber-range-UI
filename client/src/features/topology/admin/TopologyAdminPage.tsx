@@ -10,6 +10,7 @@ import {
   type TopologyNodeData,
   type TopologyZoneData,
 } from '../TopologyGraph';
+import { RunScriptDrawer } from './RunScriptDrawer';
 
 interface CyberRange {
   id: number;
@@ -315,9 +316,11 @@ function NodePanel({
 }) {
   const [label, setLabel] = useState(node.label);
   const metadata = parseMetadata(node.metadataJson);
+  const osType = metadata?.osType === 'Windows' || metadata?.osType === 'Linux' ? metadata.osType : null;
 
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
+  const [showRunScript, setShowRunScript] = useState(false);
 
   const { data: accessTargetData } = useQuery({
     queryKey: ['access-target', node.id],
@@ -434,13 +437,21 @@ function NodePanel({
       </div>
 
       <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
-        <Button variant="ghost" disabled title="Run Script (Azure VM Run Command) — coming in a later phase" style={{ width: '100%', marginBottom: 8 }}>
-          Run Script (coming soon)
+        <Button
+          variant="ghost"
+          disabled={!node.environmentId}
+          title={node.environmentId ? undefined : 'Run Script needs an Azure-discovered VM'}
+          onClick={() => setShowRunScript(true)}
+          style={{ width: '100%', marginBottom: 8 }}
+        >
+          Run Script
         </Button>
         <Button variant="destructive" onClick={onDelete} style={{ width: '100%' }}>
           Delete node
         </Button>
       </div>
+
+      {showRunScript && <RunScriptDrawer nodeId={node.id} nodeLabel={node.label} osType={osType} onClose={() => setShowRunScript(false)} />}
     </div>
   );
 }

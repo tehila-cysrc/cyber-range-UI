@@ -1,0 +1,14 @@
+{
+  "Name": "Cyber Range VM Run Command Operator",
+  "IsCustom": true,
+  "Description": "Lets the Cyber Range platform's registered Service Principal invoke Azure VM Run Command on lab VMs — the minimum beyond Reader that Phase 3's instructor Run Script feature needs. Assign this in ADDITION to Reader at the resource group scope; never assign Contributor/Owner to this Service Principal (see CLAUDE/invariants.md).",
+  "Actions": [
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/runCommand/action",
+    "Microsoft.Compute/virtualMachines/runCommands/read"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": ["/subscriptions/<SUBSCRIPTION_ID>"]
+}

@@ -102,3 +102,30 @@ CREATE TABLE IF NOT EXISTS access_sessions (
   denial_reason TEXT,
   client_ip TEXT
 );
+
+-- An instructor-triggered Azure VM Run Command invocation (Phase 3). RUN — an execution is tied to
+-- one live event/instructor action, same lifecycle as access_sessions, not reusable infrastructure
+-- (the reusable part, if any, is the linked `scripts` library row, which is CONFIG). script_id is
+-- nullable: a "write manually, don't save" run has no library entry at all. script_content is
+-- deliberately NOT a column here — per the approved topology-redesign plan, a script may embed
+-- credentials/tokens an instructor is testing against, so the execution log stores only a hash
+-- (dedup/reference) plus safe, truncated result metadata. For a library-backed run, the actual content
+-- remains recoverable via script_id -> scripts.content for as long as that library entry exists; for an
+-- ad hoc run, only the hash survives, by design.
+CREATE TABLE IF NOT EXISTS script_executions (
+  id INTEGER PRIMARY KEY,
+  topology_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
+  script_id INTEGER REFERENCES scripts(id) ON DELETE SET NULL,
+  script_type TEXT NOT NULL CHECK (script_type IN ('powershell', 'bash')),
+  script_hash TEXT NOT NULL,
+  actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')) DEFAULT 'running',
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  output_excerpt TEXT,
+  error_text TEXT
+);
+-- At most one running execution per node at a time, mirroring Azure's own one-action-at-a-time
+-- constraint on a VM — same DB-enforced single-flight pattern as idx_one_active_discovery_run.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_running_script_per_node
+  ON script_executions (topology_node_id) WHERE status = 'running';

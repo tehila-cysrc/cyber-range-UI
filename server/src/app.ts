@@ -22,6 +22,8 @@ import adminEnvironmentsRoutes from './routes/admin/environments.routes.js';
 import accessSessionsRoutes from './routes/accessSessions.routes.js';
 import adminAccessSessionsRoutes from './routes/admin/accessSessions.routes.js';
 import adminAuditLogRoutes from './routes/admin/auditLog.routes.js';
+import adminCyberRangesRoutes from './routes/admin/cyberRanges.routes.js';
+import adminScriptsRoutes from './routes/admin/scripts.routes.js';
 
 export function createApp() {
   const app = express();
@@ -56,6 +58,8 @@ export function createApp() {
   app.use('/api/teams', accessSessionsRoutes);
   app.use('/api/admin', adminAccessSessionsRoutes);
   app.use('/api/admin', adminAuditLogRoutes);
+  app.use('/api/admin', adminCyberRangesRoutes);
+  app.use('/api/admin', adminScriptsRoutes);
 
   return app;
 }

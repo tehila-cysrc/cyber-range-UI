@@ -1745,3 +1745,60 @@ RESULT: verified-live where it mattered most.
   - Did not attempt full browser-driven interactive login (typing the real lab credential and seeing a
     rendered remote desktop) for the reason noted above - recommend the user do this once, manually,
     against a node configured through the new admin UI, before relying on Connect for real students.
+==================================================================
+[2026-09-10] session=topology-logical-redesign-phase3-script-library
+TASK: Phase 3 of the Topology redesign (plan: azure-swirling-mitten.md) - instructor "Run Script" via
+  Azure VM Run Command. The base mechanism didn't exist yet (only a disabled "Run Script (coming soon)"
+  button placeholder) despite the user's follow-up request describing it as already built - built it
+  together with the requested Script Library layer in one pass, since the library is the primary UI for
+  triggering a run anyway. User's spec: instructor can (a) run an existing saved script from a reusable
+  library (name/description/content/type/category), or (b) write/paste a script manually and optionally
+  save it to the library; must reuse the existing machine-selection/execution mechanism, not a new
+  simulation engine; scripts actually execute on the VM so real Windows/Sysmon/network telemetry reaches
+  QRadar (no fabricated events). Kept the prior plan's security condition: script_executions never
+  stores raw script content, only a hash + safe/truncated output - a library script's content IS meant
+  to persist (that's the point of a library), so that tension resolves by referencing scripts.content
+  via a nullable script_id rather than duplicating content into the execution log.
+FILES:
+  M server/package.json/package-lock.json (added @azure/arm-compute)
+  M server/src/db/schema/config.sql (new `scripts` table - global CONFIG library, not cyber-range-scoped)
+  M server/src/db/schema/run.sql (new `script_executions` table - RUN, script_id nullable ON DELETE SET
+    NULL, idx_one_running_script_per_node partial unique index mirroring idx_one_active_discovery_run)
+  A server/src/services/scriptExecution.service.ts (script CRUD; runScriptOnNode validates node is an
+    Azure-discovered vm with known osType, matches script type to OS (reason: os_mismatch otherwise),
+    enforces one-running-per-node via the unique index catching the INSERT failure -> 409; responds fast
+    and runs ComputeManagementClient.virtualMachines.beginRunCommand in the background, same async
+    fire-and-track pattern as environment discovery, since a script meant to produce real activity can
+    take minutes - too long to hold an HTTP request open)
+  A docs/azure/cyber-range-vm-run-command-role.json (custom least-privilege role - virtualMachines
+    read/runCommand/action/runCommands read only, same "additive to Reader, never Contributor" pattern
+    as the Phase 2 Bastion role)
+  A server/src/routes/admin/scripts.routes.ts (Script Library CRUD, instructor-only)
+  M server/src/routes/admin/topology.routes.ts (new run-script/script-executions routes)
+  M server/src/app.ts (mounted adminScriptsRoutes)
+  A client/src/features/scripts/ScriptLibraryPage.tsx (full CRUD manager - search/filter by category,
+    create/edit form; exports TypeBadge/SUGGESTED_CATEGORIES reused by the drawer below)
+  A client/src/features/topology/admin/RunScriptDrawer.tsx (per-node drawer opened from the admin side
+    panel's "Run Script" button - Select from Library / Write Manually tabs per the user's exact UI
+    spec, manual mode's script type is fixed to the VM's required type rather than a free picker to
+    prevent OS mismatch, polls the execution until it's no longer "running", shows a per-node history)
+  M client/src/features/topology/admin/TopologyAdminPage.tsx (NodePanel's disabled "coming soon" button
+    replaced with a real one, enabled only when the node is Azure-discovered)
+  M client/src/app/AppShell.tsx, client/src/app/routes.tsx (new "Script Library" instructor nav item
+    and lazy-loaded route at /admin/scripts)
+  M CLAUDE/db.md, CLAUDE/api.md, CLAUDE/invariants.md (documented the new tables/endpoints/RBAC role
+    and two new durable rules: no raw script content in the execution log, and script-type/VM-OS must
+    match before ever calling Azure)
+  M BACKLOG.md (Phase 3 line removed as done; 3 new honest caveats added, see RESULT)
+RESULT: server+client `tsc --noEmit` clean. `npm run migrate` applied the new tables with no errors.
+  Live-tested against the running dev server with the seeded instructor account: script CRUD
+  (create/list/patch/delete) all round-tripped correctly through real HTTP calls; run-script's
+  validation path was exercised live too (manual host/service nodes correctly rejected with
+  reason:not_runnable before even checking the script body). Could NOT exercise the actual
+  ComputeManagementClient.beginRunCommand call end-to-end - this session's dev DB had zero registered
+  cloud_environments rows (no live Azure environment currently linked), so there was no real VM node to
+  target. This is compiles+partially-live-verified, not fully verified per the "real run, not compile"
+  rule - flagged in BACKLOG.md alongside the same caveat on the new RBAC role's real-world sufficiency.
+  Recommend the user register/re-link a real Azure environment and click through one real Run Script
+  invocation before relying on this for a live cohort.
+==================================================================

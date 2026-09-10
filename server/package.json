@@ -11,6 +11,7 @@
     "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@azure/arm-compute": "^25.1.1",
     "@azure/arm-resourcegraph": "^4.2.1",
     "@azure/arm-resources": "^6.1.0",
     "@azure/identity": "^4.5.0",

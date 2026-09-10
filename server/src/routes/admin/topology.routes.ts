@@ -5,6 +5,7 @@ import { requireRole } from '../../middleware/requireRole.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
+import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
 
 const router = Router();
 
@@ -219,6 +220,41 @@ router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
 
   writeAudit(req.user!.username, 'access_target.removed', 'topology_node', nodeId, null);
   res.json({ ok: true });
+});
+
+// Instructor "Run Script" (Phase 3 — Azure VM Run Command). Responds immediately with the new
+// execution's id (fire-and-track, like POST .../environments/:id/discover) — the actual Run Command
+// call can take minutes for a script meant to generate real, observable activity, so the client polls
+// GET .../script-executions/:id rather than the request staying open.
+router.post('/topology/nodes/:nodeId/run-script', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const { scriptId, content, scriptType } = req.body ?? {};
+
+  const outcome = runScriptOnNode(
+    nodeId,
+    { scriptId: typeof scriptId === 'number' ? scriptId : undefined, content: typeof content === 'string' ? content : undefined, scriptType },
+    req.user!.username,
+    req.user!.id,
+  );
+
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.message, reason: outcome.reason });
+    return;
+  }
+  res.status(202).json({ executionId: outcome.executionId });
+});
+
+router.get('/topology/nodes/:nodeId/script-executions', (req, res) => {
+  res.json({ executions: listExecutionsForNode(Number(req.params.nodeId)) });
+});
+
+router.get('/script-executions/:id', (req, res) => {
+  const execution = getExecution(Number(req.params.id));
+  if (!execution) {
+    res.status(404).json({ error: 'execution not found' });
+    return;
+  }
+  res.json({ execution });
 });
 
 // Each side of an edge is either a node or a zone (never both, never neither) — lets an instructor
