@@ -1382,3 +1382,18 @@ RESULT: verified — `tsc -b` + `vite build` clean; Vite correctly emitted the S
   visually browser-test the footer placement/sizing (same browser-tool network isolation noted
   throughout this session) — recommend a quick look to confirm the 20px height / 0.7 opacity read
   well against the dark canvas before considering this fully settled.
+==================================================================
+[2026-09-10 11:30 IDT] session=student-self-registration
+TASK: Fix #15: replace the browser tab favicon (a purple abstract mark — leftover from the original
+  Vite/React scaffold, `#863bff`) with the user's own green logo mark at
+  C:\Users\Liram\Downloads\Logo_Res_green@2x (1).svg (a compact 168x146 icon, single flat fill
+  #53B464 — distinct from fix #14's wide wordmark SVG, this one is sized/shaped for a small icon use).
+FILES:
+  M client/public/favicon.svg (overwrote in place — `client/index.html`'s
+    `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` already pointed here, so no HTML
+    change needed)
+RESULT: verified — confirmed via curl that the dev server now serves the new green icon at
+  `/favicon.svg` (previously served the purple one); `npm run build -w client` clean, no new
+  warnings. `client/dist/` is gitignored build output so nothing there needed touching — it
+  regenerates from `client/public/` on the next build. Did not visually confirm the rendered
+  browser-tab icon (same browser-tool network isolation noted throughout this session).
