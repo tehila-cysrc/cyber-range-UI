@@ -1,8 +1,28 @@
 import type { SVGProps } from 'react';
 
-// Deliberately just two icons, used at exactly two spots (important-finding flag, help request) —
-// docs/DESIGN.md rejects "gratuitous" ornamentation, so these stay thin-stroke, monochrome
-// (currentColor), and geometric rather than a decorative icon set sprinkled everywhere.
+// Deliberately just a handful of icons, each used at exactly one spot (important-finding flag,
+// help request, the nav identity button) — docs/DESIGN.md rejects "gratuitous" ornamentation, so
+// these stay thin-stroke, monochrome (currentColor), and geometric rather than a decorative icon
+// set sprinkled everywhere.
+
+export function UserIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+    </svg>
+  );
+}
 
 export function FlagIcon(props: SVGProps<SVGSVGElement>) {
   return (

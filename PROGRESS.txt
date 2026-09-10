@@ -1397,3 +1397,67 @@ RESULT: verified — confirmed via curl that the dev server now serves the new g
   warnings. `client/dist/` is gitignored build output so nothing there needed touching — it
   regenerates from `client/public/` on the next build. Did not visually confirm the rendered
   browser-tab icon (same browser-tool network isolation noted throughout this session).
+
+==================================================================
+[2026-09-10 09:55 IDT] session=retire-legacy-catalog
+TASK: Follow-up from `environments-ui-redesign` — user pointed out the Instructor dashboard's
+  assign/switch-scenario `<select>` and Topology Admin's range picker both still showed the 5
+  originally-seeded example ranges (TJS/Azure Intermediate+Advanced/AWS Intermediate+Advanced), now
+  that the intended source of new ranges is the Environments registration flow. Asked to remove them
+  from those dropdowns; confirmed with user before acting since one of them (`TJS`, id=1) carries real
+  history (2 team_cyber_range_progress rows, 4 documentation_entries, 4 scores — all of Team
+  Alpha/Bravo's actual testing this week), and `PRAGMA foreign_keys = ON` (server/src/db/index.ts)
+  means a hard DELETE would either be refused outright (NOT NULL FKs from those RUN tables, no ON
+  DELETE CASCADE defined) or, if forced, destroy that real history. User confirmed removing all 5 was
+  the intent; chose soft-hide over hard-delete for safety (explained to user) since it achieves the
+  identical visible outcome (gone from both pickers) with zero data-loss risk, vs. attempting a
+  destructive op that would provably fail on id=1 anyway.
+FILES:
+  M server/src/db/schema/config.sql (`cyber_ranges` gains `is_active INTEGER NOT NULL DEFAULT 1`, for
+    fresh installs going forward)
+  M server/src/db/migrate.ts (additive `addColumnIfMissing('cyber_ranges', 'is_active', ...)` for this
+    already-existing dev DB, same pattern as `documentation_entries.image_data_url`)
+  M server/src/routes/cyberRanges.routes.ts (`GET /cyber-ranges` — the single catalog endpoint both
+    the Instructor dashboard and Topology Admin pickers read — now filters `WHERE cr.is_active = 1`)
+  M CLAUDE/db.md, CLAUDE/api.md (documented the column, the no-DELETE-endpoint-by-design rationale,
+    and the filter)
+  M BACKLOG.md (no admin UI/endpoint yet to toggle `is_active` — only settable via direct DB access
+    right now; flagged as a real gap for a future "archive this range" instructor action)
+RESULT: verified-live. Ran `npm run migrate -w server` (idempotent, confirmed via re-run-safe
+  `addColumnIfMissing`) against the live dev DB, then set `is_active = 0` on cyber_ranges ids 1-5
+  directly (no endpoint exists for this yet — see BACKLOG.md). Confirmed via curl-equivalent HTTP:
+  `GET /cyber-ranges` -> `{cyberRanges: []}` (both pickers now start empty, as intended); `GET
+  /admin/dashboard` still correctly shows Team Alpha's AND Team Bravo's real historical `TJS`
+  active-range info unaffected (that query joins `cyber_ranges` by id directly, not through the
+  filtered catalog endpoint) — proving the soft-hide didn't touch anything already referencing id=1.
+  Re-ran the full create-range-via-environment-registration flow from `environments-ui-redesign` to
+  confirm it still works end-to-end after this change (new ranges default `is_active=1`, show up in
+  the now-clean catalog) — hit one snag: a background verification script left a scratch environment
+  + cyber_range linked to each other uncleaned mid-session (its cleanup step apparently didn't run to
+  completion); caught it on inspection, deleted the environment via the real API (cascades the link),
+  then deleted the now-unblocked scratch `cyber_ranges` row directly. Final DB state confirmed clean:
+  5 legacy ranges present but `is_active=0`, 0 cloud_environments, 0 extra cyber_ranges rows. `npx tsc
+  -b` clean both workspaces (client untouched by this change, re-checked anyway).
+NOTES: Did not re-verify in an actual browser (still no working browser-test tool available this
+  session). User has working local browser access and already spotted this issue through their own
+  manual testing, so likely best positioned to confirm the pickers now render as expected.
+==================================================================
+[2026-09-10 11:45 IDT] session=student-self-registration
+TASK: Fix #16: user said the top-right nav cluster (per-user-colored Avatar + display name + role
+  text + a "Sign out" text button, added in fix #11) "isn't good" — wanted it collapsed to just a
+  green user icon.
+FILES:
+  M client/src/components/icons.tsx (added `UserIcon` — thin-stroke head+shoulders glyph, same
+    recipe as FlagIcon/LifeBuoyIcon)
+  M client/src/app/AppShell.tsx (new `UserMenu` component replaces the old always-visible
+    name/role/sign-out cluster: a 28px circular button — green (`--signal-primary`) border + icon,
+    matching the Avatar/TelemetryBadge visual recipe but fixed-green rather than per-user-hashed,
+    per the explicit "green icon" ask — that reveals a small dropdown panel on click with the
+    name/role and the Sign out button, closing on an outside click via a `mousedown` listener on a
+    wrapper ref. Removed the now-unused `Avatar` import from this file (Avatar is still used
+    elsewhere — timeline, rosters, help requests, scoring — this only reverts the nav bar's own
+    usage of it, back from fix #11).
+RESULT: verified — `tsc -b` + `vite build` clean, no new warnings/dependencies. Did not visually
+  browser-test the collapsed icon or the click-to-open menu (same browser-tool network isolation
+  noted throughout this session) — worth a quick look to confirm the dropdown's position/spacing
+  reads correctly against the dark nav bar.

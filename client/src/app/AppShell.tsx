@@ -1,8 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { disconnectSocket } from '../lib/socketClient';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
-import { Avatar } from '../components/Avatar';
+import { UserIcon } from '../components/icons';
 import logoUrl from '../assets/company-logo.svg';
 
 // NOTE: docs/DESIGN.md's nav spec lists "Milestones" as the 4th destination. The PRD dropped
@@ -47,6 +48,83 @@ function NavItem({ to, label, end, alert }: { to: string; label: string; end?: b
   );
 }
 
+// Collapsed to just a green identity icon per user request — the name/role/sign-out live in a
+// small menu revealed on click instead of sitting permanently in the nav bar.
+function UserMenu({ displayName, role, onLogout }: { displayName: string; role: string; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label={`${displayName} · ${role}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          border: '1px solid var(--signal-primary)',
+          background: 'rgba(15, 23, 42, 0.8)',
+          color: 'var(--signal-primary)',
+          cursor: 'pointer',
+        }}
+      >
+        <UserIcon />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 36,
+            right: 0,
+            minWidth: 160,
+            padding: 'var(--space-sm)',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-container)',
+            background: 'var(--surface-1)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-sm)',
+            zIndex: 10,
+          }}
+        >
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-telemetry)' }}>
+            {displayName} · {role}
+          </div>
+          <button
+            onClick={onLogout}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--surface-border)',
+              color: 'var(--text-muted)',
+              borderRadius: 'var(--radius-control)',
+              padding: '4px 10px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 14,
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell() {
   const { user, clear } = useAuthStore();
   const navigate = useNavigate();
@@ -87,35 +165,7 @@ export function AppShell() {
             INSTRUCTOR_NAV_ITEMS.map((item) => <NavItem key={item.to} {...item} />)}
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-md)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 14,
-            color: 'var(--text-telemetry)',
-          }}
-        >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {user?.displayName && <Avatar name={user.displayName} size={22} />}
-            {user?.displayName} · {user?.role}
-          </span>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--surface-border)',
-              color: 'var(--text-muted)',
-              borderRadius: 'var(--radius-control)',
-              padding: '4px 10px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            Sign out
-          </button>
-        </div>
+        {user && <UserMenu displayName={user.displayName} role={user.role} onLogout={handleLogout} />}
       </nav>
 
       <main style={{ flex: 1, maxWidth: 'var(--layout-max-width)', width: '100%', margin: '0 auto' }}>
