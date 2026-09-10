@@ -154,6 +154,16 @@ export function deleteEnvironment(id: number, actorUsername: string): boolean {
 
   db.exec('BEGIN');
   try {
+    // Cyber ranges linked only to this environment lose their last reason to still be pickable —
+    // soft-hide them (is_active=0) the same way the seeded example catalog is retired, rather than
+    // deleting the range itself: real history (progress/documentation/scores) may already reference
+    // it and can't be cascaded away (see CLAUDE/db.md). A range linked to more than one environment
+    // stays active as long as at least one other link survives. Captured before the unlink below,
+    // since that's what removes the rows this check depends on.
+    const linkedCyberRangeIds = db
+      .prepare('SELECT cyber_range_id AS cyberRangeId FROM cyber_range_environments WHERE environment_id = ?')
+      .all(id) as { cyberRangeId: number }[];
+
     // Delete order matters: topology rows discovered by this environment reference it (and, for
     // nodes, the discovery run that wrote them), so they must go before the run history, which must
     // go before the environment itself — otherwise this trips the same FK constraint that protects
@@ -164,6 +174,15 @@ export function deleteEnvironment(id: number, actorUsername: string): boolean {
     db.prepare('DELETE FROM cyber_range_environments WHERE environment_id = ?').run(id);
     db.prepare('DELETE FROM cloud_environments WHERE id = ?').run(id);
     deleteCredential(existing.credentialId);
+
+    const deactivateIfOrphaned = db.prepare(
+      `UPDATE cyber_ranges SET is_active = 0
+       WHERE id = ? AND NOT EXISTS (SELECT 1 FROM cyber_range_environments WHERE cyber_range_id = ?)`,
+    );
+    for (const { cyberRangeId } of linkedCyberRangeIds) {
+      deactivateIfOrphaned.run(cyberRangeId, cyberRangeId);
+    }
+
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');

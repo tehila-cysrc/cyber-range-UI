@@ -1461,3 +1461,40 @@ RESULT: verified — `tsc -b` + `vite build` clean, no new warnings/dependencies
   browser-test the collapsed icon or the click-to-open menu (same browser-tool network isolation
   noted throughout this session) — worth a quick look to confirm the dropdown's position/spacing
   reads correctly against the dark nav bar.
+==================================================================
+[2026-09-10 12:00 IDT] session=student-self-registration
+TASK: Fix #17: user reported that deleting an Azure environment (Environments admin page) didn't
+  remove its Cyber Range from the "select cyber range"/"switch scenario" dropdowns. Confirmed this
+  live in the running dev DB before touching code: cyber_range id=6 ("AI -scenario 1", presumably
+  created via the Environments registration flow during the parallel session's/user's own testing of
+  that feature) had `is_active = 1` with zero rows in `cyber_range_environments` and zero
+  `cloud_environments` — its environment had already been deleted at some point, but nothing had
+  deactivated the range, so it was still showing up in every `GET /cyber-ranges` consumer
+  (InstructorDashboardPage's "Assign/Switch scenario…" picker, the scoring panel, Topology Admin).
+  Root cause: `deleteEnvironment()` (server/src/services/environments.service.ts, part of the
+  in-progress live-cloud-environment feature — not something I built) correctly deletes the
+  `cyber_range_environments` link row (among other cleanup) but never checked whether that was a
+  cyber range's LAST remaining environment link, so a now-orphaned range stayed `is_active = 1`
+  forever — even though this exact codebase already has an `is_active` soft-hide mechanism built
+  for precisely this "retire from the picker without destroying real history" purpose (see
+  BACKLOG.md's existing note about `is_active` having no manual toggle UI yet — this fix wires up
+  the automatic case instead).
+FILES:
+  M server/src/services/environments.service.ts (`deleteEnvironment`: captures the cyber_range_ids
+    linked to the environment being deleted BEFORE removing the link rows, then — after the
+    environment and its links are gone — sets `is_active = 0` on any of those ranges that now have
+    zero remaining rows in `cyber_range_environments` (a range linked to more than one environment,
+    which the schema allows even though today's UI only ever creates 1:1, correctly stays active as
+    long as one link survives). All inside the same `BEGIN`/`COMMIT`/`ROLLBACK` transaction the
+    function already used.)
+RESULT: verified-live. `tsc -b` clean. End-to-end via curl: created a throwaway cyber range + a
+  throwaway Azure environment (dummy credentials — `createEnvironment` only stores them, doesn't
+  call Azure, so no real cloud access needed to test this) + linked them -> confirmed the range
+  appeared in `GET /cyber-ranges` -> deleted the environment -> confirmed the range immediately
+  disappeared from `GET /cyber-ranges`. Also fixed the pre-existing live instance of the bug directly
+  in the dev DB: set `is_active = 0` on cyber_range id=6, after confirming (a) it had zero linked
+  environments and (b) doing so wouldn't disrupt the two teams currently actively working that exact
+  scenario — `is_active` only affects the picker's catalog listing, not any already-started
+  `team_cyber_range_progress` row, confirmed via `GET /admin/dashboard` still showing both teams'
+  active scenario correctly after the change. Cleaned up the throwaway test cyber range afterward
+  (safe to hard-delete — it never had any team progress/documentation/scores against it).
