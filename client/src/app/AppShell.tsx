@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 import { disconnectSocket } from '../lib/socketClient';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { Avatar } from '../components/Avatar';
+import logoUrl from '../assets/company-logo.svg';
 
 // NOTE: docs/DESIGN.md's nav spec lists "Milestones" as the 4th destination. The PRD dropped
 // discrete milestones in favor of free-form instructor scoring on documentation (US-007), so this
@@ -120,6 +121,18 @@ export function AppShell() {
       <main style={{ flex: 1, maxWidth: 'var(--layout-max-width)', width: '100%', margin: '0 auto' }}>
         <Outlet />
       </main>
+
+      <footer
+        style={{
+          borderTop: '1px solid var(--surface-border)',
+          background: 'var(--surface-1)',
+          padding: 'var(--space-md) var(--space-lg)',
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
+        <img src={logoUrl} alt="" style={{ height: 20, opacity: 0.7 }} />
+      </footer>
 
       <GamifiedEffects />
     </div>

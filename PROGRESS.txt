@@ -1361,3 +1361,24 @@ RESULT: verified — `tsc -b` + `vite build` clean (client bundle ~434KB, no new
   layout fix. Did not visually browser-test the new layout (same browser-tool network isolation
   noted throughout this session) — this is a judgment call on spacing/hierarchy that I'd genuinely
   like eyes on; flagging that rather than claiming a fully verified visual result.
+==================================================================
+[2026-09-10 11:20 IDT] session=student-self-registration
+TASK: Fix #14: user asked to bring in a logo file from their Downloads folder
+  (Logo_green (1).svg — a green wordmark, 1038x115 viewBox, single flat fill #53B464, pure vector
+  paths, no scripts/external refs) and place it at the bottom of the screen.
+FILES:
+  A client/src/assets/company-logo.svg (copied verbatim from
+    C:\Users\Liram\Downloads\Logo_green (1).svg — unmodified, kept the original brand color rather
+    than recoloring to match the app's signal-primary emerald, since it's an external brand asset
+    the user provided as-is)
+  M client/src/app/AppShell.tsx (new `<footer>` below `<main>`, above `<GamifiedEffects />` — hairline
+    top border + `--surface-1` background matching the top nav's own treatment, centered logo at 20px
+    height with 0.7 opacity so it reads as a quiet footer mark rather than competing with page
+    content, consistent with the design system's restraint. Renders on every route since AppShell
+    wraps the whole authenticated app via `<Outlet>`.)
+RESULT: verified — `tsc -b` + `vite build` clean; Vite correctly emitted the SVG as its own hashed
+  asset (`company-logo-*.svg`, 6.25KB) rather than inlining it, and confirmed via curl that the dev
+  server serves the source file correctly (200, `image/svg+xml`, matches the original bytes). Did not
+  visually browser-test the footer placement/sizing (same browser-tool network isolation noted
+  throughout this session) — recommend a quick look to confirm the 20px height / 0.7 opacity read
+  well against the dark canvas before considering this fully settled.
