@@ -3,6 +3,7 @@ import { ResourceGraphClient } from '@azure/arm-resourcegraph';
 import type {
   DiscoveredRelationship,
   DiscoveredResource,
+  DiscoveredZone,
   DiscoveryProvider,
   DiscoveryResult,
   DiscoveryWarning,
@@ -36,16 +37,52 @@ interface AzureGraphResource {
   properties?: Record<string, unknown>;
 }
 
+// Note: microsoft.network/virtualnetworks is intentionally absent here — a vnet is never its own
+// topology node; its subnets become zones (see mapAzureResourcesToDiscovery), handled as a special
+// case before this map is consulted.
 const NODE_TYPE_BY_AZURE_TYPE: Record<string, string> = {
   'microsoft.compute/virtualmachines': 'vm',
   'microsoft.network/networkinterfaces': 'nic',
-  'microsoft.network/virtualnetworks': 'vnet',
   'microsoft.network/networksecuritygroups': 'nsg',
   'microsoft.network/publicipaddresses': 'public_ip',
   'microsoft.network/loadbalancers': 'load_balancer',
   'microsoft.storage/storageaccounts': 'storage_account',
   'microsoft.keyvault/vaults': 'key_vault',
 };
+
+// The "keep the canvas clean" rule (design doc §3/§9.1): only exercise-meaningful hosts are visible
+// by default. Azure implementation resources stay discovered (for admin diagnostics / future
+// exercise-relevance promotion) but hidden from both canvases until an instructor opts a specific
+// node in — see topology_nodes.is_visible_to_students.
+const DEFAULT_VISIBLE_NODE_TYPES = new Set(['vm']);
+
+// Heuristic only — there is no tag-based role convention today, so this infers a cyber-exercise role
+// from the resource's name/OS. Deliberately approximate: the instructor can always correct it, and
+// this only ever runs once per node (write-once-then-preserved across re-discovery, matching pos_x/
+// pos_y — see discovery.service.ts).
+function inferRole(label: string, osType: string | null | undefined): string {
+  const l = label.toLowerCase();
+  if (/(?:^|[^a-z])dc\d*(?:[^a-z]|$)|domain.?controller/.test(l)) return 'domain_controller';
+  if (/kali|attacker/.test(l)) return 'kali_attacker';
+  if (/siem|qradar/.test(l)) return 'siem';
+  if (/(?:^|[^a-z])fw(?:[^a-z]|$)|firewall/.test(l)) return 'firewall';
+  if (/web|iis|apache|nginx/.test(l)) return 'web_server';
+  if (/mail|smtp|exchange/.test(l)) return 'mail_server';
+  if (/\bdb\b|sql|database/.test(l)) return 'database_server';
+  if (osType === 'Windows') return 'workstation';
+  if (osType === 'Linux') return 'linux_server';
+  return 'generic_server';
+}
+
+function humanizeName(raw: string): string {
+  return raw
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
 
 function get(obj: unknown, path: string[]): unknown {
   let cur: unknown = obj;
@@ -67,48 +104,59 @@ function backendPoolIpConfigToNicId(ipConfigId: string): string | null {
 }
 
 // Pure and exported for testing — maps a raw Resource Graph result into the provider-neutral
-// DiscoveredResource/DiscoveredRelationship shape, with no Azure SDK calls of its own.
+// DiscoveredZone/DiscoveredResource/DiscoveredRelationship shape, with no Azure SDK calls of its own.
 export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): DiscoveryResult {
+  const zones: DiscoveredZone[] = [];
   const discovered: DiscoveredResource[] = [];
   const relationships: DiscoveredRelationship[] = [];
   const warnings: DiscoveryWarning[] = [];
 
+  // nic -> subnet/private-IP, resolved while walking nic resources; used in the second pass below to
+  // derive each vm's zone and IP (vm -> nic -> subnet/IP) without exposing nic plumbing as canvas edges.
+  const nicToSubnet = new Map<string, string>();
+  const nicToPrivateIp = new Map<string, string>();
+  const vmToNicIds = new Map<string, string[]>();
+
   for (const resource of resources) {
     try {
-      const nodeType = NODE_TYPE_BY_AZURE_TYPE[resource.type.toLowerCase()];
+      const azureType = resource.type.toLowerCase();
+
+      if (azureType === 'microsoft.network/virtualnetworks') {
+        const subnets = (get(resource, ['properties', 'subnets']) as Array<Record<string, unknown>>) ?? [];
+        for (const subnet of subnets) {
+          const subnetId = subnet.id as string | undefined;
+          if (!subnetId) continue;
+          zones.push({
+            externalKey: subnetId,
+            name: humanizeName((subnet.name as string) ?? subnetId),
+            cidr: (get(subnet, ['properties', 'addressPrefix']) as string | undefined) ?? null,
+          });
+        }
+        continue; // the vnet itself is never a topology node — its subnets are zones instead
+      }
+
+      const nodeType = NODE_TYPE_BY_AZURE_TYPE[azureType];
       if (!nodeType) continue;
+
+      const osType =
+        nodeType === 'vm' ? (get(resource, ['properties', 'storageProfile', 'osDisk', 'osType']) as string | undefined) : undefined;
 
       discovered.push({
         externalKey: resource.id,
         label: resource.name,
         nodeType,
         metadata: curateMetadata(nodeType, resource),
+        zoneExternalKey: null, // resolved in the second pass, once nic->subnet is fully known
+        role: nodeType === 'vm' ? inferRole(resource.name, osType) : null,
+        isVisibleToStudents: DEFAULT_VISIBLE_NODE_TYPES.has(nodeType),
       });
-
-      if (nodeType === 'vnet') {
-        const subnets = (get(resource, ['properties', 'subnets']) as Array<Record<string, unknown>>) ?? [];
-        for (const subnet of subnets) {
-          const subnetId = subnet.id as string | undefined;
-          if (!subnetId) continue;
-          discovered.push({
-            externalKey: subnetId,
-            label: (subnet.name as string) ?? subnetId,
-            nodeType: 'subnet',
-            metadata: {
-              addressPrefix: get(subnet, ['properties', 'addressPrefix']),
-            },
-          });
-          relationships.push({ fromExternalKey: subnetId, toExternalKey: resource.id, relationType: 'subnet_of' });
-
-          const subnetNsgId = get(subnet, ['properties', 'networkSecurityGroup', 'id']) as string | undefined;
-          if (subnetNsgId) {
-            relationships.push({ fromExternalKey: subnetId, toExternalKey: subnetNsgId, relationType: 'protected_by' });
-          }
-        }
-      }
 
       if (nodeType === 'vm') {
         const nics = (get(resource, ['properties', 'networkProfile', 'networkInterfaces']) as Array<{ id?: string }>) ?? [];
+        vmToNicIds.set(
+          resource.id,
+          nics.map((n) => n.id).filter((id): id is string => !!id),
+        );
         for (const nic of nics) {
           if (nic.id) relationships.push({ fromExternalKey: resource.id, toExternalKey: nic.id, relationType: 'attached_to' });
         }
@@ -117,8 +165,14 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
       if (nodeType === 'nic') {
         const ipConfigs = (get(resource, ['properties', 'ipConfigurations']) as Array<Record<string, unknown>>) ?? [];
         for (const ipConfig of ipConfigs) {
+          // Note: no 'in_subnet' relationship pushed here — a subnet is a zone now, not a discovered
+          // node, so that edge would always be dropped as dangling by the filter below and spuriously
+          // mark every run 'partial_failure'. nicToSubnet captures the same information for zone
+          // resolution above without going through the relationships/edges pipeline.
           const subnetId = get(ipConfig, ['properties', 'subnet', 'id']) as string | undefined;
-          if (subnetId) relationships.push({ fromExternalKey: resource.id, toExternalKey: subnetId, relationType: 'in_subnet' });
+          if (subnetId && !nicToSubnet.has(resource.id)) nicToSubnet.set(resource.id, subnetId);
+          const privateIp = get(ipConfig, ['properties', 'privateIPAddress']) as string | undefined;
+          if (privateIp && !nicToPrivateIp.has(resource.id)) nicToPrivateIp.set(resource.id, privateIp);
 
           const publicIpId = get(ipConfig, ['properties', 'publicIPAddress', 'id']) as string | undefined;
           if (publicIpId) relationships.push({ fromExternalKey: resource.id, toExternalKey: publicIpId, relationType: 'has_public_ip' });
@@ -143,6 +197,25 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
     }
   }
 
+  // Second pass: resolve zoneExternalKey now that nic->subnet is fully known. A nic's zone is its own
+  // subnet; a vm's zone is the subnet of its first nic that resolved to one (a vm with multiple nics
+  // in different subnets just gets its first nic's zone — an edge case, not worth a multi-zone model).
+  const zoneKeys = new Set(zones.map((z) => z.externalKey));
+  for (const node of discovered) {
+    if (node.nodeType === 'nic') {
+      const subnetId = nicToSubnet.get(node.externalKey);
+      if (subnetId && zoneKeys.has(subnetId)) node.zoneExternalKey = subnetId;
+    } else if (node.nodeType === 'vm') {
+      for (const nicId of vmToNicIds.get(node.externalKey) ?? []) {
+        const subnetId = nicToSubnet.get(nicId);
+        if (subnetId && zoneKeys.has(subnetId) && !node.zoneExternalKey) node.zoneExternalKey = subnetId;
+        const privateIp = nicToPrivateIp.get(nicId);
+        if (privateIp && !('privateIpAddress' in node.metadata)) (node.metadata as Record<string, unknown>).privateIpAddress = privateIp;
+        if (node.zoneExternalKey && 'privateIpAddress' in node.metadata) break;
+      }
+    }
+  }
+
   // Drop relationships pointing at a resource type we didn't discover (e.g. a subnet outside the
   // registered scope) rather than leaving a dangling reference for discovery.service.ts to trip on.
   const knownKeys = new Set(discovered.map((r) => r.externalKey));
@@ -152,7 +225,7 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
     return ok;
   });
 
-  return { resources: discovered, relationships: validRelationships, warnings };
+  return { zones, resources: discovered, relationships: validRelationships, warnings };
 }
 
 function curateMetadata(nodeType: string, resource: AzureGraphResource): Record<string, unknown> {

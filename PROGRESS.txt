@@ -1506,3 +1506,85 @@ FILES:
     `var(--space-lg)` (24px). For an instructor viewing all 13 combined student+instructor tabs this
     adds ~96px total — still comfortably fits the 1408px max-width layout container.)
 RESULT: verified — `tsc -b` + `vite build` clean, pure CSS value change.
+==================================================================
+[2026-09-10] session=topology-logical-redesign-phase1
+TASK: Plan (approved, see C:\Users\Liram\.claude\plans\azure-swirling-mitten.md) + implement Phase 1
+  of a 3-phase Topology redesign: turn the existing Topology feature (which mirrored raw Azure
+  Resource Graph output 1:1 — the PRD's US-004 explicitly left "what exactly should the topology
+  show" as an open question) into a logical cyber-range exercise view (hosts + roles + network
+  zones + security boundaries), per a detailed design doc the user provided. Phase 2 (Azure Bastion
+  Shareable Links + Key Vault credentials, replacing the currently non-functional Guacamole-lite
+  Connect stub) and Phase 3 (instructor Run Script via Azure VM Run Command) are designed in the
+  plan but deferred — Phase 2 explicitly gated on a real Azure PoC first, per the user's approval
+  conditions.
+FILES:
+  M server/src/db/schema/config.sql (new `topology_zones` table — the visual grouping container,
+    one per Azure subnet or hand-added; `topology_edges` relaxed to nullable
+    from_node_id/to_node_id + new nullable from_zone_id/to_zone_id with CHECK constraints so an
+    edge endpoint can be a zone instead of a node)
+  M server/src/db/migrate.ts (additive columns: topology_nodes.zone_id/role/is_visible_to_students/
+    status; `relaxTopologyEdgesForZones()` rebuilds topology_edges once for a pre-existing DB, since
+    SQLite can't relax a NOT NULL/add a CHECK via ALTER TABLE; topology_zones external_key unique
+    index)
+  M server/src/services/discovery/discoveryProvider.ts (DiscoveredZone type; DiscoveredResource
+    gained zoneExternalKey/role/isVisibleToStudents)
+  M server/src/services/discovery/azureDiscoveryProvider.ts (vnet/subnet no longer become
+    topology_nodes — subnets become zones instead; role-inference heuristic from label+osType
+    (no tag convention exists to read this from); DEFAULT_VISIBLE_NODE_TYPES = {vm} only — nic/nsg/
+    public_ip/load_balancer/storage_account/key_vault discovered but hidden by default; vm metadata
+    gains privateIpAddress resolved via its nic)
+  M server/src/services/discovery/discovery.service.ts (upsertForCyberRange upserts zones first then
+    resolves zone_id for nodes; zone_id/role/is_visible_to_students are write-once-then-preserved on
+    re-discovery, same pattern as pos_x/pos_y; pruneStale also prunes stale zones, nulling any
+    surviving node's zone_id first to avoid a dangling FK under PRAGMA foreign_keys=ON)
+  M server/src/routes/topology.routes.ts (GET now returns {zones, nodes, edges}; non-instructor
+    callers are filtered server-side by is_visible_to_students — both nodes AND edges touching a
+    hidden node, never just client-side hiding)
+  M server/src/routes/admin/topology.routes.ts (node POST/PATCH accept role/zoneId/isVisibleToStudents/
+    status; new zone POST/PATCH/DELETE — delete un-assigns nodes rather than deleting them; edge POST
+    accepts fromZoneId/toZoneId as an alternative to fromNodeId/toNodeId)
+  M client/src/features/topology/TopologyGraph.tsx (rewrite: zones render as background container
+    "nodes" behind host cards computed from each zone's member bounding box; compact host cards
+    styled by role (fallback to nodeType); status dot; collapsible legend; onConnect is generic
+    node<->node/node<->zone/zone<->zone for drag-to-draw boundary edges)
+  M client/src/features/topology/TopologyViewerPage.tsx (progressive-disclosure side panel: click a
+    node -> panel opens beside the still-visible canvas, showing role/status/IP/OS/Connect — no more
+    inline metadata dump on the graph itself)
+  M client/src/features/topology/admin/TopologyAdminPage.tsx (rewrite: "Show infrastructure resources"
+    diagnostic-only toggle, default OFF, so the default instructor canvas is identical to the student
+    canvas per the user's explicit approval condition; side panel per node with inline edit
+    (label/role/zone/status/visibility), delete, the access-target form moved in-panel, and a disabled
+    "Run Script (coming soon)" placeholder for Phase 3; zone side panel for rename/delete; small
+    add-node/add-zone toolbar since click-to-place-at-cursor was out of scope for this pass)
+  M CLAUDE/db.md, CLAUDE/api.md (documented the new schema/endpoints)
+  M BACKLOG.md (4 new entries: manual status field, drag-into-zone doesn't reassign zone_id yet,
+    PATCH can't explicitly clear zoneId, Phase 2/3 not yet implemented)
+RESULT: verified-live for everything Phase 1 touches, EXCEPT live Azure discovery itself (no
+  cloud_environments row exists in this dev DB right now — all cyber_ranges are currently is_active=0
+  too — so there was nothing to run real discovery against this session; that specific path needs
+  re-verification once an Azure environment is registered again).
+  - `npm run build` (server tsc -b + client tsc -b + vite build) clean.
+  - `npm run migrate` against the existing dev DB: confirmed via PRAGMA table_info that
+    topology_zones/topology_nodes/topology_edges all have the expected new columns, including the
+    topology_edges rebuild (from_zone_id/to_zone_id present, old NOT NULL relaxed).
+  - Manual-topology path end-to-end via curl (temporarily activated cyber_range id=2, cleaned up
+    after): created 2 zones + 3 nodes (web_server/domain_controller/firewall roles) + 2 zone-boundary
+    edges -> confirmed the invalid-edge CHECK (both fromNodeId+fromZoneId -> 400) -> PATCHed a node's
+    status+isVisibleToStudents=false -> confirmed GET as instructor token shows everything (incl. the
+    hidden node + its status) while GET as a real student token (alice) excludes both the hidden node
+    AND both edges touching it -> DELETE node and DELETE zone confirmed correct behavior (zone delete
+    un-assigns its member node rather than deleting it; edges referencing deleted zone/node are gone).
+  - Discovery mapping logic exercised with synthetic Azure Resource Graph-shaped fixtures (no live
+    Azure available) via a throwaway script (deleted after): confirmed vnet subnets -> zones with
+    humanized names, a vm named "dc01" -> role=domain_controller + correct zone + privateIpAddress
+    merged from its nic, "kali-attacker-01" -> role=kali_attacker, storage account hidden by default.
+    Caught and fixed a real bug this way: the old 'in_subnet' (nic->subnet) relationship push was
+    still there from the pre-redesign code, and since subnets are no longer discovered nodes it would
+    have been dropped as "dangling" on every single real discovery run, spuriously downgrading every
+    run's status from 'succeeded' to 'partial_failure' — removed, since nicToSubnet already carries
+    the same info for zone resolution without going through the edges pipeline.
+  - Browser MCP tooling (lean-chronoscope) could not reach this machine's localhost from its sandbox
+    (ERR_CONNECTION_REFUSED on a URL curl confirmed was serving 200 locally) — no live visual/
+    interaction check of the new UI in an actual browser was possible this session; the user should
+    click through Topology Admin + the student Topology view once to confirm the new layout reads
+    well before relying on it.

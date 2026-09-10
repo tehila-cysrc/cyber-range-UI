@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS cyber_ranges (
   name TEXT NOT NULL,
   difficulty TEXT NOT NULL CHECK (difficulty IN ('intermediate', 'advanced')),
   expected_duration_minutes INTEGER,
-  sort_order INTEGER NOT NULL
+  sort_order INTEGER NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS pressure_stages (
@@ -32,6 +33,22 @@ CREATE TABLE IF NOT EXISTS documentation_categories (
   active INTEGER NOT NULL DEFAULT 1
 );
 
+-- A logical network zone (DMZ, Internal, SOC, Attacker Network, ...) — the primary visual grouping
+-- container for the topology. Auto-created one-per-Azure-subnet by discovery (external_key = subnet
+-- ARM id), or hand-added by an instructor for a manual-only cyber range (external_key NULL). Renaming
+-- a discovered zone is preserved across re-discovery — see migrate.ts's addColumnIfMissing note and
+-- discovery.service.ts's ON CONFLICT clause for the same write-once-then-preserved pattern.
+CREATE TABLE IF NOT EXISTS topology_zones (
+  id INTEGER PRIMARY KEY,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  external_key TEXT,
+  name TEXT NOT NULL,
+  cidr TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  environment_id INTEGER REFERENCES cloud_environments(id),
+  discovery_run_id INTEGER REFERENCES environment_discovery_runs(id)
+);
+
 CREATE TABLE IF NOT EXISTS topology_nodes (
   id INTEGER PRIMARY KEY,
   cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
@@ -43,12 +60,20 @@ CREATE TABLE IF NOT EXISTS topology_nodes (
   metadata_json TEXT
 );
 
+-- from_node_id/to_node_id are nullable so an edge endpoint can instead be a zone (from_zone_id/
+-- to_zone_id) — e.g. an instructor-drawn Internet -> Firewall -> Zone boundary. Exactly one of
+-- (node, zone) must be set per side; enforced by CHECK here and mirrored by a rebuild migration in
+-- migrate.ts for pre-existing databases created before this column existed.
 CREATE TABLE IF NOT EXISTS topology_edges (
   id INTEGER PRIMARY KEY,
   cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
-  from_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
-  to_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
-  label TEXT
+  from_node_id INTEGER REFERENCES topology_nodes(id),
+  to_node_id INTEGER REFERENCES topology_nodes(id),
+  from_zone_id INTEGER REFERENCES topology_zones(id),
+  to_zone_id INTEGER REFERENCES topology_zones(id),
+  label TEXT,
+  CHECK ((from_node_id IS NOT NULL) != (from_zone_id IS NOT NULL)),
+  CHECK ((to_node_id IS NOT NULL) != (to_zone_id IS NOT NULL))
 );
 
 CREATE TABLE IF NOT EXISTS scoring_config (

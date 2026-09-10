@@ -3,11 +3,24 @@
 // writing an AwsDiscoveryProvider against this same shape and registering it in discovery.service.ts's
 // provider map — no schema, API, or client change.
 
+// A logical network zone (DMZ, Internal, ...) — Azure vnets/subnets are never their own topology
+// node; a subnet becomes a zone instead (see azureDiscoveryProvider.ts). externalKey is the subnet's
+// ARM id, used as the zone's upsert key so a re-discovery updates cidr in place and an instructor's
+// rename is preserved (discovery.service.ts never overwrites `name` on conflict).
+export interface DiscoveredZone {
+  externalKey: string;
+  name: string;
+  cidr: string | null;
+}
+
 export interface DiscoveredResource {
   externalKey: string; // globally unique, stable across re-runs (Azure: full ARM resource id)
   label: string;
-  nodeType: string; // normalized: 'vm' | 'nic' | 'vnet' | 'subnet' | 'nsg' | 'public_ip' | 'load_balancer' | 'storage_account' | 'key_vault'
+  nodeType: string; // normalized: 'vm' | 'nic' | 'nsg' | 'public_ip' | 'load_balancer' | 'storage_account' | 'key_vault'
   metadata: Record<string, unknown>;
+  zoneExternalKey: string | null; // resolved subnet ARM id this node lives in, if derivable
+  role: string | null; // cyber-exercise role for a 'vm' (e.g. domain_controller, kali_attacker, siem) — heuristically inferred, instructor-editable
+  isVisibleToStudents: boolean; // default visibility computed per node_type; instructor can override
 }
 
 export interface DiscoveredRelationship {
@@ -22,6 +35,7 @@ export interface DiscoveryWarning {
 }
 
 export interface DiscoveryResult {
+  zones: DiscoveredZone[];
   resources: DiscoveredResource[];
   relationships: DiscoveredRelationship[];
   warnings: DiscoveryWarning[];

@@ -170,11 +170,35 @@ async function runDiscovery(runId: number): Promise<void> {
 // Exported for direct testing of the upsert/prune SQL against a real DB without needing live Azure
 // credentials (see PROGRESS.txt) — not used outside this module in normal operation.
 export function upsertForCyberRange(cyberRangeId: number, discovery: DiscoveryResult, environmentId: number, runId: number) {
+  // Zones first — nodes below need each zone's DB id (not its external key) for their zone_id column.
+  // `name` is deliberately omitted from the ON CONFLICT SET clause: an instructor's rename must
+  // survive a re-discovery, same write-once-then-preserved rule as pos_x/pos_y/role/zone_id below.
+  const insertZone = db.prepare(
+    `INSERT INTO topology_zones (cyber_range_id, external_key, name, cidr, environment_id, discovery_run_id)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (cyber_range_id, external_key) WHERE external_key IS NOT NULL DO UPDATE SET
+       cidr = excluded.cidr,
+       environment_id = excluded.environment_id,
+       discovery_run_id = excluded.discovery_run_id`,
+  );
+  const selectZoneId = db.prepare('SELECT id FROM topology_zones WHERE cyber_range_id = ? AND external_key = ?');
+
+  const zoneIdByExternalKey = new Map<string, number>();
+  for (const zone of discovery.zones) {
+    insertZone.run(cyberRangeId, zone.externalKey, zone.name, zone.cidr, environmentId, runId);
+    const row = selectZoneId.get(cyberRangeId, zone.externalKey) as { id: number };
+    zoneIdByExternalKey.set(zone.externalKey, row.id);
+  }
+
   const nodeIdByExternalKey = new Map<string, number>();
 
+  // zone_id, role, and is_visible_to_students are set only on first insert (omitted from the SET
+  // clause below) so an instructor's manual zone reassignment / role fix / visibility override
+  // survives every later re-discovery.
   const insertNode = db.prepare(
-    `INSERT INTO topology_nodes (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json, environment_id, discovery_run_id)
-     VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?)
+    `INSERT INTO topology_nodes
+       (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json, environment_id, discovery_run_id, zone_id, role, is_visible_to_students)
+     VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (cyber_range_id, external_key) WHERE external_key IS NOT NULL DO UPDATE SET
        label = excluded.label,
        node_type = excluded.node_type,
@@ -185,7 +209,19 @@ export function upsertForCyberRange(cyberRangeId: number, discovery: DiscoveryRe
   const selectNodeId = db.prepare('SELECT id FROM topology_nodes WHERE cyber_range_id = ? AND external_key = ?');
 
   for (const resource of discovery.resources) {
-    insertNode.run(cyberRangeId, resource.externalKey, resource.label, resource.nodeType, JSON.stringify(resource.metadata), environmentId, runId);
+    const zoneId = resource.zoneExternalKey ? (zoneIdByExternalKey.get(resource.zoneExternalKey) ?? null) : null;
+    insertNode.run(
+      cyberRangeId,
+      resource.externalKey,
+      resource.label,
+      resource.nodeType,
+      JSON.stringify(resource.metadata),
+      environmentId,
+      runId,
+      zoneId,
+      resource.role,
+      resource.isVisibleToStudents ? 1 : 0,
+    );
     const row = selectNodeId.get(cyberRangeId, resource.externalKey) as { id: number };
     nodeIdByExternalKey.set(resource.externalKey, row.id);
   }
@@ -218,6 +254,19 @@ export function pruneStale(cyberRangeId: number, environmentId: number, runId: n
     runId,
   );
   db.prepare('DELETE FROM topology_nodes WHERE cyber_range_id = ? AND environment_id = ? AND discovery_run_id != ?').run(
+    cyberRangeId,
+    environmentId,
+    runId,
+  );
+  // A node kept by this run (e.g. its zone_id was set on an earlier run and is write-once-preserved,
+  // see upsertForCyberRange) could still point at a zone that's about to be pruned below (its backing
+  // subnet was deleted in Azure) — null that out first so the zone delete never trips a dangling FK.
+  db.prepare(
+    `UPDATE topology_nodes SET zone_id = NULL WHERE zone_id IN (
+       SELECT id FROM topology_zones WHERE cyber_range_id = ? AND environment_id = ? AND discovery_run_id != ?
+     )`,
+  ).run(cyberRangeId, environmentId, runId);
+  db.prepare('DELETE FROM topology_zones WHERE cyber_range_id = ? AND environment_id = ? AND discovery_run_id != ?').run(
     cyberRangeId,
     environmentId,
     runId,

@@ -2,7 +2,14 @@ import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/apiClient';
 import { Button } from '../../../components/Button';
-import { TopologyGraph, type TopologyEdgeData, type TopologyNodeData } from '../TopologyGraph';
+import {
+  TopologyGraph,
+  formatMetadataValue,
+  parseMetadata,
+  type TopologyEdgeData,
+  type TopologyNodeData,
+  type TopologyZoneData,
+} from '../TopologyGraph';
 
 interface CyberRange {
   id: number;
@@ -11,6 +18,7 @@ interface CyberRange {
 }
 
 interface TopologyResponse {
+  zones: TopologyZoneData[];
   nodes: TopologyNodeData[];
   edges: TopologyEdgeData[];
 }
@@ -22,28 +30,46 @@ interface AccessTarget {
   hasCredential: boolean;
 }
 
-const selectStyle = {
+const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'No role (generic)' },
+  { value: 'domain_controller', label: 'Domain Controller' },
+  { value: 'kali_attacker', label: 'Attacker (Kali)' },
+  { value: 'siem', label: 'SIEM' },
+  { value: 'web_server', label: 'Web Server' },
+  { value: 'mail_server', label: 'Mail Server' },
+  { value: 'database_server', label: 'Database' },
+  { value: 'workstation', label: 'Workstation' },
+  { value: 'linux_server', label: 'Linux Server' },
+  { value: 'generic_server', label: 'Server' },
+  { value: 'firewall', label: 'Firewall' },
+  { value: 'internet_gateway', label: 'Internet' },
+];
+
+const STATUS_OPTIONS = ['', 'running', 'starting', 'stopping', 'stopped', 'error'];
+
+const fieldStyle: React.CSSProperties = {
   background: 'var(--surface-1)',
   border: '1px solid var(--surface-border)',
   borderRadius: 'var(--radius-control)',
   padding: 8,
   color: 'var(--text-primary)',
+  fontFamily: 'inherit',
+  fontSize: 13,
 };
+
+type Selection = { type: 'node'; id: number } | { type: 'zone'; id: number } | null;
 
 export function TopologyAdminPage() {
   const queryClient = useQueryClient();
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
-  const [label, setLabel] = useState('');
-  const [nodeType, setNodeType] = useState('host');
-  const [fromNodeId, setFromNodeId] = useState<number | ''>('');
-  const [toNodeId, setToNodeId] = useState<number | ''>('');
+  const [showInfrastructure, setShowInfrastructure] = useState(false);
+  const [selection, setSelection] = useState<Selection>(null);
 
-  const [accessNodeId, setAccessNodeId] = useState<number | ''>('');
-  const [accessProtocol, setAccessProtocol] = useState<'rdp' | 'ssh'>('rdp');
-  const [accessHost, setAccessHost] = useState('');
-  const [accessPort, setAccessPort] = useState('3389');
-  const [accessUsername, setAccessUsername] = useState('');
-  const [accessPassword, setAccessPassword] = useState('');
+  const [newNodeLabel, setNewNodeLabel] = useState('');
+  const [newNodeRole, setNewNodeRole] = useState('');
+  const [newNodeZoneId, setNewNodeZoneId] = useState<number | ''>('');
+  const [newZoneName, setNewZoneName] = useState('');
+  const [newZoneCidr, setNewZoneCidr] = useState('');
 
   const { data: rangesData } = useQuery({
     queryKey: ['cyber-ranges'],
@@ -60,61 +86,45 @@ export function TopologyAdminPage() {
     queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
   }
 
-  const { data: accessTargetData } = useQuery({
-    enabled: accessNodeId !== '',
-    queryKey: ['access-target', accessNodeId],
-    queryFn: () => apiFetch<{ accessTarget: AccessTarget | null }>(`/admin/topology/nodes/${accessNodeId}/access-target`),
-  });
+  const allNodes = topologyData?.nodes ?? [];
+  const allZones = topologyData?.zones ?? [];
+  // Default instructor canvas = the same clean logical view students see. "Show infrastructure
+  // resources" is an explicit, off-by-default diagnostic overlay — never the default experience.
+  const visibleNodes = showInfrastructure ? allNodes : allNodes.filter((n) => !!n.isVisibleToStudents);
 
-  function invalidateAccessTarget() {
-    queryClient.invalidateQueries({ queryKey: ['access-target', accessNodeId] });
-    invalidate(); // topology response's hasAccessTarget flag also needs refreshing
-  }
-
-  const saveAccessTarget = useMutation({
-    mutationFn: () =>
-      apiFetch(`/admin/topology/nodes/${accessNodeId}/access-target`, {
-        method: 'PUT',
-        body: JSON.stringify({ protocol: accessProtocol, host: accessHost, port: Number(accessPort), username: accessUsername, password: accessPassword }),
-      }),
-    onSuccess: () => {
-      setAccessPassword('');
-      invalidateAccessTarget();
-    },
-  });
-
-  const removeAccessTarget = useMutation({
-    mutationFn: () => apiFetch(`/admin/topology/nodes/${accessNodeId}/access-target`, { method: 'DELETE' }),
-    onSuccess: invalidateAccessTarget,
-  });
-
-  function handleSaveAccessTarget(e: FormEvent) {
-    e.preventDefault();
-    if (!accessNodeId || !accessHost.trim() || !accessUsername.trim() || !accessPassword.trim()) return;
-    saveAccessTarget.mutate();
-  }
+  const selectedNode = selection?.type === 'node' ? (allNodes.find((n) => n.id === selection.id) ?? null) : null;
+  const selectedZone = selection?.type === 'zone' ? (allZones.find((z) => z.id === selection.id) ?? null) : null;
 
   const addNode = useMutation({
     mutationFn: () =>
       apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/nodes`, {
         method: 'POST',
-        body: JSON.stringify({ label, nodeType, posX: Math.random() * 400, posY: Math.random() * 300 }),
+        body: JSON.stringify({
+          label: newNodeLabel,
+          nodeType: 'host',
+          role: newNodeRole || null,
+          zoneId: newNodeZoneId === '' ? null : newNodeZoneId,
+          posX: Math.random() * 500,
+          posY: Math.random() * 350,
+        }),
       }),
     onSuccess: () => {
-      setLabel('');
+      setNewNodeLabel('');
+      setNewNodeRole('');
+      setNewNodeZoneId('');
       invalidate();
     },
   });
 
-  const addEdge = useMutation({
+  const addZone = useMutation({
     mutationFn: () =>
-      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/edges`, {
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/zones`, {
         method: 'POST',
-        body: JSON.stringify({ fromNodeId, toNodeId }),
+        body: JSON.stringify({ name: newZoneName, cidr: newZoneCidr || null }),
       }),
     onSuccess: () => {
-      setFromNodeId('');
-      setToNodeId('');
+      setNewZoneName('');
+      setNewZoneCidr('');
       invalidate();
     },
   });
@@ -128,165 +138,374 @@ export function TopologyAdminPage() {
     onSuccess: invalidate,
   });
 
+  const patchNode = useMutation({
+    mutationFn: (patch: { nodeId: number; label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean }) =>
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/nodes/${patch.nodeId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    onSuccess: invalidate,
+  });
+
+  const deleteNode = useMutation({
+    mutationFn: (nodeId: number) => apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/nodes/${nodeId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setSelection(null);
+      invalidate();
+    },
+    onError: (err) => window.alert(err instanceof Error ? err.message : 'Could not delete this node'),
+  });
+
+  const patchZone = useMutation({
+    mutationFn: (patch: { zoneId: number; name?: string; cidr?: string }) =>
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/zones/${patch.zoneId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    onSuccess: invalidate,
+  });
+
+  const deleteZone = useMutation({
+    mutationFn: (zoneId: number) => apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/zones/${zoneId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setSelection(null);
+      invalidate();
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: (params: { fromNodeId?: number; toNodeId?: number; fromZoneId?: number; toZoneId?: number }) =>
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/edges`, { method: 'POST', body: JSON.stringify(params) }),
+    onSuccess: invalidate,
+  });
+
   function handleAddNode(e: FormEvent) {
     e.preventDefault();
-    if (!cyberRangeId || !label.trim()) return;
+    if (!cyberRangeId || !newNodeLabel.trim()) return;
     addNode.mutate();
   }
 
-  function handleAddEdge(e: FormEvent) {
+  function handleAddZone(e: FormEvent) {
     e.preventDefault();
-    if (!cyberRangeId || !fromNodeId || !toNodeId) return;
-    addEdge.mutate();
+    if (!cyberRangeId || !newZoneName.trim()) return;
+    addZone.mutate();
   }
 
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-        Topology Admin
-      </h1>
+      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Topology Admin</h1>
 
-      <select
-        value={cyberRangeId}
-        onChange={(e) => setCyberRangeId(e.target.value ? Number(e.target.value) : '')}
-        style={{
-          background: 'var(--surface-1)',
-          border: '1px solid var(--surface-border)',
-          borderRadius: 'var(--radius-control)',
-          padding: 8,
-          color: 'var(--text-primary)',
-          marginBottom: 'var(--space-lg)',
-        }}
-      >
-        <option value="">Select a Cyber Range…</option>
-        {rangesData?.cyberRanges.map((cr) => (
-          <option key={cr.id} value={cr.id}>
-            {cr.dayLabel} — {cr.name}
-          </option>
-        ))}
-      </select>
+      <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+        <select value={cyberRangeId} onChange={(e) => { setCyberRangeId(e.target.value ? Number(e.target.value) : ''); setSelection(null); }} style={fieldStyle}>
+          <option value="">Select a Cyber Range…</option>
+          {rangesData?.cyberRanges.map((cr) => (
+            <option key={cr.id} value={cr.id}>
+              {cr.dayLabel} — {cr.name}
+            </option>
+          ))}
+        </select>
+
+        {cyberRangeId !== '' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
+            <input type="checkbox" checked={showInfrastructure} onChange={(e) => setShowInfrastructure(e.target.checked)} />
+            Show infrastructure resources (diagnostics only)
+          </label>
+        )}
+      </div>
 
       {cyberRangeId !== '' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: 'var(--space-xl)' }}>
-          <TopologyGraph
-            nodes={topologyData?.nodes ?? []}
-            edges={topologyData?.edges ?? []}
-            editable
-            onNodeDragStop={(nodeId, x, y) => moveNode.mutate({ nodeId, posX: x, posY: y })}
-          />
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: selection ? '1fr 300px' : '1fr', gap: 'var(--space-xl)' }}>
+            <TopologyGraph
+              zones={allZones}
+              nodes={visibleNodes}
+              edges={topologyData?.edges ?? []}
+              editable
+              onNodeDragStop={(nodeId, x, y) => moveNode.mutate({ nodeId, posX: x, posY: y })}
+              onNodeClick={(n) => setSelection({ type: 'node', id: n.id })}
+              onZoneClick={(z) => setSelection({ type: 'zone', id: z.id })}
+              onPaneClick={() => setSelection(null)}
+              onConnect={(from, to) =>
+                connectMutation.mutate({
+                  fromNodeId: from.type === 'node' ? from.id : undefined,
+                  fromZoneId: from.type === 'zone' ? from.id : undefined,
+                  toNodeId: to.type === 'node' ? to.id : undefined,
+                  toZoneId: to.type === 'zone' ? to.id : undefined,
+                })
+              }
+            />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-            <form onSubmit={handleAddNode} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Add node</h2>
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="Label (e.g. DC01)"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--surface-border)',
-                  borderRadius: 'var(--radius-control)',
-                  padding: 8,
-                  color: 'var(--text-primary)',
+            {selectedNode && (
+              <NodePanel
+                node={selectedNode}
+                zones={allZones}
+                onClose={() => setSelection(null)}
+                onSave={(patch) => patchNode.mutate({ nodeId: selectedNode.id, ...patch })}
+                onDelete={() => {
+                  if (window.confirm(`Delete "${selectedNode.label}"?`)) deleteNode.mutate(selectedNode.id);
+                }}
+                onAccessTargetChanged={invalidate}
+              />
+            )}
+
+            {selectedZone && (
+              <ZonePanel
+                zone={selectedZone}
+                memberCount={allNodes.filter((n) => n.zoneId === selectedZone.id).length}
+                onClose={() => setSelection(null)}
+                onSave={(patch) => patchZone.mutate({ zoneId: selectedZone.id, ...patch })}
+                onDelete={() => {
+                  if (window.confirm(`Delete zone "${selectedZone.name}"? Nodes inside it will be un-assigned, not deleted.`)) {
+                    deleteZone.mutate(selectedZone.id);
+                  }
                 }}
               />
-              <select
-                value={nodeType}
-                onChange={(e) => setNodeType(e.target.value)}
-                style={{
-                  background: 'var(--surface-1)',
-                  border: '1px solid var(--surface-border)',
-                  borderRadius: 'var(--radius-control)',
-                  padding: 8,
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <option value="host">Host</option>
-                <option value="service">Service</option>
-                <option value="network">Network</option>
-              </select>
-              <Button type="submit">Add node</Button>
-            </form>
+            )}
+          </div>
 
-            <form onSubmit={handleAddEdge} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Add connection</h2>
-              <select
-                value={fromNodeId}
-                onChange={(e) => setFromNodeId(e.target.value ? Number(e.target.value) : '')}
-                style={{ background: 'var(--surface-1)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', padding: 8, color: 'var(--text-primary)' }}
-              >
-                <option value="">From…</option>
-                {topologyData?.nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.label}
+          <div style={{ display: 'flex', gap: 'var(--space-xl)', marginTop: 'var(--space-lg)' }}>
+            <form onSubmit={handleAddNode} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+              <input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Label (e.g. DC01)" style={fieldStyle} />
+              <select value={newNodeRole} onChange={(e) => setNewNodeRole(e.target.value)} style={fieldStyle}>
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
                   </option>
                 ))}
               </select>
-              <select
-                value={toNodeId}
-                onChange={(e) => setToNodeId(e.target.value ? Number(e.target.value) : '')}
-                style={{ background: 'var(--surface-1)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', padding: 8, color: 'var(--text-primary)' }}
-              >
-                <option value="">To…</option>
-                {topologyData?.nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.label}
+              <select value={newNodeZoneId} onChange={(e) => setNewNodeZoneId(e.target.value ? Number(e.target.value) : '')} style={fieldStyle}>
+                <option value="">No zone</option>
+                {allZones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
                   </option>
                 ))}
               </select>
               <Button type="submit" variant="ghost">
-                Connect
+                Add node
               </Button>
             </form>
 
-            <form onSubmit={handleSaveAccessTarget} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Student browser access</h2>
-              <select value={accessNodeId} onChange={(e) => setAccessNodeId(e.target.value ? Number(e.target.value) : '')} style={selectStyle}>
-                <option value="">Select a node…</option>
-                {topologyData?.nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.label} {n.hasAccessTarget ? '(connectable)' : ''}
-                  </option>
-                ))}
-              </select>
-              {accessNodeId !== '' && (
-                <>
-                  {accessTargetData?.accessTarget && (
-                    <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
-                      Currently: {accessTargetData.accessTarget.protocol} to {accessTargetData.accessTarget.host}:{accessTargetData.accessTarget.port} — leave
-                      username/password blank to keep the same credential (re-entering rotates it).
-                    </div>
-                  )}
-                  <select value={accessProtocol} onChange={(e) => setAccessProtocol(e.target.value as 'rdp' | 'ssh')} style={selectStyle}>
-                    <option value="rdp">RDP</option>
-                    <option value="ssh">SSH</option>
-                  </select>
-                  <input value={accessHost} onChange={(e) => setAccessHost(e.target.value)} placeholder="Host / private IP" style={{ ...selectStyle, background: 'transparent' }} />
-                  <input value={accessPort} onChange={(e) => setAccessPort(e.target.value)} placeholder="Port" style={{ ...selectStyle, background: 'transparent' }} />
-                  <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={{ ...selectStyle, background: 'transparent' }} />
-                  <input
-                    value={accessPassword}
-                    onChange={(e) => setAccessPassword(e.target.value)}
-                    placeholder="Login password"
-                    type="password"
-                    style={{ ...selectStyle, background: 'transparent' }}
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button type="submit" variant="ghost" disabled={saveAccessTarget.isPending}>
-                      Save access target
-                    </Button>
-                    {accessTargetData?.accessTarget && (
-                      <Button type="button" variant="destructive" onClick={() => removeAccessTarget.mutate()}>
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
+            <form onSubmit={handleAddZone} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+              <input value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="Zone name (e.g. DMZ)" style={fieldStyle} />
+              <input value={newZoneCidr} onChange={(e) => setNewZoneCidr(e.target.value)} placeholder="CIDR (optional)" style={fieldStyle} />
+              <Button type="submit" variant="ghost">
+                Add zone
+              </Button>
             </form>
           </div>
-        </div>
+          <p style={{ fontSize: 12, color: 'var(--text-telemetry)', marginTop: 6 }}>
+            Drag between two cards (or a card and a zone) on the canvas to connect them — e.g. Internet → Firewall → Zone.
+          </p>
+        </>
       )}
     </div>
   );
 }
+
+function NodePanel({
+  node,
+  zones,
+  onClose,
+  onSave,
+  onDelete,
+  onAccessTargetChanged,
+}: {
+  node: TopologyNodeData;
+  zones: TopologyZoneData[];
+  onClose: () => void;
+  onSave: (patch: { label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean }) => void;
+  onDelete: () => void;
+  onAccessTargetChanged: () => void;
+}) {
+  const [label, setLabel] = useState(node.label);
+  const metadata = parseMetadata(node.metadataJson);
+
+  const [accessProtocol, setAccessProtocol] = useState<'rdp' | 'ssh'>('rdp');
+  const [accessHost, setAccessHost] = useState((metadata?.privateIpAddress as string) ?? '');
+  const [accessPort, setAccessPort] = useState('3389');
+  const [accessUsername, setAccessUsername] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
+
+  const { data: accessTargetData } = useQuery({
+    queryKey: ['access-target', node.id],
+    queryFn: () => apiFetch<{ accessTarget: AccessTarget | null }>(`/admin/topology/nodes/${node.id}/access-target`),
+  });
+
+  const saveAccessTarget = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/topology/nodes/${node.id}/access-target`, {
+        method: 'PUT',
+        body: JSON.stringify({ protocol: accessProtocol, host: accessHost, port: Number(accessPort), username: accessUsername, password: accessPassword }),
+      }),
+    onSuccess: () => {
+      setAccessPassword('');
+      onAccessTargetChanged();
+    },
+  });
+
+  const removeAccessTarget = useMutation({
+    mutationFn: () => apiFetch(`/admin/topology/nodes/${node.id}/access-target`, { method: 'DELETE' }),
+    onSuccess: onAccessTargetChanged,
+  });
+
+  return (
+    <div style={panelStyle}>
+      <PanelHeader onClose={onClose} />
+
+      <input value={label} onChange={(e) => setLabel(e.target.value)} onBlur={() => label !== node.label && onSave({ label })} style={{ ...fieldStyle, width: '100%', fontSize: 15, fontWeight: 500, marginBottom: 10 }} />
+
+      <Field label="Role">
+        <select value={node.role ?? ''} onChange={(e) => onSave({ role: e.target.value })} style={{ ...fieldStyle, width: '100%' }}>
+          {ROLE_OPTIONS.map((r) => (
+            <option key={r.value} value={r.value}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Zone">
+        <select value={node.zoneId ?? ''} onChange={(e) => e.target.value && onSave({ zoneId: Number(e.target.value) })} style={{ ...fieldStyle, width: '100%' }}>
+          <option value="">No zone</option>
+          {zones.map((z) => (
+            <option key={z.id} value={z.id}>
+              {z.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Status">
+        <select value={node.status ?? ''} onChange={(e) => onSave({ status: e.target.value })} style={{ ...fieldStyle, width: '100%' }}>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s || 'Unknown'}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)', margin: '10px 0' }}>
+        <input type="checkbox" checked={!!node.isVisibleToStudents} onChange={(e) => onSave({ isVisibleToStudents: e.target.checked })} />
+        Visible to students
+      </label>
+
+      {/* Admin-only diagnostics — the raw discovered metadata, never shown on the canvas itself. */}
+      {metadata && (
+        <details style={{ marginBottom: 10 }}>
+          <summary style={{ fontSize: 12, color: 'var(--text-telemetry)', cursor: 'pointer' }}>Diagnostics</summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+            {Object.entries(metadata).map(([key, value]) => (
+              <div key={key} style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                <span style={{ color: 'var(--text-telemetry)' }}>{key}:</span> {formatMetadataValue(value)}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
+        <h3 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 6px' }}>Student browser access</h3>
+        {accessTargetData?.accessTarget && (
+          <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 6 }}>
+            Currently: {accessTargetData.accessTarget.protocol} to {accessTargetData.accessTarget.host}:{accessTargetData.accessTarget.port} — leave
+            username/password blank to keep the credential (re-entering rotates it).
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <select value={accessProtocol} onChange={(e) => setAccessProtocol(e.target.value as 'rdp' | 'ssh')} style={fieldStyle}>
+            <option value="rdp">RDP</option>
+            <option value="ssh">SSH</option>
+          </select>
+          <input value={accessHost} onChange={(e) => setAccessHost(e.target.value)} placeholder="Host / private IP" style={fieldStyle} />
+          <input value={accessPort} onChange={(e) => setAccessPort(e.target.value)} placeholder="Port" style={fieldStyle} />
+          <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={fieldStyle} />
+          <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password" type="password" style={fieldStyle} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button
+              variant="ghost"
+              disabled={saveAccessTarget.isPending || !accessHost.trim() || !accessUsername.trim() || !accessPassword.trim()}
+              onClick={() => saveAccessTarget.mutate()}
+            >
+              Save
+            </Button>
+            {accessTargetData?.accessTarget && (
+              <Button variant="destructive" onClick={() => removeAccessTarget.mutate()}>
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
+        <Button variant="ghost" disabled title="Run Script (Azure VM Run Command) — coming in a later phase" style={{ width: '100%', marginBottom: 8 }}>
+          Run Script (coming soon)
+        </Button>
+        <Button variant="destructive" onClick={onDelete} style={{ width: '100%' }}>
+          Delete node
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ZonePanel({
+  zone,
+  memberCount,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  zone: TopologyZoneData;
+  memberCount: number;
+  onClose: () => void;
+  onSave: (patch: { name?: string; cidr?: string }) => void;
+  onDelete: () => void;
+}) {
+  const [name, setName] = useState(zone.name);
+  const [cidr, setCidr] = useState(zone.cidr ?? '');
+
+  return (
+    <div style={panelStyle}>
+      <PanelHeader onClose={onClose} />
+      <Field label="Zone name">
+        <input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== zone.name && onSave({ name: name.trim() })} style={{ ...fieldStyle, width: '100%' }} />
+      </Field>
+      <Field label="CIDR">
+        <input value={cidr} onChange={(e) => setCidr(e.target.value)} onBlur={() => onSave({ cidr })} style={{ ...fieldStyle, width: '100%' }} />
+      </Field>
+      <p style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
+        {memberCount} node{memberCount === 1 ? '' : 's'} in this zone.
+        {zone.externalKey && ' Auto-created from an Azure subnet — the name is safe to change.'}
+      </p>
+      <Button variant="destructive" onClick={onDelete} style={{ width: '100%', marginTop: 8 }}>
+        Delete zone
+      </Button>
+    </div>
+  );
+}
+
+function PanelHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+      <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+const panelStyle: React.CSSProperties = {
+  background: 'var(--surface-1)',
+  border: '1px solid var(--surface-border)',
+  borderRadius: 'var(--radius-container)',
+  padding: 'var(--space-md)',
+  height: 'fit-content',
+  maxHeight: 600,
+  overflowY: 'auto',
+};

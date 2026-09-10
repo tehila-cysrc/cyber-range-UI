@@ -12,6 +12,11 @@ Format:
 ## Open
 
 - [ ] 2026-09-09 | manual | Student self-report of own progress (vs. instructor-only manual scoring, the current MVP assumption) is a plausible v2 — nothing in the PRD forbids it, just deferred for scope.
+- [ ] 2026-09-10 | manual | `cyber_ranges.is_active` (added to retire the old seeded example catalog from the picker `<select>`s without breaking real history) has no admin endpoint/UI to toggle — currently only settable via direct DB access. An instructor-facing "archive this Cyber Range" action would need `PATCH /admin/cyber-ranges/:id {isActive}` + a small UI affordance.
+- [ ] 2026-09-10 | from-plan:azure-swirling-mitten | `topology_nodes.status` is instructor-set only (Phase 1) — a future enhancement could sync it automatically from the VM's live Azure power state during discovery instead.
+- [ ] 2026-09-10 | from-plan:azure-swirling-mitten | Dragging a node's card into another zone's visual bounding box on the canvas doesn't reassign its `zone_id` — zone assignment is only changeable via the side panel's zone dropdown today. True drag-to-reassign would need real React Flow parent/child (group) nodes with coordinate remapping, deferred for scope.
+- [ ] 2026-09-10 | from-plan:azure-swirling-mitten | `PATCH .../topology/nodes/:nodeId` can't explicitly clear `zoneId` back to "no zone" (COALESCE-based partial update, same pre-existing limitation as label/nodeType) — un-assignment currently only happens by deleting the zone itself.
+- [ ] 2026-09-10 | from-plan:azure-swirling-mitten | Phase 2 (Azure Bastion Shareable Links + Key Vault credentials, replacing the non-functional Guacamole-lite Connect stub) and Phase 3 (instructor Run Script via Azure VM Run Command) are designed in the plan but not yet implemented — Phase 2 is gated on a real Azure PoC first (see the plan file).
 
 ## Done
 

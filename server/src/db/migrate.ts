@@ -21,6 +21,37 @@ function addColumnIfMissing(table: string, column: string, definition: string) {
   }
 }
 
+// topology_edges predates from_zone_id/to_zone_id and had NOT NULL from_node_id/to_node_id. SQLite
+// can't relax a NOT NULL constraint or add a CHECK via plain ALTER TABLE, so a database created before
+// the logical-topology redesign needs the table rebuilt once. Guarded by the presence of from_zone_id
+// so re-running migrate() is a no-op on an already-migrated database (this codebase's convention).
+function relaxTopologyEdgesForZones() {
+  const columns = db.prepare(`PRAGMA table_info(topology_edges)`).all() as { name: string }[];
+  if (columns.some((c) => c.name === 'from_zone_id')) return;
+
+  db.exec(`
+    CREATE TABLE topology_edges_new (
+      id INTEGER PRIMARY KEY,
+      cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+      from_node_id INTEGER REFERENCES topology_nodes(id),
+      to_node_id INTEGER REFERENCES topology_nodes(id),
+      from_zone_id INTEGER REFERENCES topology_zones(id),
+      to_zone_id INTEGER REFERENCES topology_zones(id),
+      label TEXT,
+      external_key TEXT,
+      relation_type TEXT,
+      environment_id INTEGER REFERENCES cloud_environments(id),
+      discovery_run_id INTEGER REFERENCES environment_discovery_runs(id),
+      CHECK ((from_node_id IS NOT NULL) != (from_zone_id IS NOT NULL)),
+      CHECK ((to_node_id IS NOT NULL) != (to_zone_id IS NOT NULL))
+    );
+    INSERT INTO topology_edges_new (id, cyber_range_id, from_node_id, to_node_id, label, external_key, relation_type, environment_id, discovery_run_id)
+      SELECT id, cyber_range_id, from_node_id, to_node_id, label, external_key, relation_type, environment_id, discovery_run_id FROM topology_edges;
+    DROP TABLE topology_edges;
+    ALTER TABLE topology_edges_new RENAME TO topology_edges;
+  `);
+}
+
 export function migrate() {
   // Order matters: run.sql's foreign keys reference config.sql's tables.
   runSchemaFile('schema/config.sql');
@@ -35,9 +66,27 @@ export function migrate() {
   addColumnIfMissing('topology_edges', 'environment_id', 'INTEGER REFERENCES cloud_environments(id)');
   addColumnIfMissing('topology_edges', 'discovery_run_id', 'INTEGER REFERENCES environment_discovery_runs(id)');
 
+  // Logical-topology redesign: zones are the visual grouping container (one per Azure subnet, or
+  // hand-added); node_type 'vnet'/'subnet' rows from older discovery runs are superseded by zones —
+  // see discovery/azureDiscoveryProvider.ts. role/is_visible_to_students are write-once-then-preserved
+  // across re-discovery, same pattern as pos_x/pos_y, so instructor edits survive a re-run.
+  addColumnIfMissing('topology_nodes', 'zone_id', 'INTEGER REFERENCES topology_zones(id)');
+  addColumnIfMissing('topology_nodes', 'role', 'TEXT');
+  addColumnIfMissing('topology_nodes', 'is_visible_to_students', 'INTEGER NOT NULL DEFAULT 1');
+  // Manually set by the instructor for now (running|starting|stopping|stopped|error|null=unknown) — a
+  // future discovery enhancement could sync this from the VM's live Azure power state automatically.
+  addColumnIfMissing('topology_nodes', 'status', 'TEXT');
+  relaxTopologyEdgesForZones();
+
   // Optional screenshot/evidence attached to a documentation entry — stored inline as a data: URL
   // rather than on disk/blob storage, matching this app's low-scale internal-tool scope.
   addColumnIfMissing('documentation_entries', 'image_data_url', 'TEXT');
+
+  // Soft-hide, never hard-delete: a Cyber Range can carry real history (team_cyber_range_progress/
+  // documentation_entries/scores all FK to it, enforced — see PRAGMA foreign_keys in db/index.ts), so
+  // a range with any history can't be deleted without destroying that history. is_active=0 removes it
+  // from the picker lists (GET /cyber-ranges) without touching anything that already references it.
+  addColumnIfMissing('cyber_ranges', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
 
   // external_key is the Azure ARM resource id for discovered nodes/edges — globally unique per
   // cyber range, so a safe upsert target for re-running discovery (INSERT ... ON CONFLICT DO UPDATE)
@@ -49,6 +98,10 @@ export function migrate() {
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_edges_external_key
        ON topology_edges (cyber_range_id, external_key) WHERE external_key IS NOT NULL`,
+  );
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_zones_external_key
+       ON topology_zones (cyber_range_id, external_key) WHERE external_key IS NOT NULL`,
   );
 
   console.log('[migrate] schema applied');

@@ -11,7 +11,7 @@ router.use(requireAuth, requireRole('instructor'));
 
 router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { label, nodeType, posX, posY, metadata } = req.body ?? {};
+  const { label, nodeType, posX, posY, metadata, role, zoneId } = req.body ?? {};
 
   if (typeof label !== 'string' || typeof nodeType !== 'string') {
     res.status(400).json({ error: 'label and nodeType are required' });
@@ -20,8 +20,8 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO topology_nodes (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO topology_nodes (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json, role, zone_id, is_visible_to_students)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     )
     .run(
       cyberRangeId,
@@ -31,6 +31,8 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
       posX ?? 0,
       posY ?? 0,
       metadata ? JSON.stringify(metadata) : null,
+      typeof role === 'string' ? role : null,
+      typeof zoneId === 'number' ? zoneId : null,
     );
 
   const id = result.lastInsertRowid as number;
@@ -38,8 +40,8 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
 
   const node = db
     .prepare(
-      `SELECT id, external_key AS externalKey, label, node_type AS nodeType,
-              pos_x AS posX, pos_y AS posY, metadata_json AS metadataJson
+      `SELECT id, external_key AS externalKey, label, node_type AS nodeType, role, zone_id AS zoneId,
+              pos_x AS posX, pos_y AS posY, metadata_json AS metadataJson, is_visible_to_students AS isVisibleToStudents
        FROM topology_nodes WHERE id = ?`,
     )
     .get(id);
@@ -49,7 +51,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
 
 router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) => {
   const nodeId = Number(req.params.nodeId);
-  const { label, nodeType, posX, posY } = req.body ?? {};
+  const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status } = req.body ?? {};
 
   const existing = db.prepare('SELECT id FROM topology_nodes WHERE id = ?').get(nodeId);
   if (!existing) {
@@ -62,9 +64,23 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =>
        label = COALESCE(?, label),
        node_type = COALESCE(?, node_type),
        pos_x = COALESCE(?, pos_x),
-       pos_y = COALESCE(?, pos_y)
+       pos_y = COALESCE(?, pos_y),
+       role = COALESCE(?, role),
+       zone_id = COALESCE(?, zone_id),
+       is_visible_to_students = COALESCE(?, is_visible_to_students),
+       status = COALESCE(?, status)
      WHERE id = ?`,
-  ).run(label ?? null, nodeType ?? null, posX ?? null, posY ?? null, nodeId);
+  ).run(
+    label ?? null,
+    nodeType ?? null,
+    posX ?? null,
+    posY ?? null,
+    typeof role === 'string' ? role : null,
+    typeof zoneId === 'number' ? zoneId : null,
+    typeof isVisibleToStudents === 'boolean' ? (isVisibleToStudents ? 1 : 0) : null,
+    typeof status === 'string' ? status : null,
+    nodeId,
+  );
 
   res.json({ ok: true });
 });
@@ -158,25 +174,30 @@ router.delete('/topology/nodes/:nodeId/access-target', (req, res) => {
   res.json({ ok: true });
 });
 
+// Each side of an edge is either a node or a zone (never both, never neither) — lets an instructor
+// draw a boundary like Internet -> Firewall -> Zone, not just node-to-node lines. Mirrored by the
+// CHECK constraints on topology_edges itself (belt-and-suspenders, not just app-level validation).
 router.post('/cyber-ranges/:cyberRangeId/topology/edges', (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { fromNodeId, toNodeId, label } = req.body ?? {};
+  const { fromNodeId, toNodeId, fromZoneId, toZoneId, label } = req.body ?? {};
 
-  if (!fromNodeId || !toNodeId) {
-    res.status(400).json({ error: 'fromNodeId and toNodeId are required' });
+  const fromOk = (!!fromNodeId) !== (!!fromZoneId);
+  const toOk = (!!toNodeId) !== (!!toZoneId);
+  if (!fromOk || !toOk) {
+    res.status(400).json({ error: 'each side of an edge needs exactly one of a node id or a zone id' });
     return;
   }
 
   const result = db
     .prepare(
-      `INSERT INTO topology_edges (cyber_range_id, from_node_id, to_node_id, label)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO topology_edges (cyber_range_id, from_node_id, to_node_id, from_zone_id, to_zone_id, label)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(cyberRangeId, fromNodeId, toNodeId, label ?? null);
+    .run(cyberRangeId, fromNodeId ?? null, toNodeId ?? null, fromZoneId ?? null, toZoneId ?? null, label ?? null);
 
   const edge = db
     .prepare(
-      'SELECT id, from_node_id AS fromNodeId, to_node_id AS toNodeId, label FROM topology_edges WHERE id = ?',
+      'SELECT id, from_node_id AS fromNodeId, to_node_id AS toNodeId, from_zone_id AS fromZoneId, to_zone_id AS toZoneId, label FROM topology_edges WHERE id = ?',
     )
     .get(result.lastInsertRowid);
 
@@ -185,6 +206,60 @@ router.post('/cyber-ranges/:cyberRangeId/topology/edges', (req, res) => {
 
 router.delete('/cyber-ranges/:cyberRangeId/topology/edges/:edgeId', (req, res) => {
   db.prepare('DELETE FROM topology_edges WHERE id = ?').run(Number(req.params.edgeId));
+  res.json({ ok: true });
+});
+
+// Zones — the visual grouping container. Auto-created one-per-Azure-subnet by discovery; these
+// endpoints cover the manual side (a hand-added zone for a manual-only cyber range, or renaming an
+// auto-created one).
+router.post('/cyber-ranges/:cyberRangeId/topology/zones', (req, res) => {
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  const { name, cidr } = req.body ?? {};
+
+  if (typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+
+  const result = db
+    .prepare('INSERT INTO topology_zones (cyber_range_id, name, cidr) VALUES (?, ?, ?)')
+    .run(cyberRangeId, name.trim(), typeof cidr === 'string' && cidr.trim() ? cidr.trim() : null);
+
+  const zone = db
+    .prepare('SELECT id, external_key AS externalKey, name, cidr, sort_order AS sortOrder FROM topology_zones WHERE id = ?')
+    .get(result.lastInsertRowid);
+
+  res.status(201).json({ zone });
+});
+
+router.patch('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) => {
+  const zoneId = Number(req.params.zoneId);
+  const { name, cidr, sortOrder } = req.body ?? {};
+
+  const existing = db.prepare('SELECT id FROM topology_zones WHERE id = ?').get(zoneId);
+  if (!existing) {
+    res.status(404).json({ error: 'zone not found' });
+    return;
+  }
+
+  db.prepare(
+    `UPDATE topology_zones SET
+       name = COALESCE(?, name),
+       cidr = COALESCE(?, cidr),
+       sort_order = COALESCE(?, sort_order)
+     WHERE id = ?`,
+  ).run(typeof name === 'string' && name.trim() ? name.trim() : null, cidr ?? null, typeof sortOrder === 'number' ? sortOrder : null, zoneId);
+
+  res.json({ ok: true });
+});
+
+// Deleting a zone un-assigns (doesn't delete) any node placed in it — a zone is just a grouping
+// container, so removing it shouldn't take hosts down with it.
+router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) => {
+  const zoneId = Number(req.params.zoneId);
+  db.prepare('UPDATE topology_nodes SET zone_id = NULL WHERE zone_id = ?').run(zoneId);
+  db.prepare('DELETE FROM topology_edges WHERE from_zone_id = ? OR to_zone_id = ?').run(zoneId, zoneId);
+  db.prepare('DELETE FROM topology_zones WHERE id = ?').run(zoneId);
   res.json({ ok: true });
 });
 
