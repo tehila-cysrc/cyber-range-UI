@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { Button } from '../../components/Button';
 import { HelpRequestButton } from '../helpRequests/HelpRequestButton';
 import { useAuthStore } from '../../stores/authStore';
 import { useClockStore } from '../../stores/clockStore';
@@ -93,44 +95,122 @@ export function ActiveCyberRangePage() {
       ) : (
         <div
           style={{
-            marginTop: 'var(--space-md)',
-            padding: 'var(--space-lg)',
+            marginTop: 'var(--space-lg)',
+            padding: 'var(--space-xl)',
             border: '1px solid var(--surface-border)',
             borderRadius: 'var(--radius-container)',
             background: 'var(--surface-1)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 'var(--space-sm)',
+            gap: 'var(--space-lg)',
+            maxWidth: 720,
           }}
         >
-          <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
-            <TelemetryBadge tone="secondary">{active.day.label}</TelemetryBadge>
-            <TelemetryBadge tone={active.difficulty === 'advanced' ? 'alert' : 'tertiary'}>
-              {active.difficulty}
-            </TelemetryBadge>
-          </div>
-          <h1 style={{ fontSize: 28, margin: 0, color: 'var(--text-primary)' }}>{active.name}</h1>
-          <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>
-            Expected time: {formatMinutes(active.expectedDurationMinutes)}
-          </div>
-          {remainingSeconds != null && (
-            <div
-              className="tabular"
-              style={{ fontSize: 22, color: timeUp ? 'var(--signal-alert)' : 'var(--signal-primary)' }}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+              <TelemetryBadge tone="secondary">{active.day.label}</TelemetryBadge>
+              <TelemetryBadge tone={active.difficulty === 'advanced' ? 'alert' : 'tertiary'}>
+                {active.difficulty}
+              </TelemetryBadge>
+            </div>
+            <h1
+              style={{
+                fontSize: 36,
+                lineHeight: '42px',
+                letterSpacing: '-0.02em',
+                fontWeight: 600,
+                margin: 0,
+                color: 'var(--text-primary)',
+              }}
             >
-              {timeUp
-                ? "Time's up"
-                : `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s remaining`}
+              {active.name}
+            </h1>
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>
+              Expected time: {formatMinutes(active.expectedDurationMinutes)}
+            </div>
+          </div>
+
+          {remainingSeconds != null && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-telemetry)',
+                }}
+              >
+                Mission Window
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
+                <span
+                  className="tabular"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 40,
+                    lineHeight: '44px',
+                    fontWeight: 500,
+                    color: timeUp ? 'var(--signal-alert)' : 'var(--text-primary)',
+                  }}
+                >
+                  {timeUp
+                    ? "Time's up"
+                    : `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s`}
+                </span>
+                {!timeUp && (
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: 'var(--signal-secondary)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Remaining
+                  </span>
+                )}
+              </div>
             </div>
           )}
+
           {stageLabel && stageVisualStyle && !timeUp && (
             <PressureStageBanner label={stageLabel} visualStyle={stageVisualStyle} />
           )}
-          {role === 'student' && (
-            <div style={{ marginTop: 'var(--space-sm)' }}>
-              <HelpRequestButton />
-            </div>
-          )}
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 'var(--space-lg)',
+              marginTop: 'var(--space-xs)',
+            }}
+          >
+            <Link to="/investigation" style={{ textDecoration: 'none' }}>
+              <Button
+                variant="primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-sm)' }}
+              >
+                Enter Investigation Workspace
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Button>
+            </Link>
+            {role === 'student' && <HelpRequestButton />}
+          </div>
         </div>
       )}
     </div>

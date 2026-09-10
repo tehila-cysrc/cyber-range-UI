@@ -5,6 +5,7 @@ import { disconnectSocket } from '../lib/socketClient';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
 import logoUrl from '../assets/company-logo.svg';
+import appIconUrl from '../assets/app-icon.svg';
 
 // NOTE: docs/DESIGN.md's nav spec lists "Milestones" as the 4th destination. The PRD dropped
 // discrete milestones in favor of free-form instructor scoring on documentation (US-007), so this
@@ -148,14 +149,7 @@ export function AppShell() {
           background: 'var(--surface-1)',
         }}
       >
-        <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: 'var(--signal-primary)',
-          }}
-        />
+        <img src={appIconUrl} alt="Range Core" style={{ width: 28, height: 28, borderRadius: 'var(--radius-control)' }} />
 
         <div style={{ display: 'flex', gap: 'var(--space-lg)', flex: 1 }}>
           {NAV_ITEMS.map((item) => (

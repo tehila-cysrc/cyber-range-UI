@@ -1588,3 +1588,49 @@ RESULT: verified-live for everything Phase 1 touches, EXCEPT live Azure discover
     interaction check of the new UI in an actual browser was possible this session; the user should
     click through Topology Admin + the student Topology view once to confirm the new layout reads
     well before relying on it.
+==================================================================
+[2026-09-10 13:47 IDT] session=stitch-design-import
+TASK: User provided a Stitch export (C:\Users\Liram\Downloads\stitch_cyber_range_minimal_ui.zip,
+  7 mockup screens + an "Obsidian Telemetry" DESIGN.md matching ours exactly) and asked to pull in
+  its logo (replacing the plain green nav dot) and whatever design is relevant across the mockups,
+  explicitly skipping anything not relevant to this project. Asked the user to scope the page-by-page
+  pass; they said to review every mockup and bring in whatever fits.
+FILES:
+  A client/src/assets/app-icon.svg (radar/pulse mark from the zip's range_core_telemetry_logo/
+    screen, recolored from its own hardcoded hex to this app's actual tokens: rect fill ->
+    --surface-1's #0f172a, ring/dot/tick -> --signal-primary's #10b981 — those happened to already
+    match almost exactly. NOTE: this is a different green from the user's own brand wordmark/favicon
+    (company-logo.svg / favicon.svg, #53B464, brought in during session student-self-registration,
+    fix #14/#15) — left both as-is; this new mark is the in-app "signal" icon, not a brand swap.)
+  M client/src/app/AppShell.tsx (nav's plain 10x10 `--signal-primary` circle -> the new app-icon.svg,
+    28x28)
+  M client/src/features/topology/TopologyViewerPage.tsx (done directly, not delegated — topology was
+    just redesigned in Phase 1 and I didn't want a fresh-context agent overwriting that blind: added a
+    node-count + per-status TelemetryBadge strip above the graph using real status data, no invented
+    "compromised/secure" states like the mockup's since we don't track that; restyled the node detail
+    panel with a status badge and an IP/OS field-row layout. Left TopologyGraph.tsx/ReactFlow alone.)
+  M client/src/features/activeCyberRange/ActiveCyberRangePage.tsx, documentation/InvestigationPage.tsx,
+    team/TeamWorkspacePage.tsx, leaderboard/LeaderboardPage.tsx, history/CyberRangeSummaryPage.tsx —
+    each done by a separate forked subagent (parallel, one file each, no shared-file edits, no
+    commits) mapping one mockup screen to the real page it corresponds to: larger mono-eyebrow/
+    headline treatment, a connected vertical timeline (marker + line, filled for important findings)
+    replacing flat boxed lists on Investigation and the debrief page, a leaderboard "duel spotlight"
+    for the top 2 teams (real totalPoints, no fabricated per-team stats) above the existing flat list,
+    denser roster styling with the existing Avatar component on Team. All reused existing shared
+    components (TelemetryBadge/Avatar/Button/EmptyState/FlagIcon) and existing CSS-variable tokens —
+    no Tailwind, no new dependencies.
+  Deliberately NOT touched: scoring/ProgressPage.tsx and the mockup's milestones_progress screen —
+    that mockup is a literal discrete-milestone checklist with locked stages and flag{} submission,
+    which is exactly the concept this project's PRD dropped in favor of free-form instructor scoring
+    (see root CLAUDE.md). Porting it would reintroduce a rejected concept.
+  Also not touched: history/EventSummaryPage.tsx (no mockup screen structurally matches its
+    day-by-day stat grid).
+RESULT: `npx tsc --noEmit -p client/tsconfig.json` clean after every change (checked per-file by each
+  fork, then rechecked whole). I personally read every diff (not just the forks' self-reports) before
+  committing. `npm run dev` boots clean (client on :5173, server on :3001, confirmed via curl 200).
+  Browser MCP tooling (lean-chronoscope) still can't reach this machine's localhost from its sandbox
+  (same ERR_CONNECTION_REFUSED as every prior session) — no live visual click-through was possible;
+  left the dev server running so the user can look at Home/Investigation/Team/Leaderboard/Debrief/
+  Topology themselves before relying on this. Did not commit the user's separate, already-in-progress
+  uncommitted changes to EnvironmentsAdminPage.tsx/server cyberRanges routes — those predate this
+  session and are unrelated.

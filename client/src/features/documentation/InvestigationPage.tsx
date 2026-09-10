@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
+import { EmptyState } from '../../components/EmptyState';
 import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
@@ -176,10 +177,24 @@ export function InvestigationPage() {
   if (isInstructor) {
     return (
       <div style={{ padding: 'var(--space-xl)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-            Timeline{active ? ` — ${active.name}` : ''}
-          </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-telemetry)',
+                marginBottom: 4,
+              }}
+            >
+              Shared Timeline
+            </div>
+            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+              Timeline{active ? ` — ${active.name}` : ''}
+            </h1>
+          </div>
           <select
             value={selectedTeamId}
             onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
@@ -201,18 +216,11 @@ export function InvestigationPage() {
         </div>
 
         {!selectedTeamId ? (
-          <div style={{ color: 'var(--text-muted)' }}>Pick a team above to view its timeline.</div>
+          <EmptyState message="Pick a team above to view its timeline." />
         ) : !active ? (
-          <div style={{ color: 'var(--text-muted)' }}>No active Cyber Range for this team.</div>
+          <EmptyState message="No active Cyber Range for this team." />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-            {entriesData?.entries.length === 0 && (
-              <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No entries yet.</div>
-            )}
-            {entriesData?.entries.map((entry) => (
-              <TimelineEntry key={entry.id} entry={entry} />
-            ))}
-          </div>
+          <Timeline entries={entriesData?.entries} />
         )}
       </div>
     );
@@ -220,8 +228,8 @@ export function InvestigationPage() {
 
   if (!active) {
     return (
-      <div style={{ padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>
-        No active Cyber Range — documentation opens once your team's investigation starts.
+      <div style={{ padding: 'var(--space-xl)' }}>
+        <EmptyState message="No active Cyber Range — documentation opens once your team's investigation starts." />
       </div>
     );
   }
@@ -236,26 +244,61 @@ export function InvestigationPage() {
       }}
     >
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-            Timeline — {active.name}
-          </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-telemetry)',
+                marginBottom: 4,
+              }}
+            >
+              Incident Timeline
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
+              <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Timeline — {active.name}</h1>
+              {entriesData && (
+                <TelemetryBadge tone="secondary">
+                  {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}
+                </TelemetryBadge>
+              )}
+            </div>
+          </div>
           <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
             View topology →
           </Link>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          {entriesData?.entries.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No entries yet.</div>
-          )}
-          {entriesData?.entries.map((entry) => (
-            <TimelineEntry key={entry.id} entry={entry} />
-          ))}
-        </div>
+        <Timeline entries={entriesData?.entries} />
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-        <h2 style={{ fontSize: 16, color: 'var(--text-muted)', margin: 0 }}>Add entry</h2>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-sm)',
+          background: 'var(--surface-1)',
+          border: '1px solid var(--surface-border)',
+          borderRadius: 'var(--radius-container)',
+          padding: 'var(--space-lg)',
+          alignSelf: 'start',
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--text-telemetry)',
+            margin: 0,
+          }}
+        >
+          Add entry
+        </h2>
         <textarea
           value={body}
           onChange={(e) => active && setDraft(active.cyberRangeId, e.target.value)}
@@ -345,15 +388,53 @@ export function InvestigationPage() {
   );
 }
 
+// A connected vertical thread rather than a flat list of boxes — each entry gets a marker (filled
+// for an important finding, hollow otherwise) joined to the next by a line segment, echoing the
+// shared, ongoing nature of the timeline (US-003) instead of implying discrete, closed steps.
+function Timeline({ entries }: { entries: DocEntry[] | undefined }) {
+  if (!entries) return null;
+  if (entries.length === 0) return <EmptyState message="No entries yet." />;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {entries.map((entry, i) => (
+        <div key={entry.id} style={{ display: 'flex', gap: 'var(--space-md)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+            <span
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: entry.isImportantFinding ? 'var(--signal-primary)' : 'transparent',
+                border: `1.5px solid ${entry.isImportantFinding ? 'var(--signal-primary)' : 'var(--surface-border)'}`,
+                color: 'var(--surface-floor)',
+                flexShrink: 0,
+              }}
+            >
+              {entry.isImportantFinding && <FlagIcon width={11} height={11} />}
+            </span>
+            {i < entries.length - 1 && (
+              <span style={{ width: 1.5, flex: 1, minHeight: 'var(--space-md)', background: 'var(--surface-border)' }} />
+            )}
+          </div>
+          <div style={{ flex: 1, paddingBottom: 'var(--space-lg)', minWidth: 0 }}>
+            <TimelineEntry entry={entry} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TimelineEntry({ entry }: { entry: DocEntry }) {
   return (
     <div
       style={{
         padding: 'var(--space-sm) var(--space-md)',
         border: '1px solid var(--surface-border)',
-        borderLeft: entry.isImportantFinding
-          ? '3px solid var(--signal-primary)'
-          : '1px solid var(--surface-border)',
         borderRadius: 'var(--radius-control)',
         background: 'var(--surface-1)',
       }}

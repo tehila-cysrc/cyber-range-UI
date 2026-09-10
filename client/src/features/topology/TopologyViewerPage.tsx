@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
+import { TelemetryBadge } from '../../components/TelemetryBadge';
 import {
   TopologyGraph,
   formatMetadataValue,
@@ -29,6 +30,14 @@ interface AccessSessionResponse {
   wsUrl: string | null;
   expiresAt: string;
 }
+
+const STATUS_TONE: Record<string, 'primary' | 'tertiary' | 'alert' | 'muted'> = {
+  running: 'primary',
+  starting: 'tertiary',
+  stopping: 'tertiary',
+  stopped: 'muted',
+  error: 'alert',
+};
 
 const ROLE_LABEL: Record<string, string> = {
   domain_controller: 'Domain Controller',
@@ -100,16 +109,37 @@ export function TopologyViewerPage() {
   const ip = metadata && typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
   const os = metadata && typeof metadata.osType === 'string' ? metadata.osType : null;
 
+  const nodes = topologyData?.nodes ?? [];
+  const statusCounts = nodes.reduce<Record<string, number>>((acc, n) => {
+    const key = n.status ?? 'unknown';
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div style={{ padding: 'var(--space-xl)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-          Topology — {active.name}
-        </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-sm)' }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-telemetry)' }}>
+            Network Topology
+          </div>
+          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '2px 0 0' }}>{active.name}</h1>
+        </div>
         <Link to="/investigation" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
           ← Back to investigation
         </Link>
       </div>
+
+      {nodes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 'var(--space-lg)' }}>
+          <TelemetryBadge tone="muted">{nodes.length} nodes detected</TelemetryBadge>
+          {Object.entries(statusCounts).map(([status, count]) => (
+            <TelemetryBadge key={status} tone={STATUS_TONE[status] ?? 'muted'}>
+              {status} ({count})
+            </TelemetryBadge>
+          ))}
+        </div>
+      )}
 
       {topologyData && topologyData.nodes.length === 0 ? (
         <EmptyState message="No topology has been configured for this Cyber Range yet." />
@@ -142,22 +172,28 @@ export function TopologyViewerPage() {
                   ×
                 </button>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-                {selectedNode.role ? ROLE_LABEL[selectedNode.role] ?? selectedNode.role : selectedNode.nodeType}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {selectedNode.role ? ROLE_LABEL[selectedNode.role] ?? selectedNode.role : selectedNode.nodeType}
+                </span>
+                <TelemetryBadge tone={STATUS_TONE[selectedNode.status ?? ''] ?? 'muted'}>{selectedNode.status ?? 'unknown'}</TelemetryBadge>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
-                <div>
-                  <span style={{ color: 'var(--text-telemetry)' }}>Status:</span> {selectedNode.status ?? 'unknown'}
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
                 {ip && (
-                  <div style={{ fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-sans)' }}>IP:</span> {ip}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      IP Route
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{ip}</span>
                   </div>
                 )}
                 {os && (
-                  <div>
-                    <span style={{ color: 'var(--text-telemetry)' }}>OS:</span> {formatMetadataValue(os)}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Operating Sys
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>{formatMetadataValue(os)}</span>
                   </div>
                 )}
               </div>
