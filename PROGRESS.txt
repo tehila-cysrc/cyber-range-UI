@@ -1634,3 +1634,28 @@ RESULT: `npx tsc --noEmit -p client/tsconfig.json` clean after every change (che
   Topology themselves before relying on this. Did not commit the user's separate, already-in-progress
   uncommitted changes to EnvironmentsAdminPage.tsx/server cyberRanges routes — those predate this
   session and are unrelated.
+==================================================================
+[2026-09-10 14:20 IDT] session=stitch-design-import
+TASK: Follow-up — after the dev server came back up (see below), user could actually see the app and
+  said a few designs from the Stitch mockups still looked unapplied, plus asked to enlarge the new
+  nav logo. Re-checked every real API route each fork had claimed had "no backing data" for a skipped
+  mockup element (teams.routes.ts /me and /me/active-cyber-range, cyberRangeProgress.service.ts) —
+  confirmed those skips were correct (no objectives/progress-percent field, no per-member
+  role/telemetry-state field exists server-side). The actual gap was the page *shell*: every one of
+  the 6 mockup screens repeats the same nav (icon + wordmark) and status-chip treatment, which no
+  fork touched since each was scoped to one feature file only, and I hadn't touched it either.
+FILES:
+  M client/src/app/AppShell.tsx — app-icon.svg 28px -> 40px; added a "Cyber Range" mono wordmark next
+    to it (using the actual page <title>, not the mockup's fictional "RANGE OPS" brand); added a
+    LiveStatusBadge showing Live/Offline off the real socket.io connection state (mirrors every
+    mockup's "LIVE RANGE" nav chip, but tied to genuine data instead of a fabricated claim).
+  (Also: diagnosed/fixed the 502 the user hit logging in — the API server (port 4000) wasn't actually
+  running, only the Vite client was; a background `npm run dev` launched earlier in this session had
+  its child process reaped when the launching shell command exited, a Windows/Git-Bash disown quirk.
+  Restarted `npm run dev -w server` directly; confirmed via curl that both :5173 and :4000 respond and
+  a real login POST returns 200 through the Vite proxy. No code change — noting it here since it
+  affected verification, not because it's a file change.)
+RESULT: `npx tsc --noEmit -p client/tsconfig.json` clean. Dev server up on :5173/:4000, confirmed via
+  curl. Browser MCP (lean-chronoscope) still can't reach this machine's localhost from the sandbox —
+  same limitation as every prior session — so this is compiles+curl-verified, not visually confirmed;
+  the user has the dev server open already and can judge the nav bar directly.

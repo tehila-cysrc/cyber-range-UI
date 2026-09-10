@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { disconnectSocket } from '../lib/socketClient';
+import { disconnectSocket, getSocket } from '../lib/socketClient';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
+import { TelemetryBadge } from '../components/TelemetryBadge';
 import logoUrl from '../assets/company-logo.svg';
 import appIconUrl from '../assets/app-icon.svg';
 
@@ -47,6 +48,28 @@ function NavItem({ to, label, end, alert }: { to: string; label: string; end?: b
       {label}
     </NavLink>
   );
+}
+
+// Reflects the actual socket.io connection (not a fabricated "live" claim) — every page relies on
+// this same socket for realtime updates, so its state is a meaningful, honest status to surface.
+function LiveStatusBadge() {
+  const [connected, setConnected] = useState(() => getSocket()?.connected ?? false);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    setConnected(socket.connected);
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
+
+  return <TelemetryBadge tone={connected ? 'primary' : 'muted'}>{connected ? 'Live' : 'Offline'}</TelemetryBadge>;
 }
 
 // Collapsed to just a green identity icon per user request — the name/role/sign-out live in a
@@ -149,7 +172,21 @@ export function AppShell() {
           background: 'var(--surface-1)',
         }}
       >
-        <img src={appIconUrl} alt="Range Core" style={{ width: 28, height: 28, borderRadius: 'var(--radius-control)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+          <img src={appIconUrl} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-control)' }} />
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 15,
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Cyber Range
+          </span>
+        </div>
 
         <div style={{ display: 'flex', gap: 'var(--space-lg)', flex: 1 }}>
           {NAV_ITEMS.map((item) => (
@@ -159,6 +196,7 @@ export function AppShell() {
             INSTRUCTOR_NAV_ITEMS.map((item) => <NavItem key={item.to} {...item} />)}
         </div>
 
+        {user && <LiveStatusBadge />}
         {user && <UserMenu displayName={user.displayName} role={user.role} onLogout={handleLogout} />}
       </nav>
 
