@@ -6,10 +6,21 @@ import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
+import { useAuthStore } from '../../stores/authStore';
 
 interface ActiveCyberRange {
   cyberRangeId: number;
   name: string;
+}
+
+interface Team {
+  id: number;
+  name: string;
+}
+
+interface TeamStatus {
+  teamId: number;
+  active: { cyberRangeId: number; name: string } | null;
 }
 
 interface Category {
@@ -33,22 +44,50 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB raw file, before base64 inflatio
 
 export function InvestigationPage() {
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.user?.role);
+  const isInstructor = role === 'instructor';
+
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [isImportant, setIsImportant] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
 
+  // Student: own team's active range, resolved server-side from the auth token — never a
+  // cross-team leak. Instructor: no team of their own, so this query stays off and they instead
+  // pick a team below to view (US-002's "no exposure to another team's documentation", the flip
+  // side — an instructor explicitly opting into ONE team's view, one at a time, never a merged one).
   const { data: activeData } = useQuery({
     queryKey: ['active-cyber-range'],
     queryFn: () => apiFetch<{ active: ActiveCyberRange | null }>('/teams/me/active-cyber-range'),
+    enabled: !isInstructor,
   });
-  const active = activeData?.active;
+  const studentActive = activeData?.active;
+
+  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
+  const { data: teamsData } = useQuery({
+    queryKey: ['admin-teams-list'],
+    queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
+    enabled: isInstructor,
+  });
+  const { data: dashboardData } = useQuery({
+    queryKey: ['instructor-dashboard'],
+    queryFn: () => apiFetch<{ teams: TeamStatus[] }>('/admin/dashboard'),
+    enabled: isInstructor,
+    refetchInterval: isInstructor ? 5000 : false,
+  });
+  const selectedTeamActive = isInstructor
+    ? dashboardData?.teams.find((t) => t.teamId === selectedTeamId)?.active ?? null
+    : null;
+
+  const active = isInstructor ? selectedTeamActive : studentActive;
+  const cyberRangeId = active?.cyberRangeId;
+  const teamIdParam = isInstructor && selectedTeamId ? selectedTeamId : null;
 
   // Draft text lives in a store keyed by cyber range, not local state, so it survives navigating
   // away to Topology and back (US-004's "don't lose your work state") rather than unmounting with
-  // the page.
-  const draft = useDraftStore((s) => (active ? s.draftsByCyberRange[active.cyberRangeId] ?? '' : ''));
+  // the page. Instructors never author entries, so drafts are moot for them.
+  const draft = useDraftStore((s) => (cyberRangeId ? s.draftsByCyberRange[cyberRangeId] ?? '' : ''));
   const setDraft = useDraftStore((s) => s.setDraft);
   const clearDraft = useDraftStore((s) => s.clearDraft);
   const body = draft;
@@ -56,18 +95,21 @@ export function InvestigationPage() {
   const { data: categoriesData } = useQuery({
     queryKey: ['documentation-categories'],
     queryFn: () => apiFetch<{ categories: Category[] }>('/documentation-categories'),
+    enabled: !isInstructor,
   });
 
   const { data: entriesData } = useQuery({
-    enabled: !!active,
-    queryKey: ['documentation', active?.cyberRangeId],
+    enabled: !!cyberRangeId && (!isInstructor || !!teamIdParam),
+    queryKey: ['documentation', cyberRangeId, teamIdParam],
     queryFn: () =>
-      apiFetch<{ entries: DocEntry[] }>(`/cyber-ranges/${active!.cyberRangeId}/documentation`),
+      apiFetch<{ entries: DocEntry[] }>(
+        `/cyber-ranges/${cyberRangeId}/documentation${teamIdParam ? `?teamId=${teamIdParam}` : ''}`,
+      ),
   });
 
   const mutation = useMutation({
     mutationFn: () =>
-      apiFetch(`/cyber-ranges/${active!.cyberRangeId}/documentation`, {
+      apiFetch(`/cyber-ranges/${cyberRangeId}/documentation`, {
         method: 'POST',
         body: JSON.stringify({
           body,
@@ -78,13 +120,13 @@ export function InvestigationPage() {
         }),
       }),
     onSuccess: () => {
-      if (active) clearDraft(active.cyberRangeId);
+      if (cyberRangeId) clearDraft(cyberRangeId);
       setIsImportant(false);
       setCategoryId('');
       setNewCategoryLabel('');
       setImageDataUrl(null);
       setImageError(null);
-      queryClient.invalidateQueries({ queryKey: ['documentation', active?.cyberRangeId] });
+      queryClient.invalidateQueries({ queryKey: ['documentation', cyberRangeId, teamIdParam] });
       // A free-text category may have just been created — refresh the dropdown for next time.
       if (newCategoryLabel.trim()) {
         queryClient.invalidateQueries({ queryKey: ['documentation-categories'] });
@@ -113,10 +155,14 @@ export function InvestigationPage() {
   }
 
   // Realtime: merge entries other teammates post, without a refetch (US-003's "shared timeline").
-  useSocketEvent<{ entry: DocEntry }>('documentation:new', ({ entry }) => {
-    if (!active) return;
+  // Now also reaches every instructor (see emitDocumentationNew), not just the authoring team's own
+  // room — an instructor viewing a different team (or none) must ignore it, and since two teams can
+  // share the same active cyber range, matching on cyberRangeId alone isn't enough either.
+  useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:new', ({ entry, teamId }) => {
+    if (!cyberRangeId) return;
+    if (isInstructor && teamId !== selectedTeamId) return;
     queryClient.setQueryData<{ entries: DocEntry[] }>(
-      ['documentation', active.cyberRangeId],
+      ['documentation', cyberRangeId, teamIdParam],
       (current) => {
         if (!current) return current;
         if (current.entries.some((e) => e.id === entry.id)) return current;
@@ -124,6 +170,51 @@ export function InvestigationPage() {
       },
     );
   });
+
+  if (isInstructor) {
+    return (
+      <div style={{ padding: 'var(--space-xl)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
+            Timeline{active ? ` — ${active.name}` : ''}
+          </h1>
+          <select
+            value={selectedTeamId}
+            onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
+            style={{
+              background: 'var(--surface-1)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 'var(--radius-control)',
+              padding: 8,
+              color: 'var(--text-primary)',
+            }}
+          >
+            <option value="">Select a team…</option>
+            {teamsData?.teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {!selectedTeamId ? (
+          <div style={{ color: 'var(--text-muted)' }}>Pick a team above to view its timeline.</div>
+        ) : !active ? (
+          <div style={{ color: 'var(--text-muted)' }}>No active Cyber Range for this team.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+            {entriesData?.entries.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No entries yet.</div>
+            )}
+            {entriesData?.entries.map((entry) => (
+              <TimelineEntry key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (!active) {
     return (
@@ -156,52 +247,7 @@ export function InvestigationPage() {
             <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No entries yet.</div>
           )}
           {entriesData?.entries.map((entry) => (
-            <div
-              key={entry.id}
-              style={{
-                padding: 'var(--space-sm) var(--space-md)',
-                border: '1px solid var(--surface-border)',
-                borderLeft: entry.isImportantFinding
-                  ? '3px solid var(--signal-primary)'
-                  : '1px solid var(--surface-border)',
-                borderRadius: 'var(--radius-control)',
-                background: 'var(--surface-1)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: 4,
-                  fontSize: 13,
-                  color: 'var(--text-telemetry)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              >
-                <span>
-                  {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
-                </span>
-                <span style={{ display: 'flex', gap: 6 }}>
-                  {entry.isImportantFinding ? <TelemetryBadge tone="primary">Finding</TelemetryBadge> : null}
-                  {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
-                </span>
-              </div>
-              <div style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
-              {entry.imageDataUrl && (
-                <img
-                  src={entry.imageDataUrl}
-                  alt="Attached evidence"
-                  style={{
-                    marginTop: 'var(--space-sm)',
-                    maxWidth: '100%',
-                    maxHeight: 320,
-                    borderRadius: 'var(--radius-control)',
-                    border: '1px solid var(--surface-border)',
-                    display: 'block',
-                  }}
-                />
-              )}
-            </div>
+            <TimelineEntry key={entry.id} entry={entry} />
           ))}
         </div>
       </div>
@@ -293,6 +339,56 @@ export function InvestigationPage() {
           {mutation.isPending ? 'Adding…' : 'Add entry'}
         </Button>
       </form>
+    </div>
+  );
+}
+
+function TimelineEntry({ entry }: { entry: DocEntry }) {
+  return (
+    <div
+      style={{
+        padding: 'var(--space-sm) var(--space-md)',
+        border: '1px solid var(--surface-border)',
+        borderLeft: entry.isImportantFinding
+          ? '3px solid var(--signal-primary)'
+          : '1px solid var(--surface-border)',
+        borderRadius: 'var(--radius-control)',
+        background: 'var(--surface-1)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 4,
+          fontSize: 13,
+          color: 'var(--text-telemetry)',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        <span>
+          {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
+        </span>
+        <span style={{ display: 'flex', gap: 6 }}>
+          {entry.isImportantFinding ? <TelemetryBadge tone="primary">Finding</TelemetryBadge> : null}
+          {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
+        </span>
+      </div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
+      {entry.imageDataUrl && (
+        <img
+          src={entry.imageDataUrl}
+          alt="Attached evidence"
+          style={{
+            marginTop: 'var(--space-sm)',
+            maxWidth: '100%',
+            maxHeight: 320,
+            borderRadius: 'var(--radius-control)',
+            border: '1px solid var(--surface-border)',
+            display: 'block',
+          }}
+        />
+      )}
     </div>
   );
 }

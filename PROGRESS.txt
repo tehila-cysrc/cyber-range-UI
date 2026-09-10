@@ -1097,3 +1097,42 @@ RESULT: verified-live. Fixed the already-seeded live dev DB directly (`UPDATE do
   category afterward (matched by exact body text / key to avoid touching the user's own entries,
   including one I hadn't seen before ("aaaaa", id 4) that appeared in the DB between sessions —
   left untouched, not mine).
+==================================================================
+[2026-09-10 09:45 IDT] session=student-self-registration
+TASK: Fix #10: user reported "total confusion" with the Timeline — each user should see ONLY their
+  own team's documentation; the instructor should see all teams' entries with an on-screen team
+  picker to view one team's timeline at a time. Investigation found the backend was ALREADY correctly
+  team-scoped (`resolveTeamId` in documentation.routes.ts; verified via curl that alice/Team-Alpha and
+  carol/Team-Bravo each only ever saw their own team's entries) — the actual bug was that
+  InvestigationPage.tsx had no instructor-mode branch at all. An instructor clicking "Investigation"
+  in the nav (visible to every role, not gated) hit `GET /teams/me/active-cyber-range`, which 400s for
+  a teamless instructor, so the page silently rendered the student-facing "documentation opens once
+  your team's investigation starts" message — nonsensical and misleading for an instructor, hence
+  the reported "confusion".
+FILES:
+  M client/src/features/documentation/InvestigationPage.tsx (branches on role. Student path:
+    unchanged behavior, own-team-only via the existing `/teams/me/active-cyber-range` +
+    `/cyber-ranges/:id/documentation` (no teamId) pair. Instructor path (new): a team `<select>`
+    populated from `GET /admin/teams`, looks up that team's active cyberRangeId from
+    `GET /admin/dashboard` (already had per-team active-range info, so no new endpoint needed),
+    fetches `GET /cyber-ranges/:cyberRangeId/documentation?teamId=<selected>` — the existing
+    instructor-compatible query-param path. No add-entry form for instructor (only students author
+    entries, already enforced server-side). Extracted the entry-card markup into a shared
+    `TimelineEntry` component used by both paths instead of duplicating it.)
+  M server/src/sockets/emitters.ts (`emitDocumentationNew` now also broadcasts to `INSTRUCTOR_ROOM`,
+    matching every other emitter in this file — previously the only one that didn't, an inconsistency
+    that only became visible once the instructor got an actual timeline view to keep live. Added
+    `teamId` to the emitted payload so a client can tell which team an incoming entry is for, since
+    the curl verification below confirmed two teams CAN share the same active `cyberRangeId` — the
+    client-side handler now ignores the event unless it matches the team the instructor currently has
+    selected.)
+  M CLAUDE/api.md (documented the `teamId` addition to `documentation:new`'s payload).
+RESULT: verified-live. `tsc -b` clean both workspaces, client build clean. Verified via curl: alice
+  (Team Alpha) and carol (Team Bravo) each see only their own team's entries with no teamId param
+  (confirms the backend scoping was already correct, not something this fix needed to touch);
+  instructor with `?teamId=1` vs `?teamId=2` on the SAME cyberRangeId (both teams are currently on
+  cyber_range 1, "TJS" — confirmed via `/admin/dashboard`) returns each team's own distinct entries,
+  never mixed; instructor with no teamId still 400s as before (existing behavior, unchanged).
+  Did not visually browser-test the new team-picker UI (same browser-tool network isolation noted
+  throughout this session) — verified via the exact HTTP contract the new client code calls, plus
+  clean typecheck/build.

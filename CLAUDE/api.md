@@ -83,7 +83,7 @@ Handshake auth: client passes `{ auth: { token } }` (same bearer token as REST).
 
 | Event | Payload | Room | Fires on |
 |---|---|---|---|
-| `documentation:new` | `{entry}` | `team:{teamId}` | A student in that team posts a new documentation entry (US-003 shared timeline). |
+| `documentation:new` | `{entry, teamId}` | `team:{teamId}` + `instructor` | A student in that team posts a new documentation entry (US-003 shared timeline). `teamId` is included so an instructor's client — which receives this for every team — can tell which team it belongs to (two teams can share the same active cyber range, so `cyberRangeId` alone can't disambiguate). |
 | `help_request:new` | `{helpRequest}` | `instructor` | A student sends a help request (US-005/US-006). |
 | `help_request:resolved` | `{helpRequestId}` | `team:{teamId}` + `instructor` | Instructor resolves a help request. |
 | `clock:tick` | `{progressId, remainingSeconds}` | `team:{teamId}` + `instructor` | Once/second, server-authoritative (`server/src/services/clock.service.ts`), for every `active` progress row with a time limit. |

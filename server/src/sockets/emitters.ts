@@ -2,7 +2,10 @@ import { getIo } from './io.js';
 import { teamRoom, INSTRUCTOR_ROOM } from './rooms.js';
 
 export function emitDocumentationNew(teamId: number, entry: unknown) {
-  getIo().to(teamRoom(teamId)).emit('documentation:new', { entry });
+  // teamId travels alongside the entry now that this also reaches every instructor (not just the
+  // authoring team's own room) — an instructor's client must be able to tell which team an
+  // incoming entry belongs to, since two teams can share the same active cyber range.
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('documentation:new', { entry, teamId });
 }
 
 export function emitHelpRequestNew(helpRequest: unknown) {
