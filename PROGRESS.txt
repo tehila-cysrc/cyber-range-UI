@@ -1276,3 +1276,88 @@ RESULT: verified-live. `tsc -b` + `vite build` clean. Re-verified via curl with 
   Did not visually browser-test the new student picker (same browser-tool network isolation noted
   throughout this session) — verified via the exact HTTP contract plus the live socket.io-client
   test proving the real-time propagation the user asked about was already correct end-to-end.
+
+==================================================================
+[2026-09-10 09:40 IDT] session=environments-ui-redesign
+TASK: User manually browser-click-tested the Environments admin page for the first time this project
+  (see "one thing worth your attention" follow-up from `real-sp-success-path-verify` — they logged in
+  locally and ran connectivity-check + discover themselves, confirming both worked). Feedback from
+  that session: the registration form's free-text "Name" field was confusing (unclear it wasn't
+  actually naming a Cyber Range), and the separate per-card `select` + "Link" button (pick an existing
+  Cyber Range from the seeded catalog, then link it) was confusing — purpose unclear. User's requested
+  fix, confirmed explicitly before implementing: stop treating the seeded Cyber Range catalog as a
+  fixed list to pick from; instead an instructor names/creates a brand-new Cyber Range every time they
+  register an environment, in the same step, auto-linked — remove the separate select+Link UI
+  entirely.
+FILES:
+  A server/src/routes/admin/cyberRanges.routes.ts (`GET /admin/days` — the 3 fixed days for the
+    picker; `POST /admin/cyber-ranges` — `{dayId, name, difficulty, expectedDurationMinutes?}`,
+    first-ever create path for this CONFIG table, previously seed-only. `sort_order` computed as
+    `MAX(sort_order)+1` scoped to `dayId`, matching the existing per-day ordering `GET /cyber-ranges`
+    already relies on.)
+  M server/src/app.ts (mounted the new router)
+  M client/src/features/environments/EnvironmentsAdminPage.tsx: registration form's "Name" field
+    relabeled or repurposed as the new Cyber Range's name; added Day + Difficulty selects and an
+    optional duration input; `createEnvironment` mutation now does 3 sequential calls (create cyber
+    range -> create environment -> link them) instead of 1. Removed `EnvironmentCard`'s
+    `select`+"Link" block and the `catalog`/`cyber-ranges-catalog` query entirely — the "Linked cyber
+    ranges" display stays (read-only badges + unlink `x`, unchanged).
+  M CLAUDE/api.md (documented `GET /admin/days`, `POST /admin/cyber-ranges`, and noted `POST
+    /admin/cyber-ranges/:cyberRangeId/environments` is now called automatically rather than exposed as
+    manual UI).
+RESULT: verified-live via the real HTTP server (instructor token): `GET /admin/days` -> the 3 seeded
+  days; `POST /admin/cyber-ranges` -> 201 with a correctly-shaped row, `sort_order` computed
+  correctly; validation confirmed -> 400 on missing `difficulty` and on an unknown `dayId`; full
+  client-equivalent flow (create range -> register environment with a throwaway/invalid credential,
+  since this was a plumbing check, not another real-SP test -> link) -> range correctly shows up in
+  `GET /admin/environments/:id/linked-cyber-ranges` AND in the general `GET /cyber-ranges` catalog
+  (proving newly-created ranges are immediately usable everywhere else that reads the catalog, e.g.
+  the instructor dashboard's team-assignment picker). `npx tsc -b` clean both workspaces. Cleaned up
+  afterward: deleted the scratch environment via the API; the scratch cyber_ranges row had no DELETE
+  endpoint (CONFIG data, by design — see `CLAUDE/invariants.md`) so removed it directly via
+  `node:sqlite` against `server/data/cyber-range.db`, the one case this session where direct DB access
+  was appropriate (cleaning up my own test pollution, not app logic). Did NOT touch the user's own
+  real environment (id=1, "AI ", linked to cyberRangeId=1) sitting in the DB from their manual browser
+  test — left exactly as they set it up.
+  Did not re-verify visually in a browser (still no working browser-test tool this session — see
+  `real-sp-success-path-verify` and `browser-tunnel-attempt`); this is HTTP-level verification of the
+  same contract the new client code calls, plus clean typecheck. User should re-check this in their
+  own browser at localhost:5173 next since they're the one who's been able to click through it.
+==================================================================
+[2026-09-10 11:05 IDT] session=student-self-registration
+TASK: Fix #13: user said the scoring UI (InstructorScoringPanel.tsx, "Progress — Scoring") looked
+  cramped and messy, asked for a redesign. Pure layout/visual fix, no behavior or API changes.
+FILES:
+  M client/src/features/scoring/InstructorScoringPanel.tsx (full layout rewrite, same
+    data/mutations):
+    - Page intro: title + one-line explanation of what the page does, before the team picker
+      (previously the page just dropped you straight into a bare `<select>` with no context).
+    - Team `<select>` is now a labeled field ("Team") with consistent padding/font-size matching
+      inputs elsewhere in the app, capped to a sane max-width instead of stretching or looking like
+      a stray control.
+    - Added an active-scenario summary row (day + difficulty `TelemetryBadge`s + name) once a team
+      is picked — the same treatment `InstructorDashboardPage`/`ActiveCyberRangePage` already use —
+      so the page has visual context instead of jumping straight to controls.
+    - "Quick award" is now a proper bordered/padded card (`--radius-container`, `--surface-1`) with
+      a heading + one-line explanation, instead of a bare unstyled block with a 6px-margin select
+      stacked directly on a cramped inline form.
+    - `ScoreForm`: points input got room to breathe (6-8px padding instead of 4px, `fontSize: 15`
+      matching the rest of the app's post-font-bump inputs), labeled "Points"/"Gamified" instead of
+      an unlabeled number box, and the confirmation/error message now sits on its own line below the
+      controls instead of squeezed inline at the end of an already-tight row.
+    - Documentation entries: increased inner gap (`--space-sm`/`--space-md` throughout, was a mix of
+      raw `6`s and inconsistent spacing), and added a hairline divider (`border-top`) between the
+      entry's text and its scoring controls, so the score form reads as a distinct action area
+      instead of visually running into the entry body.
+    - Added empty-state messaging for "no team selected yet" and "no documentation recorded yet",
+      matching the calm/explanatory tone used elsewhere (`ActiveCyberRangePage`, `InvestigationPage`'s
+      instructor branch) instead of just rendering nothing.
+    - Extended the local `TeamStatus.active` type to include `difficulty`/`dayLabel`, which
+      `GET /admin/dashboard` already returns but this file wasn't using.
+RESULT: verified — `tsc -b` + `vite build` clean (client bundle ~434KB, no new warnings, no new
+  dependencies). Re-confirmed via curl that `/admin/dashboard` and `/admin/teams` already return
+  exactly the shape the rewritten component expects (`difficulty`/`dayLabel` on `active`; team
+  `members` for the quick-award picker) — no backend changes needed, this was purely a client-side
+  layout fix. Did not visually browser-test the new layout (same browser-tool network isolation
+  noted throughout this session) — this is a judgment call on spacing/hierarchy that I'd genuinely
+  like eyes on; flagging that rather than claiming a fully verified visual result.
