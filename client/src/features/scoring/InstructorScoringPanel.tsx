@@ -12,6 +12,16 @@ interface TeamStatus {
   active: { cyberRangeId: number; name: string } | null;
 }
 
+interface TeamRosterMember {
+  id: number;
+  displayName: string;
+}
+
+interface TeamRoster {
+  id: number;
+  members: TeamRosterMember[];
+}
+
 interface DocEntry {
   id: number;
   body: string;
@@ -36,6 +46,7 @@ function ScoreForm({
 }) {
   const [points, setPoints] = useState(1);
   const [isGamified, setIsGamified] = useState(false);
+  const [justAwarded, setJustAwarded] = useState(false);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -43,7 +54,13 @@ function ScoreForm({
         method: 'POST',
         body: JSON.stringify({ teamId, studentUserId, documentationEntryId, cyberRangeId, points, isGamified }),
       }),
-    onSuccess: onDone,
+    onSuccess: () => {
+      onDone();
+      // The score:awarded socket event already updates the leaderboard/student's own Progress page
+      // live — this is just confirmation for the instructor that the click actually sent.
+      setJustAwarded(true);
+      setTimeout(() => setJustAwarded(false), 2500);
+    },
   });
 
   return (
@@ -66,8 +83,12 @@ function ScoreForm({
         gamified
       </label>
       <Button variant="ghost" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-        Award
+        {mutation.isPending ? 'Sending…' : 'Award'}
       </Button>
+      {justAwarded && (
+        <span style={{ fontSize: 13, color: 'var(--signal-primary)' }}>Awarded — updated for everyone ✓</span>
+      )}
+      {mutation.isError && <span style={{ fontSize: 13, color: 'var(--signal-alert)' }}>Failed to send</span>}
     </div>
   );
 }
@@ -81,7 +102,15 @@ export function InstructorScoringPanel() {
     queryFn: () => apiFetch<{ teams: TeamStatus[] }>('/admin/dashboard'),
   });
 
+  const { data: rosterData } = useQuery({
+    queryKey: ['admin-teams-list'],
+    queryFn: () => apiFetch<{ teams: TeamRoster[] }>('/admin/teams'),
+  });
+
   const selectedTeam = dashboardData?.teams.find((t) => t.teamId === selectedTeamId);
+  const selectedTeamMembers = rosterData?.teams.find((t) => t.id === selectedTeamId)?.members ?? [];
+
+  const [quickAwardStudentId, setQuickAwardStudentId] = useState<number | ''>('');
 
   const { data: entriesData } = useQuery({
     enabled: !!selectedTeam?.active,
@@ -130,9 +159,36 @@ export function InstructorScoringPanel() {
         <>
           <div style={{ marginBottom: 'var(--space-lg)' }}>
             <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 6px' }}>
-              Standalone team award
+              Quick award — no documentation entry needed
             </h2>
-            <ScoreForm teamId={selectedTeam.teamId} cyberRangeId={selectedTeam.active.cyberRangeId} onDone={refresh} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <select
+                value={quickAwardStudentId}
+                onChange={(e) => setQuickAwardStudentId(e.target.value ? Number(e.target.value) : '')}
+                style={{
+                  background: 'var(--surface-1)',
+                  border: '1px solid var(--surface-border)',
+                  borderRadius: 'var(--radius-control)',
+                  padding: '4px 6px',
+                  color: 'var(--text-primary)',
+                  fontSize: 13,
+                }}
+              >
+                <option value="">Whole team</option>
+                {selectedTeamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <ScoreForm
+              key={quickAwardStudentId}
+              teamId={selectedTeam.teamId}
+              studentUserId={quickAwardStudentId || undefined}
+              cyberRangeId={selectedTeam.active.cyberRangeId}
+              onDone={refresh}
+            />
           </div>
 
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>

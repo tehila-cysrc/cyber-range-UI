@@ -1236,3 +1236,43 @@ RESULT: verified — `tsc -b` + `vite build` clean (client bundle ~431KB, no new
   4 existing functional signal hues) rather than pixel-verified. Recommend a quick look in a real
   browser before considering this fully done, per the repo's "verified = real run" rule — flagging
   this honestly rather than claiming full visual verification.
+==================================================================
+[2026-09-10 10:40 IDT] session=student-self-registration
+TASK: Fix #12: user described the desired scoring flow — "on the Progress page the instructor just
+  puts a score and clicks send, and it updates for everyone." Investigation: the underlying
+  real-time pipeline (POST /admin/scores -> emitScoreAwarded + emitLeaderboardUpdate -> student's
+  ScoreHistoryList / LeaderboardPage sockets) was ALREADY fully implemented and working (verified
+  live with a real socket.io-client connected as alice — posting a score as instructor produced
+  `score:awarded` then `leaderboard:update` on alice's socket within ~1s). The actual gaps: (1) the
+  existing "Standalone team award" quick-score form couldn't target an individual student — only a
+  whole-team award or an award tied to an existing documentation entry were possible, so "the
+  instructor just enters a score" for a specific student required that student to have already
+  written something; (2) clicking "Award" gave the instructor zero visual confirmation it worked.
+FILES:
+  M client/src/features/scoring/InstructorScoringPanel.tsx (renamed the section "Quick award — no
+    documentation entry needed"; added a student `<select>` — defaults to "Whole team", or pick any
+    roster member fetched from `GET /admin/teams` — wired to `ScoreForm`'s existing (already
+    optional) `studentUserId` prop, so this reuses the exact same `/admin/scores` contract the
+    per-entry forms already use, just without a `documentationEntryId`. `ScoreForm` now shows
+    "Awarded — updated for everyone ✓" for 2.5s after a successful send, or "Failed to send" on
+    error, so the instructor gets confirmation instead of silence. The quick-award `ScoreForm` is
+    `key`ed on the selected student so switching who you're awarding resets the points/gamified
+    fields instead of carrying over stale values.)
+RESULT: verified-live. `tsc -b` + `vite build` clean. Re-verified via curl with the EXACT request
+  shape the new UI sends (`{teamId, studentUserId, cyberRangeId, points, isGamified}`, no
+  `documentationEntryId`) — 201, and `GET /teams/me/scores` as alice immediately reflected it in
+  `perStudent`. While testing this I noticed `scoring_config.leaderboard_enabled` was already `1`
+  (left that way — PROGRESS.txt shows the original Phase 7 session enabled it during its own
+  verification, likely intentionally left on since; didn't touch it).
+  Also found and fixed a leftover cleanup gap from fix #4 in this same session: I had registered a
+  throwaway student `revert_test` to test the reverted self-registration endpoint, but the cleanup
+  step that session ran `DELETE /admin/users/9` with a hardcoded id instead of the actual id from
+  that registration's response — so the real `revert_test` account (ended up as id 8) was never
+  deleted and sat in the roster this whole time. Deleted it now, plus the two test `scores` rows (ids
+  4-5, one tagged `note: "socket test"`) created for this fix's verification. Left `tehila`/`test`/
+  `test1`/`yosi` accounts alone — those look like the user's own manual testing, not mine, per the
+  same "only delete what I can positively identify as my own test data" rule followed in earlier
+  fixes this session.
+  Did not visually browser-test the new student picker (same browser-tool network isolation noted
+  throughout this session) — verified via the exact HTTP contract plus the live socket.io-client
+  test proving the real-time propagation the user asked about was already correct end-to-end.
