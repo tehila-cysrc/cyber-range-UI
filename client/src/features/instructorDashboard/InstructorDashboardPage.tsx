@@ -2,6 +2,8 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Button } from '../../components/Button';
+import { Avatar } from '../../components/Avatar';
+import { LifeBuoyIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 
 interface TeamStatus {
@@ -136,7 +138,17 @@ export function InstructorDashboardPage() {
 
       {helpData && helpData.helpRequests.length > 0 && (
         <div style={{ marginBottom: 'var(--space-xl)' }}>
-          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
+          <h2
+            style={{
+              fontSize: 15,
+              color: 'var(--text-muted)',
+              margin: '0 0 var(--space-sm)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <LifeBuoyIcon style={{ color: 'var(--signal-alert)' }} />
             Open help requests
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -153,8 +165,9 @@ export function InstructorDashboardPage() {
                   background: 'var(--surface-1)',
                 }}
               >
-                <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>
-                  <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>{' '}
+                <span style={{ fontSize: 15, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>
+                  <Avatar name={hr.requestedByName} size={22} />
                   {hr.requestedByName} needs help on {hr.cyberRangeName}
                 </span>
                 <Button variant="ghost" onClick={() => resolveMutation.mutate(hr.id)}>

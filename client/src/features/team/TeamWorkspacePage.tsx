@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
+import { Avatar } from '../../components/Avatar';
 
 interface TeamWorkspace {
   team: { id: number; name: string };
@@ -44,7 +45,10 @@ export function TeamWorkspacePage() {
               fontSize: 15,
             }}
           >
-            <span style={{ color: 'var(--text-primary)' }}>{member.displayName}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Avatar name={member.displayName} />
+              <span style={{ color: 'var(--text-primary)' }}>{member.displayName}</span>
+            </span>
             <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>
               @{member.username}
             </span>

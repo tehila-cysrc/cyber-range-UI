@@ -1136,3 +1136,103 @@ RESULT: verified-live. `tsc -b` clean both workspaces, client build clean. Verif
   Did not visually browser-test the new team-picker UI (same browser-tool network isolation noted
   throughout this session) — verified via the exact HTTP contract the new client code calls, plus
   clean typecheck/build.
+
+==================================================================
+[2026-09-10 08:55 IDT] session=real-sp-success-path-verify
+TASK: Close the remaining open gap from `live-cloud-environment-real-verify` (2026-09-09 17:05 IDT):
+  the app's actual production credential path (`ClientSecretCredential`, stored/encrypted SP secret)
+  had only been proven against the auth-failure path, never a genuine success path, since no real SP
+  secret had been available in-session before. User supplied one this session.
+  Attempted first to mint this via a NEW dedicated Reader-scoped SP per CLAUDE/services.md's
+  checklist (`az ad sp create-for-rbac --role Reader --scopes .../resourceGroups/rg-cyber-range-demo`)
+  since the already-`az login`'d identity, `sp-cyber-range-demo`, was found to hold Contributor at
+  that resource-group scope — over-privileged per CLAUDE/invariants.md's Reader-only rule, and very
+  likely the same identity used to build the environment (violates the "different identity" rule
+  too). `create-for-rbac` failed with "Insufficient privileges" (the current SP has resource-scoped
+  RBAC rights only, not Azure AD app-registration rights). User explicitly accepted the invariant
+  violation and chose to proceed with `sp-cyber-range-demo` (Contributor) for this one-off
+  verification rather than have me rotate/reset its credentials or have the user re-`az login` with a
+  more privileged identity.
+FILES: none changed (verification-only). Scratch scripts only (both deleted after, never committed):
+  a real-sp-verify.mjs driving the actual REST API end-to-end, and a cleanup script — the real client
+  secret was passed via a shell env var into the script's `process.env`, never written to any file,
+  log, or this entry.
+RESULT: verified-live, genuine success path, via the real running HTTP server (not direct DB/service
+  calls):
+  - `POST /admin/environments` with real `{tenantId, clientId, clientSecret, externalAccountId:
+    <subscriptionId>, externalScope: 'rg-cyber-range-demo'}` -> 201, response correctly omitted the
+    secret (`hasSecret: true` only), per CLAUDE/invariants.md.
+  - `POST /admin/environments/:id/connectivity-check` -> 200 `{ok: true, latencyMs: 2106,
+    resourceGroupId: ".../resourceGroups/rg-cyber-range-demo"}` — first-ever proof the real
+    `ClientSecretCredential` path (not the `AzureCliCredential` shortcut used in the prior real-verify
+    session) actually authenticates and reads Azure successfully.
+  - `POST /admin/environments/:id/discover` -> 202, and the async run completed for real (confirmed
+    via `GET /admin/audit-log`, since I'd already deleted the environment before polling finished —
+    see NOTES): `environment.discovery_completed` with real resource counts (9 vm, 9 nic, 8 nsg, 8
+    subnet, 2 public_ip, 2 storage_account, 1 vnet, 1 key_vault) — consistent with the 9 real VMs
+    found in the prior CLI-delegated verification, now proven through the actual stored-secret path.
+  - Cleanup: deleted the environment (cascades its `credentials` row). Caught and fixed my own script
+    bug along the way — a leftover environment row (id=1) from an earlier failed run (which had a
+    real secret sitting in the DB, undetected until I re-checked `GET /admin/environments`) — deleted
+    it too. Confirmed `GET /admin/environments` returns `[]` at the end; DB back to its prior state.
+NOTES: This closes the last remaining gap flagged in `live-cloud-environment-real-verify` — both the
+  connectivity check AND the discovery pipeline are now proven against real Azure data through the
+  app's actual production authentication path, not a CLI-delegated stand-in. One process note for
+  future sessions: I deleted the environment while its discovery run was still `running` (polled 30
+  attempts/30s, gave up, deleted) — it turned out the async run finished ~0.5s later anyway and
+  completed cleanly (audit log confirms `discovery_completed` after the delete, with real data, no
+  error) — but this was good luck, not a guarantee; a future verification script should poll
+  longer/without a hard cap, or check audit_log instead of assuming the run is stuck, before deleting
+  the environment out from under an in-flight discovery run.
+  Also unresolved from this session: `sp-cyber-range-demo` itself is still over-privileged
+  (Contributor, not Reader) for anything beyond this one-off test — if this SP is meant to become the
+  app's actual long-term registered credential, its role assignment should still be narrowed (or a
+  dedicated Reader SP created by someone with AD app-registration rights) before real, ongoing use.
+  Separately: two browser-click-testing attempts via a temporary `localtunnel` both died within
+  60-90s of the tool actually using them (chrome-error mid-navigation both times) — consistent with
+  the free loca.lt relay's known instability (see `browser-tunnel-attempt` 2026-09-09 15:25 IDT). Per
+  user's choice, fell back to HTTP-level testing for this session instead of a third tunnel attempt.
+==================================================================
+==================================================================
+[2026-09-10 10:15 IDT] session=student-self-registration
+TASK: Fix #11: user asked for tasteful visual polish — color per user, an avatar figure, a few icons
+  here and there — explicitly "pleasant to the eye" and NOT "AI style" (generic/garish). The existing
+  design system (docs/DESIGN.md, "Obsidian Telemetry") explicitly rejects gratuitous decoration
+  ("every pixel of visual noise is operational latency"), so scope was deliberately restrained: one
+  reusable Avatar pattern reused everywhere a person's name already appears, plus exactly two icons
+  at exactly two conceptual spots, rather than icons sprinkled broadly.
+FILES:
+  A client/src/components/Avatar.tsx (deterministic per-name color: sums char codes mod 8 to index
+    into 8 new --user-accent-* CSS vars; renders a circle — matching the Shapes rule's "status
+    indicators maintain absolute circles" — with a 1px hairline border in the assigned color,
+    rgba(15,23,42,0.8) flat fill (no gradient, matching TelemetryBadge's existing look exactly),
+    JetBrains Mono initials. Same person = same color on every screen, no stored preference needed.)
+  A client/src/components/icons.tsx (FlagIcon, LifeBuoyIcon — thin-stroke 1.75px currentColor SVGs,
+    used at exactly two spots: important-finding badges, help-request UI)
+  M client/src/styles/tokens.css (8 new --user-accent-* tokens — deliberately reuse 3 of the 4
+    existing functional signal colors (secondary/cyan, tertiary/amber, alert/crimson) plus 5 new
+    hues in the same mid-saturation register, so avatars read as more telemetry signals, not a
+    separate decorative rainbow palette)
+  M client/src/app/AppShell.tsx (own-user Avatar next to the top-right identity chip)
+  M client/src/features/documentation/InvestigationPage.tsx (TimelineEntry: author Avatar,
+    FlagIcon on the "Finding" badge)
+  M client/src/features/team/TeamWorkspacePage.tsx (member Avatar)
+  M client/src/features/admin/TeamsAdminPage.tsx (roster member Avatar)
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (requester Avatar +
+    LifeBuoyIcon on the "Open help requests" section header)
+  M client/src/features/helpRequests/HelpRequestButton.tsx (LifeBuoyIcon on the button itself)
+  M client/src/features/scoring/ScoreHistoryList.tsx (per-student Avatar, both the summary cards
+    and the entry list)
+  M client/src/features/scoring/InstructorScoringPanel.tsx (author Avatar + FlagIcon, matching
+    InvestigationPage's treatment for consistency across the two places documentation entries render)
+  M docs/DESIGN.md (new "Avatars & Icons" subsection under Components, documenting the pattern/
+    rationale so future additions stay consistent rather than reinventing the approach)
+RESULT: verified — `tsc -b` + `vite build` clean (client bundle ~431KB, no new warnings; Avatar/icons
+  add negligible size, no new dependencies). Could not visually browser-test the rendered result —
+  same browser-tool network isolation from this machine's dev server noted throughout this session —
+  so this is compile-verified plus a deliberate design-consistency argument (the Avatar's exact
+  visual recipe — hairline border, flat rgba fill, mono initials, absolute circle — is copied from
+  the already-shipped, already-approved TelemetryBadge component, and the new palette reuses 3 of the
+  4 existing functional signal hues) rather than pixel-verified. Recommend a quick look in a real
+  browser before considering this fully done, per the repo's "verified = real run" rule — flagging
+  this honestly rather than claiming full visual verification.

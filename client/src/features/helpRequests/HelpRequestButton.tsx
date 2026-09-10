@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
+import { LifeBuoyIcon } from '../../components/icons';
 
 export function HelpRequestButton() {
   const [justSent, setJustSent] = useState(false);
@@ -21,7 +22,13 @@ export function HelpRequestButton() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
-      <Button variant="ghost" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+      <Button
+        variant="ghost"
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        <LifeBuoyIcon />
         {mutation.isPending ? 'Sending…' : 'Request instructor help'}
       </Button>
       {justSent && (

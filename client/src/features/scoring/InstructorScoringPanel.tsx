@@ -3,6 +3,8 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { Avatar } from '../../components/Avatar';
+import { FlagIcon } from '../../components/icons';
 
 interface TeamStatus {
   teamId: number;
@@ -150,12 +152,23 @@ export function InstructorScoringPanel() {
                   gap: 6,
                 }}
               >
-                <div style={{ fontSize: 13, color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)' }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-telemetry)',
+                    fontFamily: 'var(--font-mono)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Avatar name={entry.authorName} size={20} />
                   {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
                   {entry.isImportantFinding ? (
-                    <span style={{ marginLeft: 8 }}>
-                      <TelemetryBadge tone="primary">Finding</TelemetryBadge>
-                    </span>
+                    <TelemetryBadge tone="primary">
+                      <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
+                      Finding
+                    </TelemetryBadge>
                   ) : null}
                 </div>
                 <div style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>

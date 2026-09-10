@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
+import { Avatar } from '../../components/Avatar';
 
 interface Member {
   id: number;
@@ -122,8 +123,9 @@ export function TeamsAdminPage() {
                 </Button>
               </div>
               {team.members.map((m) => (
-                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
-                  <span>
+                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Avatar name={m.displayName} size={22} />
                     {m.displayName} <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
                   </span>
                   <button

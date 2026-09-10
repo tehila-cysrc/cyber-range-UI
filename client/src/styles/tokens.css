@@ -15,6 +15,18 @@
   --text-muted: #94a3b8;
   --text-telemetry: #64748b;
 
+  /* Per-user identity accents (Avatar.tsx) — a rotating palette for author/member badges, kept in
+     the same flat, mid-saturation "signal" register as the four functional accents above rather
+     than a separate decorative palette, so a colored avatar reads as another telemetry signal. */
+  --user-accent-1: #38bdf8;
+  --user-accent-2: #f59e0b;
+  --user-accent-3: #a78bfa;
+  --user-accent-4: #34d399;
+  --user-accent-5: #fb7185;
+  --user-accent-6: #f43f5e;
+  --user-accent-7: #60a5fa;
+  --user-accent-8: #2dd4bf;
+
   --font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 

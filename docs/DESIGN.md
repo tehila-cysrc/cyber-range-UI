@@ -228,6 +228,10 @@ This restrained radius removes harsh needle-sharp corners while preventing the t
 - Zero zebra-striping. Hovering a row applies a slight surface shift to `#0f172a`.
 - Data columns strictly aligned: names/identifiers left-aligned, timestamps and IP routes tabular mono, points/deltas right-aligned.
 
+### Avatars & Icons
+- **Avatar** (`client/src/components/Avatar.tsx`): a person's identity chip, wherever a username/display name appears (timeline authors, team rosters, help requests, scoring). Absolute circle per the Shapes rule above, 1px hairline border, `rgba(15, 23, 42, 0.8)` flat fill (no gradient), initials in `JetBrains Mono`. The border/text color is one of eight `--user-accent-*` tokens (`tokens.css`), picked deterministically from the name so the same person is always the same color everywhere — a rotating identity signal, not a decorative palette; several of the eight hues intentionally reuse the functional signal colors (`secondary`/cyan, `tertiary`/amber, `alert`/crimson) to stay in the same tonal register rather than introducing a separate rainbow.
+- **Icons** (`client/src/components/icons.tsx`): thin-stroke (1.75px), `currentColor`, geometric line icons — never filled/skeuomorphic glyphs. Used sparingly at exactly two conceptual spots (an important-finding flag, a help-request life-ring) rather than as general-purpose decoration, per this system's "every pixel of visual noise is operational latency" principle.
+
 ### Network Topology Node Elements
 - Minimal geometric nodes (hexagonal or clean rounded squares) with high-contrast state outlines:
   - Compromised: Crisp emerald perimeter with interior heartbeat ping.

@@ -4,6 +4,8 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { Avatar } from '../../components/Avatar';
+import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -360,17 +362,24 @@ function TimelineEntry({ entry }: { entry: DocEntry }) {
         style={{
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
           marginBottom: 4,
           fontSize: 13,
           color: 'var(--text-telemetry)',
           fontFamily: 'var(--font-mono)',
         }}
       >
-        <span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Avatar name={entry.authorName} size={20} />
           {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
         </span>
-        <span style={{ display: 'flex', gap: 6 }}>
-          {entry.isImportantFinding ? <TelemetryBadge tone="primary">Finding</TelemetryBadge> : null}
+        <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {entry.isImportantFinding ? (
+            <TelemetryBadge tone="primary">
+              <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
+              Finding
+            </TelemetryBadge>
+          ) : null}
           {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
         </span>
       </div>

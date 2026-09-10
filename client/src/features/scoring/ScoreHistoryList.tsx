@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { Avatar } from '../../components/Avatar';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 
 interface ScoreEntry {
@@ -62,7 +63,10 @@ export function ScoreHistoryList() {
               background: 'var(--surface-1)',
             }}
           >
-            <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>{s.studentName}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-telemetry)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Avatar name={s.studentName} size={18} />
+              {s.studentName}
+            </div>
             <div className="tabular" style={{ fontSize: 20, color: 'var(--text-primary)' }}>
               {s.total}
             </div>
@@ -87,7 +91,8 @@ export function ScoreHistoryList() {
               fontSize: 15,
             }}
           >
-            <span style={{ color: 'var(--text-primary)' }}>
+            <span style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {entry.studentName && <Avatar name={entry.studentName} size={20} />}
               {entry.studentName ?? 'Team'} {entry.isGamified ? <TelemetryBadge tone="tertiary">Gamified</TelemetryBadge> : null}
             </span>
             <span className="tabular" style={{ color: 'var(--signal-primary)' }}>

@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { disconnectSocket } from '../lib/socketClient';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
+import { Avatar } from '../components/Avatar';
 
 // NOTE: docs/DESIGN.md's nav spec lists "Milestones" as the 4th destination. The PRD dropped
 // discrete milestones in favor of free-form instructor scoring on documentation (US-007), so this
@@ -95,7 +96,8 @@ export function AppShell() {
             color: 'var(--text-telemetry)',
           }}
         >
-          <span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {user?.displayName && <Avatar name={user.displayName} size={22} />}
             {user?.displayName} · {user?.role}
           </span>
           <button
