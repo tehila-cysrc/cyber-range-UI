@@ -157,7 +157,7 @@ export function AppShell() {
           }}
         />
 
-        <div style={{ display: 'flex', gap: 'var(--space-md)', flex: 1 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-lg)', flex: 1 }}>
           {NAV_ITEMS.map((item) => (
             <NavItem key={item.to} {...item} />
           ))}

@@ -1498,3 +1498,11 @@ RESULT: verified-live. `tsc -b` clean. End-to-end via curl: created a throwaway 
   `team_cyber_range_progress` row, confirmed via `GET /admin/dashboard` still showing both teams'
   active scenario correctly after the change. Cleaned up the throwaway test cyber range afterward
   (safe to hard-delete — it never had any team progress/documentation/scores against it).
+==================================================================
+[2026-09-10 12:10 IDT] session=student-self-registration
+TASK: Fix #18: user asked for a bit more spacing between the top nav tabs.
+FILES:
+  M client/src/app/AppShell.tsx (nav links container gap: `var(--space-md)` (16px) ->
+    `var(--space-lg)` (24px). For an instructor viewing all 13 combined student+instructor tabs this
+    adds ~96px total — still comfortably fits the 1408px max-width layout container.)
+RESULT: verified — `tsc -b` + `vite build` clean, pure CSS value change.
