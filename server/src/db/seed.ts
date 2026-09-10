@@ -6,6 +6,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// 'other' is the catch-all category and must always render last in the dropdown — a plain
+// incrementing sort_order breaks this the moment any category (seeded later, or free-typed via
+// documentation.routes.ts#findOrCreateCategoryId) is added afterward, since that logic assigns
+// MAX(sort_order)+1. A high sentinel keeps 'other' last no matter how many categories accumulate.
+export const OTHER_CATEGORY_SORT_ORDER = 9999;
+
 function seedDays() {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO days (key, label, sort_order) VALUES (?, ?, ?)',
@@ -48,7 +54,9 @@ function seedDocumentationCategories() {
     ['ioc', 'Indicator of Compromise (IOC)'],
     ['other', 'Other'],
   ];
-  categories.forEach(([key, label], i) => insert.run(key, label, i + 1));
+  // 'other' always sorts last, regardless of how many categories (seeded or free-typed via
+  // findOrCreateCategoryId) come after it — see the matching comment there.
+  categories.forEach(([key, label], i) => insert.run(key, label, key === 'other' ? OTHER_CATEGORY_SORT_ORDER : i + 1));
 }
 
 function seedScoringConfig() {

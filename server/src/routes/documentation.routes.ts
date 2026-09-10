@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { emitDocumentationNew } from '../sockets/emitters.js';
+import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
 
 const router = Router();
 
@@ -81,13 +82,16 @@ function findOrCreateCategoryId(label: string): number | null {
     | undefined;
   if (existing) return existing.id;
 
+  // Excludes 'other' from the max so a free-typed category always sorts before it, never after —
+  // see OTHER_CATEGORY_SORT_ORDER's comment in db/seed.ts.
   const nextSort = db
-    .prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM documentation_categories')
+    .prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM documentation_categories WHERE key != 'other'")
     .get() as { n: number };
+  const clampedSort = Math.min(nextSort.n, OTHER_CATEGORY_SORT_ORDER - 1);
 
   const result = db
     .prepare('INSERT INTO documentation_categories (key, label, sort_order, active) VALUES (?, ?, ?, 1)')
-    .run(key, label.trim(), nextSort.n);
+    .run(key, label.trim(), clampedSort);
 
   return Number(result.lastInsertRowid);
 }

@@ -1069,3 +1069,31 @@ NOTES: This closes out all 5 phases of the live-cloud-environment plan to the ex
   click-testing any of the new UI (environments, discovery, topology Connect button, audit log) —
   this sandbox's browser tool has been unable to reach localhost all week, consistent with every
   prior entry.
+==================================================================
+[2026-09-10 09:10 IDT] session=student-self-registration
+TASK: Fix #9: user reported the "Other" documentation category needs to always be last in the list.
+  Root cause: fix #8's seeded 'ioc' category and its find-or-create logic both used a plain
+  incrementing `sort_order` (array index, or `MAX(sort_order)+1`), so 'other' — seeded earlier with
+  sort_order=6 — immediately tied with 'ioc' (also computed as 6) and would be overtaken by ANY
+  future free-typed category, since those always compute MAX(sort_order)+1 including 'other' itself.
+FILES:
+  M server/src/db/seed.ts (new exported `OTHER_CATEGORY_SORT_ORDER = 9999` sentinel;
+    `seedDocumentationCategories` now assigns it specifically to the 'other' row instead of its
+    array-index position)
+  M server/src/routes/documentation.routes.ts (`findOrCreateCategoryId`'s next-sort-order query now
+    excludes `key = 'other'` from its `MAX(sort_order)`, so a newly free-typed category always lands
+    before 'other', never after; added a defensive `Math.min(..., OTHER_CATEGORY_SORT_ORDER - 1)`
+    clamp as a second guard)
+  M CLAUDE/invariants.md (new MUST: 'other' always sorts last — this exact bug is the incident that
+    earns it)
+  M CLAUDE/api.md (noted the ordering guarantee on the categories endpoint)
+RESULT: verified-live. Fixed the already-seeded live dev DB directly (`UPDATE documentation_categories
+  SET sort_order = 9999 WHERE key = 'other'` — `INSERT OR IGNORE` in the seed script doesn't touch
+  existing rows, so the code fix alone wouldn't have corrected already-seeded data). Verified via
+  curl as alice: `GET /documentation-categories` now returns 'other' last (recon, exploitation,
+  persistence, lateral_movement, exfiltration, ioc, other) -> posted a new entry with
+  `newCategoryLabel: "Privilege Escalation"` -> re-fetched categories -> new category landed
+  immediately before 'other', which stayed last. `tsc -b` clean. Cleaned up the test entry and test
+  category afterward (matched by exact body text / key to avoid touching the user's own entries,
+  including one I hadn't seen before ("aaaaa", id 4) that appeared in the DB between sessions —
+  left untouched, not mine).
