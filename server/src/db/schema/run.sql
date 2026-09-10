@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS access_sessions (
   cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
   topology_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
   protocol TEXT NOT NULL,
-  broker_connection_id TEXT,
+  broker_connection_id TEXT, -- unused since the Phase 2 Bastion Shareable Link redesign; kept, not dropped, for old rows
   requested_at TEXT NOT NULL,
   started_at TEXT,
   ended_at TEXT,

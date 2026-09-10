@@ -1659,3 +1659,89 @@ RESULT: `npx tsc --noEmit -p client/tsconfig.json` clean. Dev server up on :5173
   curl. Browser MCP (lean-chronoscope) still can't reach this machine's localhost from the sandbox —
   same limitation as every prior session — so this is compiles+curl-verified, not visually confirmed;
   the user has the dev server open already and can judge the nav bar directly.
+==================================================================
+[2026-09-10] session=topology-logical-redesign-phase2
+TASK: Phase 2 of the Topology redesign (plan: azure-swirling-mitten.md) - replace the non-functional
+  Guacamole-lite Connect stub with real Azure Bastion Shareable Links, and migrate VM-login credentials
+  from local AES-256-GCM storage to the environment's Azure Key Vault. Per the user's explicit approval
+  condition, started with a real Azure PoC before writing any replacement code (not a synthetic test -
+  the user's actual deployed rg-cyber-range-demo environment, already logged into via az CLI).
+POC FINDINGS (before any code was written):
+  - Bastion host bastion-cyber-range (Standard SKU, sufficient) already existed. Shareable Link is a
+    separate feature flag (enableShareableLink) OFF by default even on Standard - enabled it via a
+    direct ARM PUT (~6.5 min to apply). This causes Terraform drift (managed_by: terraform tag) - user
+    will update their Terraform config to enable_shareable_link = true themselves.
+  - Neither the az CLI nor (as far as could be determined) the stable @azure/arm-network SDK expose the
+    Shareable Link operations - confirmed via raw REST: POST .../createShareableLinks (202, async) then
+    poll POST .../getShareableLinks (api-version=2023-09-01). First attempt used the wrong action name
+    (generateShareableLinks, a guess) and got a routing error; the real action name
+    (createShareableLinks) came from Microsoft's own IAM docs for the feature.
+  - Generated real shareable links for DC01 (Windows/RDP) and EDGE01 (Linux/SSH), confirmed both
+    resolve to a live "AZURE BASTION" login page (screenshot taken via the browser tool - which could
+    reach this external URL fine, unlike this machine's own localhost) with no pre-filled credentials,
+    then deleted both test links (confirmed gone via a follow-up getShareableLinks not-found response).
+    Did NOT type the real lab-admin-password/lab-ssh-private-key secrets (found in the environment's
+    already-deployed cyberrange-kv-vcit7 Key Vault) into the login form - stopped short of that specific
+    step deliberately, to avoid putting a live lab credential through this session's tool-call
+    transcript for no further engineering value once the mechanism was otherwise proven.
+  - QRADAR01 confirmed to genuinely have osProfile: null (specialized image) - matches the plan's
+    section 11.9 anticipated exception case.
+  - Found the currently-az-authenticated SP has Contributor scoped to the resource group - almost
+    certainly the Terraform/provisioning identity, NOT one that should ever be registered as the app's
+    own SP per CLAUDE/invariants.md's existing Reader-only rule. Confirmed this SP also lacks
+    subscription-level Microsoft.Authorization/roleDefinitions/write (can't create custom roles) and
+    Graph Application.ReadWrite (can't create a test app registration) - a real, load-bearing
+    permission boundary, not just this session's coincidence.
+FILES:
+  M server/src/db/schema/config.sql (access_targets comment update - no destructive change)
+  M server/src/db/migrate.ts (additive: cloud_environments.bastion_host_id/key_vault_uri,
+    access_targets.key_vault_secret_name/username)
+  M server/src/services/discovery/discoveryProvider.ts, azureDiscoveryProvider.ts (added
+    microsoft.network/bastionhosts to the Resource Graph query; captures the first Bastion host's id
+    and first Key Vault's vaultUri as environment-level facts, not topology nodes)
+  M server/src/services/discovery/discovery.service.ts (persists discovered bastionHostId/keyVaultUri
+    onto cloud_environments, COALESCE-preserved across runs that don't find one)
+  A server/src/services/keyVaultCredential.service.ts (@azure/keyvault-secrets-backed store/read/delete
+    for VM login secrets only - the platform's own Service Principal secret stays in the local
+    encrypted store, it's the bootstrap credential needed to reach Azure/Key Vault at all)
+  A server/src/services/accessBroker/bastionConnect.service.ts (raw ARM REST calls - createShareableLink
+    with poll-until-ready, deleteShareableLink - since no SDK/CLI convenience method exists)
+  D server/src/services/accessBroker/guacamoleToken.service.ts (dead code, deleted)
+  M server/src/services/accessBroker/accessBroker.service.ts (requestAccessSession rewritten: Bastion-
+    only, rejects manual/non-Azure nodes with bastion_unavailable; new revealSessionCredential for the
+    side panel's explicit "Show" action, separately audited from opening the connection; finishSession
+    now best-effort deletes the shareable link on session end)
+  M server/src/routes/accessSessions.routes.ts (async handler; new GET .../credential endpoint)
+  M server/src/routes/admin/topology.routes.ts (access-target PUT/GET/DELETE rewritten for Key Vault -
+    protocol/host/port now derived server-side from the node's own discovered metadata instead of
+    instructor-entered, since Bastion doesn't need them picked)
+  M client/src/features/accessSession/AccessSessionPanel.tsx (rewrite: real "Open connection" link to
+    the shareable link instead of a canvas/wsUrl stub; username/password Show/Copy per design doc 11.5)
+  M client/src/features/topology/TopologyViewerPage.tsx (AccessSessionResponse: wsUrl -> shareableLinkUrl)
+  M client/src/features/topology/admin/TopologyAdminPage.tsx (access-target form simplified to
+    username/password only; warns when a node isn't Azure-discovered, since Bastion needs a real VM)
+  M CLAUDE/invariants.md (ties the new custom RBAC role directly to the existing Reader-only rule)
+  M CLAUDE/db.md, CLAUDE/api.md (documented the new schema/endpoint behavior)
+  A docs/azure/cyber-range-bastion-operator-role.json (custom least-privilege role definition - Bastion
+    Shareable Link actions only, for the app's actual registered SP, never Contributor)
+  M .env.example (removed GUACAMOLE_LITE_SECRET_KEY/GUACD_GATEWAY_WS_URL, no longer used)
+  M BACKLOG.md (5 new entries - Phase 3 still pending, RBAC role not empirically narrow-tested,
+    default_vm_credential_id now vestigial, QRadar UI treatment, environments UI doesn't surface
+    bastion/keyvault discovery)
+RESULT: verified-live where it mattered most.
+  - npm run build (server tsc -b + client tsc -b + vite build) clean.
+  - npm run migrate against the real dev DB: confirmed via PRAGMA table_info that
+    cloud_environments/access_targets have the expected new columns.
+  - Key Vault SDK operations (setSecret/getSecret/beginDeleteSecret/purgeDeletedSecret) exercised for
+    real against the actual cyberrange-kv-vcit7 vault via a throwaway script (deleted after) using
+    AzureCliCredential in place of the service's own ClientSecretCredential (same @azure/keyvault-secrets
+    SDK calls under test either way - only the credential-acquisition mechanism differs, and that exact
+    pattern is already proven elsewhere in this codebase) - set/get/delete/purge all succeeded.
+  - Could NOT run bastionConnect.service.ts's exact functions end-to-end through the real app (would
+    need a registered cloud_environments row with a real clientSecret, which this session never had -
+    az CLI doesn't expose a logged-in SP's raw secret by design) - confidence here rests on the earlier
+    manual az rest verification of the identical REST calls/payloads/API version during the PoC, which
+    the service code mirrors exactly.
+  - Did not attempt full browser-driven interactive login (typing the real lab credential and seeing a
+    rendered remote desktop) for the reason noted above - recommend the user do this once, manually,
+    against a node configured through the new admin UI, before relying on Connect for real students.

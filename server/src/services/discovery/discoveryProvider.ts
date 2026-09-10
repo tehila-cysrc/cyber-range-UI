@@ -39,6 +39,11 @@ export interface DiscoveryResult {
   resources: DiscoveredResource[];
   relationships: DiscoveredRelationship[];
   warnings: DiscoveryWarning[];
+  // Environment-level infrastructure facts (Phase 2) — not topology nodes themselves, just captured
+  // for cloud_environments so the Bastion Connect / Key Vault credential flow knows where to point.
+  // Null when nothing of that type was found in the queried scope.
+  bastionHostId: string | null;
+  keyVaultUri: string | null;
 }
 
 export interface ResolvedCloudCredential {

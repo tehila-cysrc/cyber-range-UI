@@ -23,7 +23,8 @@ const RESOURCE_GRAPH_QUERY = `
       'microsoft.network/publicipaddresses',
       'microsoft.network/loadbalancers',
       'microsoft.storage/storageaccounts',
-      'microsoft.keyvault/vaults'
+      'microsoft.keyvault/vaults',
+      'microsoft.network/bastionhosts'
     )
   | project id, name, type, resourceGroup, location, properties
 `;
@@ -116,6 +117,8 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
   const nicToSubnet = new Map<string, string>();
   const nicToPrivateIp = new Map<string, string>();
   const vmToNicIds = new Map<string, string[]>();
+  let bastionHostId: string | null = null;
+  let keyVaultUri: string | null = null;
 
   for (const resource of resources) {
     try {
@@ -133,6 +136,18 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
           });
         }
         continue; // the vnet itself is never a topology node — its subnets are zones instead
+      }
+
+      // Environment-level infrastructure (Phase 2's Bastion Connect / Key Vault credentials) — not a
+      // topology node itself, just captured for cloud_environments.bastion_host_id/key_vault_uri.
+      // First one found wins; a scope with more than one of either is unusual and not modeled here.
+      if (azureType === 'microsoft.network/bastionhosts') {
+        if (!bastionHostId) bastionHostId = resource.id;
+        continue;
+      }
+      if (azureType === 'microsoft.keyvault/vaults' && !keyVaultUri) {
+        const vaultUri = get(resource, ['properties', 'vaultUri']) as string | undefined;
+        if (vaultUri) keyVaultUri = vaultUri;
       }
 
       const nodeType = NODE_TYPE_BY_AZURE_TYPE[azureType];
@@ -225,7 +240,7 @@ export function mapAzureResourcesToDiscovery(resources: AzureGraphResource[]): D
     return ok;
   });
 
-  return { zones, resources: discovered, relationships: validRelationships, warnings };
+  return { zones, resources: discovered, relationships: validRelationships, warnings, bastionHostId, keyVaultUri };
 }
 
 function curateMetadata(nodeType: string, resource: AzureGraphResource): Record<string, unknown> {

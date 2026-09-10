@@ -78,6 +78,19 @@ export function migrate() {
   addColumnIfMissing('topology_nodes', 'status', 'TEXT');
   relaxTopologyEdgesForZones();
 
+  // Phase 2 (Bastion Shareable Link Connect + Key Vault credentials). bastion_host_id/key_vault_uri
+  // are auto-populated by discovery (first Bastion host / Key Vault found in the environment's scope
+  // — see azureDiscoveryProvider.ts), not instructor-entered. key_vault_secret_name is the new
+  // credential-storage path for a node's VM login secret; NULL means it still uses the older local
+  // credential_id path (kept working for manual-only cyber ranges with no Azure environment at all).
+  addColumnIfMissing('cloud_environments', 'bastion_host_id', 'TEXT');
+  addColumnIfMissing('cloud_environments', 'key_vault_uri', 'TEXT');
+  addColumnIfMissing('access_targets', 'key_vault_secret_name', 'TEXT');
+  // Plain (non-secret) username, stored alongside key_vault_secret_name — only the password needs
+  // Key Vault; a username isn't sensitive and storing it there too would mean parsing a structured
+  // value out of a KV secret for no real benefit.
+  addColumnIfMissing('access_targets', 'username', 'TEXT');
+
   // Optional screenshot/evidence attached to a documentation entry — stored inline as a data: URL
   // rather than on disk/blob storage, matching this app's low-scale internal-tool scope.
   addColumnIfMissing('documentation_entries', 'image_data_url', 'TEXT');

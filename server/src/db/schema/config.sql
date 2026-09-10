@@ -143,10 +143,13 @@ CREATE TABLE IF NOT EXISTS environment_discovery_runs (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_discovery_run
   ON environment_discovery_runs (environment_id) WHERE status IN ('queued', 'running');
 
--- Per-node connection info for student browser-based access (Phase 4). CONFIG — same lifecycle as
--- the topology_nodes row it configures, not tied to one event run. Only populated for nodes an
+-- Per-node connection info for student browser-based access (Phase 4, now Azure Bastion Shareable
+-- Link-backed — see the Phase 2 topology-redesign plan). CONFIG — same lifecycle as the
+-- topology_nodes row it configures, not tied to one event run. Only populated for nodes an
 -- instructor has explicitly made connectable (typically node_type = 'vm'). credential_id is nullable:
 -- when unset, the broker falls back to the owning cloud_environments.default_vm_credential_id.
+-- key_vault_secret_name (nullable, additive) is the Phase 2 path: when set, the VM login credential
+-- lives in the environment's Key Vault (key_vault_uri) instead of the local credentials table.
 CREATE TABLE IF NOT EXISTS access_targets (
   id INTEGER PRIMARY KEY,
   topology_node_id INTEGER NOT NULL UNIQUE REFERENCES topology_nodes(id),

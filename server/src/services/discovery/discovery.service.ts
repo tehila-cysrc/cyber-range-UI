@@ -133,6 +133,16 @@ async function runDiscovery(runId: number): Promise<void> {
     return;
   }
 
+  // Environment-wide infrastructure facts, not tied to any one linked cyber range — persisted even if
+  // this run happens to have zero cyber ranges linked. COALESCE so a run that doesn't (re-)discover a
+  // Bastion host/Key Vault (e.g. a resource-group-scoped query that briefly missed it) doesn't erase
+  // an already-known value.
+  db.prepare('UPDATE cloud_environments SET bastion_host_id = COALESCE(?, bastion_host_id), key_vault_uri = COALESCE(?, key_vault_uri) WHERE id = ?').run(
+    discovery.bastionHostId,
+    discovery.keyVaultUri,
+    run.environmentId,
+  );
+
   const linkedRangeIds = (
     db.prepare('SELECT cyber_range_id AS id FROM cyber_range_environments WHERE environment_id = ?').all(run.environmentId) as { id: number }[]
   ).map((r) => r.id);

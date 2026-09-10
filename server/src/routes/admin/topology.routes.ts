@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
-import { rotateCredential, storeCredential } from '../../services/credential.service.js';
 import { writeAudit } from '../../services/audit.service.js';
+import { getResolvedCredential } from '../../services/environments.service.js';
+import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
 
 const router = Router();
 
@@ -100,76 +101,122 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =
   res.json({ ok: true });
 });
 
-// Access target config (Phase 4 — student browser access broker). Makes a node connectable: stores
-// the VM's login credential (encrypted — see credential.service.ts) and where/how to reach it. Only
-// instructors can configure this; the credential is write-only (never read back, same rule as
-// cloud_environments' Service Principal secret — see CLAUDE/invariants.md).
-router.put('/topology/nodes/:nodeId/access-target', (req, res) => {
+// Access target config (Phase 4, now Bastion Shareable Link + Key Vault-backed — Phase 2). Makes a
+// node connectable: stores the VM's login credential in the environment's Key Vault (never locally)
+// and derives protocol/host from the node's own discovered metadata rather than trusting instructor
+// input for values Bastion doesn't actually need picked (it auto-detects RDP vs SSH per VM). Only
+// instructors can configure this; the credential is write-only (never read back — see
+// CLAUDE/invariants.md, same rule as cloud_environments' Service Principal secret).
+router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
   const nodeId = Number(req.params.nodeId);
-  const { protocol, host, port, username, password } = req.body ?? {};
+  const { username, password } = req.body ?? {};
 
-  if (
-    (protocol !== 'rdp' && protocol !== 'ssh') ||
-    typeof host !== 'string' ||
-    typeof port !== 'number' ||
-    typeof username !== 'string' ||
-    typeof password !== 'string'
-  ) {
-    res.status(400).json({ error: 'protocol (rdp|ssh), host, port, username and password are required' });
+  if (typeof username !== 'string' || !username.trim() || typeof password !== 'string' || !password) {
+    res.status(400).json({ error: 'username and password are required' });
     return;
   }
 
-  const node = db.prepare('SELECT id FROM topology_nodes WHERE id = ?').get(nodeId);
+  const node = db
+    .prepare(
+      `SELECT tn.metadata_json AS metadataJson, tn.environment_id AS environmentId, ce.key_vault_uri AS keyVaultUri
+       FROM topology_nodes tn LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       WHERE tn.id = ?`,
+    )
+    .get(nodeId) as { metadataJson: string | null; environmentId: number | null; keyVaultUri: string | null } | undefined;
+
   if (!node) {
     res.status(404).json({ error: 'node not found' });
     return;
   }
+  if (!node.environmentId || !node.keyVaultUri) {
+    res
+      .status(400)
+      .json({ error: 'this node has no Azure environment/Key Vault registered — browser access requires an Azure-discovered VM (run discovery first)' });
+    return;
+  }
 
-  // Rotate the existing credential in place on re-configure rather than minting a new row each time
-  // and leaving the old one orphaned (same "one credential per target" intent as cloud_environments'
-  // rotate-on-update behavior).
-  const existing = db.prepare('SELECT credential_id AS credentialId FROM access_targets WHERE topology_node_id = ?').get(nodeId) as
-    | { credentialId: number | null }
-    | undefined;
+  const credential = getResolvedCredential(node.environmentId);
+  if (!credential) {
+    res.status(500).json({ error: 'could not resolve the environment credential' });
+    return;
+  }
 
-  let credentialId: number;
-  if (existing?.credentialId) {
-    rotateCredential(existing.credentialId, password);
-    db.prepare('UPDATE credentials SET metadata_json = ? WHERE id = ?').run(JSON.stringify({ username }), existing.credentialId);
-    credentialId = existing.credentialId;
-  } else {
-    credentialId = storeCredential('vm_login', password, { username }, req.user!.username);
+  const metadata = node.metadataJson ? JSON.parse(node.metadataJson) : {};
+  const protocol: 'rdp' | 'ssh' = metadata.osType === 'Linux' ? 'ssh' : 'rdp';
+  const host = typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : 'unknown';
+  const port = protocol === 'ssh' ? 22 : 3389;
+  const secretName = vmLoginSecretName(nodeId);
+
+  try {
+    await storeVmLoginSecret(credential, node.keyVaultUri, secretName, password);
+  } catch {
+    res.status(502).json({ error: 'failed to store the credential in Key Vault' });
+    return;
   }
 
   db.prepare(
-    `INSERT INTO access_targets (topology_node_id, protocol, host, port, credential_id) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (topology_node_id) DO UPDATE SET protocol = excluded.protocol, host = excluded.host, port = excluded.port, credential_id = excluded.credential_id`,
-  ).run(nodeId, protocol, host, port, credentialId);
+    `INSERT INTO access_targets (topology_node_id, protocol, host, port, username, key_vault_secret_name) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (topology_node_id) DO UPDATE SET
+       protocol = excluded.protocol, host = excluded.host, port = excluded.port,
+       username = excluded.username, key_vault_secret_name = excluded.key_vault_secret_name`,
+  ).run(nodeId, protocol, host, port, username.trim(), secretName);
 
-  writeAudit(req.user!.username, 'access_target.configured', 'topology_node', nodeId, { protocol, host });
+  writeAudit(req.user!.username, 'access_target.configured', 'topology_node', nodeId, { protocol, host, storage: 'key_vault' });
   res.status(201).json({ ok: true });
 });
 
 router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const target = db
-    .prepare('SELECT protocol, host, port, credential_id AS credentialId FROM access_targets WHERE topology_node_id = ?')
-    .get(nodeId) as { protocol: string; host: string; port: number; credentialId: number | null } | undefined;
+    .prepare(
+      'SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName FROM access_targets WHERE topology_node_id = ?',
+    )
+    .get(nodeId) as
+    | { protocol: string; host: string; port: number; username: string | null; credentialId: number | null; keyVaultSecretName: string | null }
+    | undefined;
 
   if (!target) {
     res.json({ accessTarget: null });
     return;
   }
-  res.json({ accessTarget: { protocol: target.protocol, host: target.host, port: target.port, hasCredential: target.credentialId != null } });
+  res.json({
+    accessTarget: {
+      protocol: target.protocol,
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      hasCredential: target.credentialId != null || target.keyVaultSecretName != null,
+    },
+  });
 });
 
-router.delete('/topology/nodes/:nodeId/access-target', (req, res) => {
+router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  const existing = db
+    .prepare(
+      `SELECT at.key_vault_secret_name AS keyVaultSecretName, tn.environment_id AS environmentId, ce.key_vault_uri AS keyVaultUri
+       FROM access_targets at
+       JOIN topology_nodes tn ON tn.id = at.topology_node_id
+       LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       WHERE at.topology_node_id = ?`,
+    )
+    .get(nodeId) as { keyVaultSecretName: string | null; environmentId: number | null; keyVaultUri: string | null } | undefined;
+
   const result = db.prepare('DELETE FROM access_targets WHERE topology_node_id = ?').run(nodeId);
   if (result.changes === 0) {
     res.status(404).json({ error: 'no access target configured for this node' });
     return;
   }
+
+  if (existing?.keyVaultSecretName && existing.environmentId && existing.keyVaultUri) {
+    try {
+      const credential = getResolvedCredential(existing.environmentId);
+      if (credential) await deleteVmLoginSecret(credential, existing.keyVaultUri, existing.keyVaultSecretName);
+    } catch (err) {
+      console.error(`[topology] failed to delete Key Vault secret for node ${nodeId}:`, (err as Error).message);
+    }
+  }
+
   writeAudit(req.user!.username, 'access_target.removed', 'topology_node', nodeId, null);
   res.json({ ok: true });
 });

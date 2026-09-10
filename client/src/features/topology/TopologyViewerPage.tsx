@@ -27,7 +27,7 @@ interface TopologyResponse {
 
 interface AccessSessionResponse {
   accessSessionId: number;
-  wsUrl: string | null;
+  shareableLinkUrl: string;
   expiresAt: string;
 }
 
@@ -82,7 +82,7 @@ export function TopologyViewerPage() {
       setConnectError(null);
     },
     onSuccess: ({ res, node }) => {
-      setSession({ accessSessionId: res.accessSessionId, wsUrl: res.wsUrl, expiresAt: res.expiresAt, nodeLabel: node.label });
+      setSession({ accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label });
     },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
     onSettled: () => setConnectingNodeId(null),

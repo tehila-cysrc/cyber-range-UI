@@ -27,6 +27,7 @@ interface AccessTarget {
   protocol: 'rdp' | 'ssh';
   host: string;
   port: number;
+  username: string | null;
   hasCredential: boolean;
 }
 
@@ -315,9 +316,6 @@ function NodePanel({
   const [label, setLabel] = useState(node.label);
   const metadata = parseMetadata(node.metadataJson);
 
-  const [accessProtocol, setAccessProtocol] = useState<'rdp' | 'ssh'>('rdp');
-  const [accessHost, setAccessHost] = useState((metadata?.privateIpAddress as string) ?? '');
-  const [accessPort, setAccessPort] = useState('3389');
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
 
@@ -326,11 +324,13 @@ function NodePanel({
     queryFn: () => apiFetch<{ accessTarget: AccessTarget | null }>(`/admin/topology/nodes/${node.id}/access-target`),
   });
 
+  // Protocol/host/port are no longer instructor-entered — Bastion auto-detects RDP vs SSH per VM, and
+  // the server derives host from the node's own discovered IP (see admin/topology.routes.ts's PUT).
   const saveAccessTarget = useMutation({
     mutationFn: () =>
       apiFetch(`/admin/topology/nodes/${node.id}/access-target`, {
         method: 'PUT',
-        body: JSON.stringify({ protocol: accessProtocol, host: accessHost, port: Number(accessPort), username: accessUsername, password: accessPassword }),
+        body: JSON.stringify({ username: accessUsername, password: accessPassword }),
       }),
     onSuccess: () => {
       setAccessPassword('');
@@ -400,26 +400,26 @@ function NodePanel({
       )}
 
       <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
-        <h3 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 6px' }}>Student browser access</h3>
+        <h3 style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 6px' }}>Student browser access (Azure Bastion)</h3>
+        {!node.environmentId && (
+          <div style={{ fontSize: 12, color: 'var(--signal-tertiary)', marginBottom: 6 }}>
+            This node isn't Azure-discovered — browser access needs a real VM behind Azure Bastion, so it can't be configured here.
+          </div>
+        )}
         {accessTargetData?.accessTarget && (
           <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 6 }}>
-            Currently: {accessTargetData.accessTarget.protocol} to {accessTargetData.accessTarget.host}:{accessTargetData.accessTarget.port} — leave
-            username/password blank to keep the credential (re-entering rotates it).
+            Currently: {accessTargetData.accessTarget.protocol.toUpperCase()} to {accessTargetData.accessTarget.host}, user{' '}
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{accessTargetData.accessTarget.username}</span> — protocol/host are auto-detected from
+            the VM; leave username/password blank to keep the current credential (re-entering rotates it in Key Vault).
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <select value={accessProtocol} onChange={(e) => setAccessProtocol(e.target.value as 'rdp' | 'ssh')} style={fieldStyle}>
-            <option value="rdp">RDP</option>
-            <option value="ssh">SSH</option>
-          </select>
-          <input value={accessHost} onChange={(e) => setAccessHost(e.target.value)} placeholder="Host / private IP" style={fieldStyle} />
-          <input value={accessPort} onChange={(e) => setAccessPort(e.target.value)} placeholder="Port" style={fieldStyle} />
           <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={fieldStyle} />
           <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password" type="password" style={fieldStyle} />
           <div style={{ display: 'flex', gap: 8 }}>
             <Button
               variant="ghost"
-              disabled={saveAccessTarget.isPending || !accessHost.trim() || !accessUsername.trim() || !accessPassword.trim()}
+              disabled={saveAccessTarget.isPending || !node.environmentId || !accessUsername.trim() || !accessPassword.trim()}
               onClick={() => saveAccessTarget.mutate()}
             >
               Save

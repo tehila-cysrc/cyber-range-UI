@@ -1,14 +1,16 @@
-import { randomUUID } from 'node:crypto';
 import { db } from '../../db/index.js';
 import { readCredentialPlaintext } from '../credential.service.js';
+import { readVmLoginSecret } from '../keyVaultCredential.service.js';
+import { getResolvedCredential } from '../environments.service.js';
+import { createShareableLink, deleteShareableLink } from './bastionConnect.service.js';
+import { classifyAzureError } from '../azureErrors.js';
 import { writeAudit } from '../audit.service.js';
-import { buildConnectionConfig, encryptConnectionToken } from './guacamoleToken.service.js';
 import { emitAccessSessionEnded, emitAccessSessionStarted } from '../../sockets/emitters.js';
 
 const SESSION_TTL_MINUTES = Number(process.env.ACCESS_SESSION_TTL_MINUTES ?? 15);
 
 export type RequestOutcome =
-  | { ok: true; accessSessionId: number; wsUrl: string | null; expiresAt: string }
+  | { ok: true; accessSessionId: number; shareableLinkUrl: string; expiresAt: string }
   | { ok: false; status: number; reason: string; message: string };
 
 interface RequestingUser {
@@ -22,7 +24,11 @@ interface RequestingUser {
 // -active cyber range, never trusted from the client — see CLAUDE/invariants.md. A malicious request
 // naming another team's node is rejected here, before any credential is ever touched, and the
 // rejection itself is audited, not silently dropped.
-export function requestAccessSession(user: RequestingUser, topologyNodeId: number, clientIp: string | null): RequestOutcome {
+//
+// Phase 2: Connect is Azure Bastion Shareable Link-backed, which only exists for a real Azure VM — a
+// hand-drawn node with no environment_id (a manual-only cyber range) has no network path to broker at
+// all, so it's rejected with 'not_connectable' just like a node with no access_targets row.
+export async function requestAccessSession(user: RequestingUser, topologyNodeId: number, clientIp: string | null): Promise<RequestOutcome> {
   const activeProgress = db
     .prepare(`SELECT cyber_range_id AS cyberRangeId FROM team_cyber_range_progress WHERE team_id = ? AND status = 'active' LIMIT 1`)
     .get(user.teamId) as { cyberRangeId: number } | undefined;
@@ -32,8 +38,15 @@ export function requestAccessSession(user: RequestingUser, topologyNodeId: numbe
     return { ok: false, status: 409, reason: 'no_active_range', message: "your team has no active cyber range" };
   }
 
-  const node = db.prepare('SELECT id, cyber_range_id AS cyberRangeId FROM topology_nodes WHERE id = ?').get(topologyNodeId) as
-    | { id: number; cyberRangeId: number }
+  const node = db
+    .prepare(
+      `SELECT tn.id AS id, tn.cyber_range_id AS cyberRangeId, tn.external_key AS externalKey, tn.environment_id AS environmentId,
+              ce.bastion_host_id AS bastionHostId
+       FROM topology_nodes tn LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       WHERE tn.id = ?`,
+    )
+    .get(topologyNodeId) as
+    | { id: number; cyberRangeId: number; externalKey: string; environmentId: number | null; bastionHostId: string | null }
     | undefined;
 
   if (!node || node.cyberRangeId !== activeProgress.cyberRangeId) {
@@ -41,58 +54,119 @@ export function requestAccessSession(user: RequestingUser, topologyNodeId: numbe
   }
 
   const target = db
-    .prepare('SELECT protocol, host, port, credential_id AS credentialId FROM access_targets WHERE topology_node_id = ?')
-    .get(topologyNodeId) as { protocol: 'rdp' | 'ssh'; host: string; port: number; credentialId: number | null } | undefined;
+    .prepare('SELECT protocol, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
+    .get(topologyNodeId) as
+    | { protocol: 'rdp' | 'ssh'; credentialId: number | null; keyVaultSecretName: string | null; username: string | null }
+    | undefined;
 
   if (!target) {
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'not_connectable', 400, 'this node has no configured access target');
   }
 
-  const credentialId = target.credentialId ?? resolveDefaultCredentialId(topologyNodeId);
-  if (!credentialId) {
+  if (!node.environmentId || !node.bastionHostId) {
+    return deny(
+      user,
+      topologyNodeId,
+      activeProgress.cyberRangeId,
+      'bastion_unavailable',
+      400,
+      'remote connection is temporarily unavailable for this machine',
+    );
+  }
+
+  const credential = getResolvedCredential(node.environmentId);
+  if (!credential) {
+    return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'credential_error', 500, 'platform permissions do not allow this action — contact an administrator');
+  }
+
+  // Resolving the VM login credential isn't actually needed to open the Bastion connection itself
+  // (the shareable link never carries it), but confirms one is configured before we hand the student
+  // a link that will just fail at their own login prompt — see revealSessionCredential for the
+  // separate, explicitly-audited "Show" action that actually returns it to the client.
+  try {
+    await resolveNodeCredential(target, node.environmentId);
+  } catch {
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'no_credential_configured', 400, 'no login credential is configured for this node');
   }
 
-  let username: string;
-  let password: string;
+  let shareableLinkUrl: string;
   try {
-    const credRow = db.prepare('SELECT metadata_json AS metadataJson FROM credentials WHERE id = ?').get(credentialId) as
-      | { metadataJson: string | null }
-      | undefined;
-    const meta = credRow?.metadataJson ? JSON.parse(credRow.metadataJson) : {};
-    if (!meta.username) throw new Error('credential has no username in metadata');
-    username = meta.username;
-    password = readCredentialPlaintext(credentialId);
-  } catch {
-    return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'credential_error', 500, 'failed to resolve the login credential for this node');
+    const link = await createShareableLink(credential, node.bastionHostId, node.externalKey);
+    shareableLinkUrl = link.url;
+  } catch (err) {
+    const { message } = classifyAzureError(err);
+    return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'bastion_error', 502, message);
   }
 
-  const config = buildConnectionConfig(target.protocol, target.host, target.port, username, password);
-  const token = encryptConnectionToken(config); // never logged, never returned in a wider payload
-
-  const brokerConnectionId = randomUUID();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_TTL_MINUTES * 60_000).toISOString();
 
   const result = db
     .prepare(
       `INSERT INTO access_sessions
-         (team_id, user_id, cyber_range_id, topology_node_id, protocol, broker_connection_id, requested_at, started_at, expires_at, outcome, client_ip)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+         (team_id, user_id, cyber_range_id, topology_node_id, protocol, requested_at, started_at, expires_at, outcome, client_ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
     )
-    .run(user.teamId, user.id, activeProgress.cyberRangeId, topologyNodeId, target.protocol, brokerConnectionId, now.toISOString(), now.toISOString(), expiresAt, clientIp);
+    .run(user.teamId, user.id, activeProgress.cyberRangeId, topologyNodeId, target.protocol, now.toISOString(), now.toISOString(), expiresAt, clientIp);
   const accessSessionId = result.lastInsertRowid as number;
 
   writeAudit(user.username, 'access_session.requested', 'access_session', accessSessionId, { teamId: user.teamId, topologyNodeId });
   emitAccessSessionStarted(user.teamId, { id: accessSessionId, topologyNodeId, protocol: target.protocol, expiresAt });
 
-  // No real guacd is deployed for this dev environment yet — GUACD_GATEWAY_WS_URL is unset there, so
-  // wsUrl comes back null (token still minted and the session still tracked) rather than failing the
-  // whole request. Once a real gateway exists, set the env var and the same token works unmodified.
-  const gatewayUrl = process.env.GUACD_GATEWAY_WS_URL;
-  const wsUrl = gatewayUrl ? `${gatewayUrl}?token=${encodeURIComponent(token)}` : null;
+  return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
+}
 
-  return { ok: true, accessSessionId, wsUrl, expiresAt };
+async function resolveNodeCredential(
+  target: { credentialId: number | null; keyVaultSecretName: string | null; username: string | null },
+  environmentId: number,
+): Promise<{ username: string; password: string }> {
+  if (!target.username) throw new Error('no username configured');
+
+  if (target.keyVaultSecretName) {
+    const row = db.prepare('SELECT key_vault_uri AS keyVaultUri FROM cloud_environments WHERE id = ?').get(environmentId) as
+      | { keyVaultUri: string | null }
+      | undefined;
+    if (!row?.keyVaultUri) throw new Error('environment has no Key Vault registered');
+    const credential = getResolvedCredential(environmentId);
+    if (!credential) throw new Error('no resolvable environment credential');
+    const password = await readVmLoginSecret(credential, row.keyVaultUri, target.keyVaultSecretName);
+    return { username: target.username, password };
+  }
+
+  if (target.credentialId) {
+    return { username: target.username, password: readCredentialPlaintext(target.credentialId) };
+  }
+
+  throw new Error('no credential configured');
+}
+
+// The side panel's explicit "Show"/"Copy" action (design doc §11.5) — separate from opening the
+// connection itself, and separately audited, since revealing a plaintext credential to the browser is
+// a more sensitive event than just opening a (credential-free) Bastion link.
+export async function revealSessionCredential(
+  accessSessionId: number,
+  teamId: number,
+  username: string,
+): Promise<{ username: string; password: string } | null> {
+  const row = db
+    .prepare(`SELECT topology_node_id AS topologyNodeId, team_id AS teamId, outcome FROM access_sessions WHERE id = ?`)
+    .get(accessSessionId) as { topologyNodeId: number; teamId: number; outcome: string } | undefined;
+  if (!row || row.teamId !== teamId || row.outcome !== 'active') return null;
+
+  const target = db
+    .prepare('SELECT credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
+    .get(row.topologyNodeId) as { credentialId: number | null; keyVaultSecretName: string | null; username: string | null } | undefined;
+  const environmentId = (db.prepare('SELECT environment_id AS environmentId FROM topology_nodes WHERE id = ?').get(row.topologyNodeId) as { environmentId: number | null } | undefined)
+    ?.environmentId;
+  if (!target || !environmentId) return null;
+
+  try {
+    const resolved = await resolveNodeCredential(target, environmentId);
+    writeAudit(username, 'access_session.credential_revealed', 'access_session', accessSessionId, null);
+    return resolved;
+  } catch {
+    return null;
+  }
 }
 
 function deny(
@@ -110,17 +184,6 @@ function deny(
   ).run(user.teamId, user.id, cyberRangeId, topologyNodeId, now, now, reason);
   writeAudit(user.username, 'access_session.denied', 'topology_node', topologyNodeId, { reason, teamId: user.teamId });
   return { ok: false, status, reason, message };
-}
-
-function resolveDefaultCredentialId(topologyNodeId: number): number | null {
-  const row = db
-    .prepare(
-      `SELECT ce.default_vm_credential_id AS credentialId
-       FROM topology_nodes tn JOIN cloud_environments ce ON ce.id = tn.environment_id
-       WHERE tn.id = ?`,
-    )
-    .get(topologyNodeId) as { credentialId: number | null } | undefined;
-  return row?.credentialId ?? null;
 }
 
 export function endOwnSession(accessSessionId: number, teamId: number, username: string): boolean {
@@ -154,7 +217,33 @@ export function expireSession(accessSessionId: number, teamId: number): void {
 
 function finishSession(accessSessionId: number, teamId: number, outcome: 'completed' | 'force_closed' | 'expired') {
   db.prepare(`UPDATE access_sessions SET outcome = ?, ended_at = ? WHERE id = ?`).run(outcome, new Date().toISOString(), accessSessionId);
+  void cleanupShareableLink(accessSessionId);
   emitAccessSessionEnded(teamId, accessSessionId, outcome);
+}
+
+// Best-effort: a lingering shareable link isn't a security hole (it still requires the real VM
+// credential to do anything), just tidiness — Bastion caps at 500 links per host, and Bastion's own
+// docs already tell you a link keeps failing quietly once its target is gone, so a failure here is
+// logged, never allowed to block session-end or surface to the caller.
+async function cleanupShareableLink(accessSessionId: number): Promise<void> {
+  const row = db
+    .prepare(
+      `SELECT tn.external_key AS externalKey, tn.environment_id AS environmentId, ce.bastion_host_id AS bastionHostId
+       FROM access_sessions s
+       JOIN topology_nodes tn ON tn.id = s.topology_node_id
+       LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       WHERE s.id = ?`,
+    )
+    .get(accessSessionId) as { externalKey: string; environmentId: number | null; bastionHostId: string | null } | undefined;
+  if (!row?.environmentId || !row.bastionHostId) return;
+
+  try {
+    const credential = getResolvedCredential(row.environmentId);
+    if (!credential) return;
+    await deleteShareableLink(credential, row.bastionHostId, row.externalKey);
+  } catch (err) {
+    console.error(`[accessBroker] failed to clean up shareable link for session ${accessSessionId}:`, (err as Error).message);
+  }
 }
 
 export interface ActiveSessionSummary {

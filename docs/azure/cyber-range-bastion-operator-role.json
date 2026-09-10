@@ -1,0 +1,16 @@
+{
+  "Name": "Cyber Range Bastion Operator",
+  "IsCustom": true,
+  "Description": "Lets the Cyber Range platform's registered Service Principal create, retrieve, and delete Azure Bastion Shareable Links for lab VMs — the minimum beyond Reader that Phase 2's Connect feature needs. Assign this in ADDITION to Reader at the resource group scope; never assign Contributor/Owner to this Service Principal (see CLAUDE/invariants.md).",
+  "Actions": [
+    "Microsoft.Network/bastionHosts/read",
+    "Microsoft.Network/bastionHosts/createShareableLinks/action",
+    "Microsoft.Network/bastionHosts/getShareableLinks/action",
+    "Microsoft.Network/bastionHosts/deleteShareableLinks/action",
+    "Microsoft.Network/bastionHosts/deleteShareableLinksByToken/action"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": ["/subscriptions/<SUBSCRIPTION_ID>"]
+}
