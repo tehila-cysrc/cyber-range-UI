@@ -10,3 +10,10 @@ server/data/*.db-shm
 .DS_Store
 *.tsbuildinfo
 .claude/
+CLAUDE.md
+CLAUDE/
+BACKLOG.md
+FOLLOWUPS.md
+PROGRESS.txt
+PROGRESS_OLD_*.txt
+hooks/
