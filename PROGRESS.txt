@@ -1802,3 +1802,13 @@ RESULT: server+client `tsc --noEmit` clean. `npm run migrate` applied the new ta
   Recommend the user register/re-link a real Azure environment and click through one real Run Script
   invocation before relying on this for a live cohort.
 ==================================================================
+[2026-09-14] session=topology-logical-redesign-phase3-script-library
+TASK: Follow-up only - user confirmed ("בדקתי וזה עובד") that the Phase 3 Run Script flow works end
+  to end against a real Azure VM. This closes the one open verification gap flagged at the end of the
+  prior session (the actual ComputeManagementClient.beginRunCommand call, untested then because no
+  cloud environment was registered in the dev DB at the time).
+FILES:
+  M BACKLOG.md (moved the "beginRunCommand untested" item to Done with the user's confirmation; left
+    the narrow-RBAC-role-sufficiency item open since that's a distinct claim not directly confirmed)
+RESULT: user-confirmed live.
+==================================================================
