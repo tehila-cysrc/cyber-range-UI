@@ -21,6 +21,10 @@ const NAV_ITEMS = [
   { to: '/debrief', label: 'Debrief' },
 ];
 
+// Student-only views that have no working instructor equivalent (no team_id, no team-switcher) —
+// instructors use the corresponding INSTRUCTOR_NAV_ITEMS entry instead (e.g. Roster for Team).
+const HIDDEN_FOR_INSTRUCTOR = new Set(['/', '/topology', '/team']);
+
 const INSTRUCTOR_NAV_ITEMS = [
   { to: '/instructor', label: 'Instructor' },
   { to: '/admin/topology', label: 'Topology Admin' },
@@ -190,7 +194,7 @@ export function AppShell() {
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--space-lg)', flex: 1 }}>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => user?.role !== 'instructor' || !HIDDEN_FOR_INSTRUCTOR.has(item.to)).map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
           {user?.role === 'instructor' &&

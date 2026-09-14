@@ -1812,3 +1812,30 @@ FILES:
     the narrow-RBAC-role-sufficiency item open since that's a distinct claim not directly confirmed)
 RESULT: user-confirmed live.
 ==================================================================
+
+==================================================================
+[2026-09-14 00:00 IDT] session=topology-page-fixes
+TASK: Two small topology-page fixes from user review: (1) hide the default React Flow attribution badge, (2) give each node role its own distinct color instead of 5 roles sharing --signal-primary and 2 sharing --signal-alert in the legend.
+FILES:
+  M client/src/features/topology/TopologyGraph.tsx (added proOptions={{hideAttribution:true}} to <ReactFlow>; ROLE_STYLE now uses new --role-* tokens for web_server/mail_server/database_server/linux_server/generic_server/firewall instead of reusing --signal-primary/--signal-alert)
+  M client/src/styles/tokens.css (added --role-blue/--role-violet/--role-teal/--role-orange/--role-lime/--role-pink)
+  M BACKLOG.md (noted NODE_TYPE_FALLBACK_STYLE has the same latent color-collision pattern, deferred since it isn't rendered in the legend)
+RESULT: compiles-untested — not yet run against a live browser session.
+==================================================================
+
+==================================================================
+[2026-09-14 08:20 IDT] session=topology-page-fixes
+TASK: Give the instructor (Topology Admin) a "Connect" button, matching the student's existing Bastion Shareable Link Connect on the topology page. Required a schema decision (user picked: full tracked session, same as a student's, appearing in the instructor dashboard's Active Sessions panel) since access_sessions.team_id was NOT NULL and this session has no team.
+FILES:
+  M server/src/db/schema/run.sql (access_sessions.team_id now nullable — NULL = instructor's own Connect, not tied to any team)
+  M server/src/db/migrate.ts (added relaxAccessSessionsTeamId(), same rebuild-once pattern as relaxTopologyEdgesForZones, guarded by PRAGMA table_info's notnull flag)
+  M server/src/services/accessBroker/accessBroker.service.ts (new requestInstructorAccessSession() + denyInstructor() — same Bastion flow as requestAccessSession but no team/active-progress scoping; finishSession/expireSession/forceCloseSession/listActiveSessions/ActiveSessionSummary now accept/return teamId: number | null)
+  M server/src/services/accessBroker/accessSessionExpiry.service.ts (teamId type widened to number | null)
+  M server/src/sockets/emitters.ts (emitAccessSessionStarted/emitAccessSessionEnded accept teamId: number | null, skip the team room when null)
+  M server/src/routes/admin/topology.routes.ts (new POST /topology/nodes/:nodeId/connect; ends via the existing POST /admin/access-sessions/:id/force-close, no new "end" route)
+  M client/src/features/topology/admin/TopologyAdminPage.tsx (NodePanel: Connect/Open connection/Disconnect UI, gated on environmentId + a configured access target; added key={selectedNode.id} on NodePanel so per-node UI state, incl. the new connect session state, doesn't leak across node selection)
+  M client/src/features/instructorDashboard/InstructorDashboardPage.tsx (Active access sessions panel shows "Instructor" badge when teamName is null)
+  M CLAUDE/api.md, CLAUDE/db.md, CLAUDE/invariants.md (documented the new endpoint, the nullable team_id, and that the instructor path intentionally skips the student path's active-team-progress check)
+  M FOLLOWUPS.md (two pre-existing P3s noticed in passing: deny() can FK-violate on a nonexistent topologyNodeId; classifyAzureError can't classify bastionConnect.service.ts's plain-Error throws, so Bastion failures always read as a generic 'unknown' reason)
+RESULT: verified live — `npm run migrate` rebuilt an existing dev DB's access_sessions table in place (3 pre-existing rows preserved, team_id now nullable), re-running migrate is a no-op. Hit the real dev server: connect to a node with no access target -> clean 400 not_connectable; connect to a real Azure-discovered VM (JUMP01, cyber range 7) -> 201 with a real Bastion shareable-link URL, session appeared in GET /admin/access-sessions with teamId/teamName both null, force-close ended it and the list went empty. (One transient 502 bastion_error on a cold first attempt, succeeded immediately on retry with no code change — see FOLLOWUPS, not a regression: same createShareableLink call the student path already used.)
+==================================================================

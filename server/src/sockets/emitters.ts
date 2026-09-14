@@ -50,17 +50,19 @@ export function emitLeaderboardUpdate(teams: unknown) {
   getIo().emit('leaderboard:update', { teams });
 }
 
+// teamId is null for an instructor's own Connect session (not tied to any team) — it only ever
+// reaches INSTRUCTOR_ROOM in that case, since there's no team room to also notify.
 export function emitAccessSessionStarted(
-  teamId: number,
+  teamId: number | null,
   session: { id: number; topologyNodeId: number; protocol: string; expiresAt: string },
 ) {
   getIo()
-    .to([teamRoom(teamId), INSTRUCTOR_ROOM])
+    .to(teamId != null ? [teamRoom(teamId), INSTRUCTOR_ROOM] : [INSTRUCTOR_ROOM])
     .emit('access_session:started', { session });
 }
 
-export function emitAccessSessionEnded(teamId: number, accessSessionId: number, outcome: string) {
+export function emitAccessSessionEnded(teamId: number | null, accessSessionId: number, outcome: string) {
   getIo()
-    .to([teamRoom(teamId), INSTRUCTOR_ROOM])
+    .to(teamId != null ? [teamRoom(teamId), INSTRUCTOR_ROOM] : [INSTRUCTOR_ROOM])
     .emit('access_session:ended', { accessSessionId, outcome });
 }

@@ -6,6 +6,7 @@ import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
 import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
+import { requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
 
 const router = Router();
 
@@ -220,6 +221,21 @@ router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
 
   writeAudit(req.user!.username, 'access_target.removed', 'topology_node', nodeId, null);
   res.json({ ok: true });
+});
+
+// Instructor's own diagnostic Connect — same Bastion Shareable Link flow as the student browser-access
+// broker (accessSessions.routes.ts's POST /teams/me/access-sessions), but not team-scoped (see
+// accessBroker.service.ts#requestInstructorAccessSession). Ending it reuses the existing force-close
+// endpoint (admin/accessSessions.routes.ts) — no separate "end" route needed.
+router.post('/topology/nodes/:nodeId/connect', async (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const outcome = await requestInstructorAccessSession(nodeId, { id: req.user!.id, username: req.user!.username }, req.ip ?? null);
+
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.message, reason: outcome.reason });
+    return;
+  }
+  res.status(201).json({ accessSessionId: outcome.accessSessionId, shareableLinkUrl: outcome.shareableLinkUrl, expiresAt: outcome.expiresAt });
 });
 
 // Instructor "Run Script" (Phase 3 — Azure VM Run Command). Responds immediately with the new

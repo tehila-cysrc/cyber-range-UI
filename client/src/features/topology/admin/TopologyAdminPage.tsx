@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { apiFetch } from '../../../lib/apiClient';
+import { apiFetch, ApiError } from '../../../lib/apiClient';
 import { Button } from '../../../components/Button';
 import {
   TopologyGraph,
@@ -233,6 +233,7 @@ export function TopologyAdminPage() {
 
             {selectedNode && (
               <NodePanel
+                key={selectedNode.id}
                 node={selectedNode}
                 zones={allZones}
                 onClose={() => setSelection(null)}
@@ -321,6 +322,8 @@ function NodePanel({
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [showRunScript, setShowRunScript] = useState(false);
+  const [connectSession, setConnectSession] = useState<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string } | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const { data: accessTargetData } = useQuery({
     queryKey: ['access-target', node.id],
@@ -344,6 +347,19 @@ function NodePanel({
   const removeAccessTarget = useMutation({
     mutationFn: () => apiFetch(`/admin/topology/nodes/${node.id}/access-target`, { method: 'DELETE' }),
     onSuccess: onAccessTargetChanged,
+  });
+
+  const connect = useMutation({
+    mutationFn: () =>
+      apiFetch<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string }>(`/admin/topology/nodes/${node.id}/connect`, { method: 'POST' }),
+    onMutate: () => setConnectError(null),
+    onSuccess: setConnectSession,
+    onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: (accessSessionId: number) => apiFetch(`/admin/access-sessions/${accessSessionId}/force-close`, { method: 'POST' }),
+    onSuccess: () => setConnectSession(null),
   });
 
   return (
@@ -437,6 +453,31 @@ function NodePanel({
       </div>
 
       <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
+        {connectSession ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            <a href={connectSession.shareableLinkUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+              <Button variant="primary" style={{ width: '100%' }}>
+                Open connection
+              </Button>
+            </a>
+            <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>Expires {new Date(connectSession.expiresAt).toLocaleTimeString()}</div>
+            <Button variant="destructive" disabled={disconnect.isPending} onClick={() => disconnect.mutate(connectSession.accessSessionId)} style={{ width: '100%' }}>
+              Disconnect
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            disabled={connect.isPending || !node.environmentId || !accessTargetData?.accessTarget}
+            title={node.environmentId ? undefined : 'Connect needs an Azure-discovered VM'}
+            onClick={() => connect.mutate()}
+            style={{ width: '100%', marginBottom: 8 }}
+          >
+            {connect.isPending ? 'Connecting…' : 'Connect'}
+          </Button>
+        )}
+        {connectError && <div style={{ fontSize: 12, color: 'var(--signal-alert)', marginBottom: 8 }}>{connectError}</div>}
+
         <Button
           variant="ghost"
           disabled={!node.environmentId}

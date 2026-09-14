@@ -52,6 +52,38 @@ function relaxTopologyEdgesForZones() {
   `);
 }
 
+// access_sessions predates instructor-initiated Connect and had NOT NULL team_id. SQLite can't relax
+// a NOT NULL constraint via plain ALTER TABLE, so a database created before instructor Connect needs
+// the table rebuilt once, same approach as relaxTopologyEdgesForZones above. Guarded by checking
+// PRAGMA table_info's notnull flag so re-running migrate() is a no-op once already relaxed.
+function relaxAccessSessionsTeamId() {
+  const columns = db.prepare(`PRAGMA table_info(access_sessions)`).all() as { name: string; notnull: number }[];
+  const teamIdColumn = columns.find((c) => c.name === 'team_id');
+  if (!teamIdColumn || teamIdColumn.notnull === 0) return;
+
+  db.exec(`
+    CREATE TABLE access_sessions_new (
+      id INTEGER PRIMARY KEY,
+      team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+      topology_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),
+      protocol TEXT NOT NULL,
+      broker_connection_id TEXT,
+      requested_at TEXT NOT NULL,
+      started_at TEXT,
+      ended_at TEXT,
+      expires_at TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK (outcome IN ('active', 'completed', 'expired', 'denied', 'error', 'force_closed')),
+      denial_reason TEXT,
+      client_ip TEXT
+    );
+    INSERT INTO access_sessions_new SELECT * FROM access_sessions;
+    DROP TABLE access_sessions;
+    ALTER TABLE access_sessions_new RENAME TO access_sessions;
+  `);
+}
+
 export function migrate() {
   // Order matters: run.sql's foreign keys reference config.sql's tables.
   runSchemaFile('schema/config.sql');
@@ -77,6 +109,7 @@ export function migrate() {
   // future discovery enhancement could sync this from the VM's live Azure power state automatically.
   addColumnIfMissing('topology_nodes', 'status', 'TEXT');
   relaxTopologyEdgesForZones();
+  relaxAccessSessionsTeamId();
 
   // Phase 2 (Bastion Shareable Link Connect + Key Vault credentials). bastion_host_id/key_vault_uri
   // are auto-populated by discovery (first Bastion host / Key Vault found in the environment's scope

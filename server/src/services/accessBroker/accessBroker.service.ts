@@ -116,6 +116,100 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
   return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
 }
 
+// The instructor-facing entry point (Topology Admin's own "Connect" button) — same Bastion Shareable
+// Link mechanism as requestAccessSession, but not team-scoped: an instructor can diagnostically
+// connect to any node in any cyber range regardless of which team (if any) currently has it active,
+// since they already have full read/write access to every range's topology. Recorded as an
+// access_sessions row with team_id NULL (see CLAUDE/db.md) so it still shows up in the instructor
+// dashboard's "Active access sessions" list and gets cleaned up by the same expiry sweep.
+export async function requestInstructorAccessSession(
+  topologyNodeId: number,
+  actor: { id: number; username: string },
+  clientIp: string | null,
+): Promise<RequestOutcome> {
+  const node = db
+    .prepare(
+      `SELECT tn.id AS id, tn.cyber_range_id AS cyberRangeId, tn.external_key AS externalKey, tn.environment_id AS environmentId,
+              ce.bastion_host_id AS bastionHostId
+       FROM topology_nodes tn LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       WHERE tn.id = ?`,
+    )
+    .get(topologyNodeId) as
+    | { id: number; cyberRangeId: number; externalKey: string; environmentId: number | null; bastionHostId: string | null }
+    | undefined;
+
+  if (!node) {
+    return { ok: false, status: 404, reason: 'node_not_found', message: 'this node does not exist' };
+  }
+
+  const target = db
+    .prepare('SELECT protocol, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
+    .get(topologyNodeId) as
+    | { protocol: 'rdp' | 'ssh'; credentialId: number | null; keyVaultSecretName: string | null; username: string | null }
+    | undefined;
+
+  if (!target) {
+    return denyInstructor(actor, node, 'not_connectable', 400, 'this node has no configured access target');
+  }
+
+  if (!node.environmentId || !node.bastionHostId) {
+    return denyInstructor(actor, node, 'bastion_unavailable', 400, 'remote connection is temporarily unavailable for this machine');
+  }
+
+  const credential = getResolvedCredential(node.environmentId);
+  if (!credential) {
+    return denyInstructor(actor, node, 'credential_error', 500, 'platform permissions do not allow this action — contact an administrator');
+  }
+
+  try {
+    await resolveNodeCredential(target, node.environmentId);
+  } catch {
+    return denyInstructor(actor, node, 'no_credential_configured', 400, 'no login credential is configured for this node');
+  }
+
+  let shareableLinkUrl: string;
+  try {
+    const link = await createShareableLink(credential, node.bastionHostId, node.externalKey);
+    shareableLinkUrl = link.url;
+  } catch (err) {
+    const { message } = classifyAzureError(err);
+    return denyInstructor(actor, node, 'bastion_error', 502, message);
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MINUTES * 60_000).toISOString();
+
+  const result = db
+    .prepare(
+      `INSERT INTO access_sessions
+         (team_id, user_id, cyber_range_id, topology_node_id, protocol, requested_at, started_at, expires_at, outcome, client_ip)
+       VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+    )
+    .run(actor.id, node.cyberRangeId, topologyNodeId, target.protocol, now.toISOString(), now.toISOString(), expiresAt, clientIp);
+  const accessSessionId = result.lastInsertRowid as number;
+
+  writeAudit(actor.username, 'access_session.requested', 'access_session', accessSessionId, { teamId: null, topologyNodeId, instructor: true });
+  emitAccessSessionStarted(null, { id: accessSessionId, topologyNodeId, protocol: target.protocol, expiresAt });
+
+  return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
+}
+
+function denyInstructor(
+  actor: { id: number; username: string },
+  node: { id: number; cyberRangeId: number },
+  reason: string,
+  status: number,
+  message: string,
+): RequestOutcome {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO access_sessions (team_id, user_id, cyber_range_id, topology_node_id, protocol, requested_at, expires_at, outcome, denial_reason)
+     VALUES (NULL, ?, ?, ?, 'rdp', ?, ?, 'denied', ?)`,
+  ).run(actor.id, node.cyberRangeId, node.id, now, now, reason);
+  writeAudit(actor.username, 'access_session.denied', 'topology_node', node.id, { reason, instructor: true });
+  return { ok: false, status, reason, message };
+}
+
 async function resolveNodeCredential(
   target: { credentialId: number | null; keyVaultSecretName: string | null; username: string | null },
   environmentId: number,
@@ -199,7 +293,7 @@ export function endOwnSession(accessSessionId: number, teamId: number, username:
 
 export function forceCloseSession(accessSessionId: number, actorUsername: string): boolean {
   const row = db.prepare(`SELECT team_id AS teamId, outcome FROM access_sessions WHERE id = ?`).get(accessSessionId) as
-    | { teamId: number; outcome: string }
+    | { teamId: number | null; outcome: string }
     | undefined;
   if (!row || row.outcome !== 'active') return false;
 
@@ -210,12 +304,12 @@ export function forceCloseSession(accessSessionId: number, actorUsername: string
 
 // Called by accessSessionExpiry.service.ts's ticker for sessions that ran past expires_at without an
 // explicit end — same "server-authoritative timing" precedent as clock.service.ts.
-export function expireSession(accessSessionId: number, teamId: number): void {
+export function expireSession(accessSessionId: number, teamId: number | null): void {
   finishSession(accessSessionId, teamId, 'expired');
   writeAudit(null, 'access_session.ended', 'access_session', accessSessionId, { outcome: 'expired' });
 }
 
-function finishSession(accessSessionId: number, teamId: number, outcome: 'completed' | 'force_closed' | 'expired') {
+function finishSession(accessSessionId: number, teamId: number | null, outcome: 'completed' | 'force_closed' | 'expired') {
   db.prepare(`UPDATE access_sessions SET outcome = ?, ended_at = ? WHERE id = ?`).run(outcome, new Date().toISOString(), accessSessionId);
   void cleanupShareableLink(accessSessionId);
   emitAccessSessionEnded(teamId, accessSessionId, outcome);
@@ -248,8 +342,8 @@ async function cleanupShareableLink(accessSessionId: number): Promise<void> {
 
 export interface ActiveSessionSummary {
   id: number;
-  teamId: number;
-  teamName: string;
+  teamId: number | null;
+  teamName: string | null; // null = an instructor's own Connect session, not tied to any team
   username: string;
   topologyNodeId: number;
   nodeLabel: string;
@@ -265,7 +359,7 @@ export function listActiveSessions(): ActiveSessionSummary[] {
               s.topology_node_id AS topologyNodeId, tn.label AS nodeLabel, s.protocol AS protocol,
               s.started_at AS startedAt, s.expires_at AS expiresAt
        FROM access_sessions s
-       JOIN teams t ON t.id = s.team_id
+       LEFT JOIN teams t ON t.id = s.team_id
        JOIN users u ON u.id = s.user_id
        JOIN topology_nodes tn ON tn.id = s.topology_node_id
        WHERE s.outcome = 'active'

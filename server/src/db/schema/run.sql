@@ -88,7 +88,9 @@ CREATE TABLE IF NOT EXISTS help_requests (
 -- compliance purposes even though this richer operational record doesn't — see CLAUDE/invariants.md.
 CREATE TABLE IF NOT EXISTS access_sessions (
   id INTEGER PRIMARY KEY,
-  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  -- NULL = an instructor's own diagnostic Connect (not tied to any team) — see migrate.ts's
+  -- relaxAccessSessionsTeamId for why this was originally NOT NULL.
+  team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
   topology_node_id INTEGER NOT NULL REFERENCES topology_nodes(id),

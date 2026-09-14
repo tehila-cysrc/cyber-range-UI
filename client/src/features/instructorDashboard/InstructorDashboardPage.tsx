@@ -38,7 +38,7 @@ interface CatalogCyberRange {
 
 interface ActiveAccessSession {
   id: number;
-  teamName: string;
+  teamName: string | null; // null = an instructor's own Connect session, not tied to any team
   username: string;
   nodeLabel: string;
   protocol: string;
@@ -199,7 +199,7 @@ export function InstructorDashboardPage() {
                 }}
               >
                 <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>
-                  <TelemetryBadge tone="primary">{s.teamName}</TelemetryBadge>{' '}
+                  <TelemetryBadge tone="primary">{s.teamName ?? 'Instructor'}</TelemetryBadge>{' '}
                   {s.username} · {s.protocol.toUpperCase()} to {s.nodeLabel} · expires {new Date(s.expiresAt).toLocaleTimeString()}
                 </span>
                 <Button variant="destructive" onClick={() => forceCloseSession.mutate(s.id)}>

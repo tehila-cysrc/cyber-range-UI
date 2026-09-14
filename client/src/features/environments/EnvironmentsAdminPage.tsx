@@ -41,10 +41,10 @@ interface LinkedCyberRange {
   name: string;
 }
 
-interface CatalogCyberRange {
+interface Day {
   id: number;
-  name: string;
-  dayLabel: string;
+  key: string;
+  label: string;
 }
 
 const inputStyle = {
@@ -75,21 +75,18 @@ function runBadge(run: DiscoveryRun | undefined) {
 
 function EnvironmentCard({
   env,
-  catalog,
   checkResult,
   onCheckConnectivity,
   isChecking,
   onDelete,
 }: {
   env: CloudEnvironment;
-  catalog: CatalogCyberRange[];
   checkResult?: ConnectivityResult;
   onCheckConnectivity: () => void;
   isChecking: boolean;
   onDelete: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [selectedRangeId, setSelectedRangeId] = useState<number | ''>('');
 
   const { data: runsData } = useQuery({
     queryKey: ['discovery-runs', env.id],
@@ -103,31 +100,15 @@ function EnvironmentCard({
     queryFn: () => apiFetch<{ cyberRanges: LinkedCyberRange[] }>(`/admin/environments/${env.id}/linked-cyber-ranges`),
   });
 
-  function refreshLinks() {
-    queryClient.invalidateQueries({ queryKey: ['linked-cyber-ranges', env.id] });
-  }
-
   const discover = useMutation({
     mutationFn: () => apiFetch(`/admin/environments/${env.id}/discover`, { method: 'POST' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['discovery-runs', env.id] }),
   });
 
-  const linkRange = useMutation({
-    mutationFn: (cyberRangeId: number) =>
-      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/environments`, { method: 'POST', body: JSON.stringify({ environmentId: env.id }) }),
-    onSuccess: () => {
-      setSelectedRangeId('');
-      refreshLinks();
-    },
-  });
-
   const unlinkRange = useMutation({
     mutationFn: (cyberRangeId: number) => apiFetch(`/admin/cyber-ranges/${cyberRangeId}/environments/${env.id}`, { method: 'DELETE' }),
-    onSuccess: refreshLinks,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['linked-cyber-ranges', env.id] }),
   });
-
-  const linkedIds = new Set(linkedData?.cyberRanges.map((r) => r.cyberRangeId));
-  const availableToLink = catalog.filter((c) => !linkedIds.has(c.id));
 
   return (
     <div
@@ -199,36 +180,21 @@ function EnvironmentCard({
           ))}
           {linkedData?.cyberRanges.length === 0 && <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>none yet</span>}
         </div>
-        {availableToLink.length > 0 && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <select
-              value={selectedRangeId}
-              onChange={(e) => setSelectedRangeId(e.target.value ? Number(e.target.value) : '')}
-              style={{ ...inputStyle, background: 'var(--surface-1)', padding: 6 }}
-            >
-              <option value="">Link a cyber range…</option>
-              {availableToLink.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.dayLabel} · {c.name}
-                </option>
-              ))}
-            </select>
-            <Button variant="ghost" disabled={!selectedRangeId} onClick={() => selectedRangeId && linkRange.mutate(selectedRangeId)}>
-              Link
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
-// Registers a live cloud environment (Azure resource group today, other providers later), lets an
-// instructor check connectivity and trigger Azure Resource Graph discovery, and link the environment
-// to the cyber range(s) whose topology it should populate — Phases 1-2 of the live-environment plan.
+// Registering a live cloud environment (Azure resource group today, other providers later) also
+// creates and auto-links the Cyber Range whose topology it populates in the same step — the seeded
+// catalog is just a starting point, not a fixed list to pick from. Also lets an instructor check
+// connectivity and trigger Azure Resource Graph discovery — Phases 1-2 of the live-environment plan.
 export function EnvironmentsAdminPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
+  const [dayId, setDayId] = useState<number | ''>('');
+  const [difficulty, setDifficulty] = useState<'intermediate' | 'advanced' | ''>('');
+  const [expectedDurationMinutes, setExpectedDurationMinutes] = useState('');
   const [externalAccountId, setExternalAccountId] = useState('');
   const [externalScope, setExternalScope] = useState('');
   const [tenantId, setTenantId] = useState('');
@@ -242,18 +208,32 @@ export function EnvironmentsAdminPage() {
     queryFn: () => apiFetch<{ environments: CloudEnvironment[] }>('/admin/environments'),
   });
 
-  const { data: catalogData } = useQuery({
-    queryKey: ['cyber-ranges-catalog'],
-    queryFn: () => apiFetch<{ cyberRanges: CatalogCyberRange[] }>('/cyber-ranges'),
+  const { data: daysData } = useQuery({
+    queryKey: ['days'],
+    queryFn: () => apiFetch<{ days: Day[] }>('/admin/days'),
   });
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['admin-environments'] });
   }
 
+  // Registering an environment now also creates its Cyber Range in one step — the seeded catalog is
+  // just a starting point, not a fixed list; an instructor names a new Cyber Range every time they
+  // register an environment for it, then this links the two automatically (no separate "pick an
+  // existing range and link it" step).
   const createEnvironment = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/environments', {
+    mutationFn: async () => {
+      const { cyberRange } = await apiFetch<{ cyberRange: { id: number } }>('/admin/cyber-ranges', {
+        method: 'POST',
+        body: JSON.stringify({
+          dayId,
+          name,
+          difficulty,
+          expectedDurationMinutes: expectedDurationMinutes ? Number(expectedDurationMinutes) : undefined,
+        }),
+      });
+
+      const { environment } = await apiFetch<{ environment: { id: number } }>('/admin/environments', {
         method: 'POST',
         body: JSON.stringify({
           provider: 'azure',
@@ -264,9 +244,18 @@ export function EnvironmentsAdminPage() {
           clientId,
           clientSecret,
         }),
-      }),
+      });
+
+      await apiFetch(`/admin/cyber-ranges/${cyberRange.id}/environments`, {
+        method: 'POST',
+        body: JSON.stringify({ environmentId: environment.id }),
+      });
+    },
     onSuccess: () => {
       setName('');
+      setDayId('');
+      setDifficulty('');
+      setExpectedDurationMinutes('');
       setExternalAccountId('');
       setExternalScope('');
       setTenantId('');
@@ -290,8 +279,16 @@ export function EnvironmentsAdminPage() {
 
   function handleCreate(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !externalAccountId.trim() || !tenantId.trim() || !clientId.trim() || !clientSecret.trim()) {
-      setError('Name, subscription/account id, tenant id, client id and client secret are all required');
+    if (
+      !name.trim() ||
+      !dayId ||
+      !difficulty ||
+      !externalAccountId.trim() ||
+      !tenantId.trim() ||
+      !clientId.trim() ||
+      !clientSecret.trim()
+    ) {
+      setError('Name, day, difficulty, subscription/account id, tenant id, client id and client secret are all required');
       return;
     }
     createEnvironment.mutate();
@@ -306,7 +303,6 @@ export function EnvironmentsAdminPage() {
             <EnvironmentCard
               key={env.id}
               env={env}
-              catalog={catalogData?.cyberRanges ?? []}
               checkResult={checkResults[env.id]}
               isChecking={checkConnectivity.isPending}
               onCheckConnectivity={() => checkConnectivity.mutate(env.id)}
@@ -321,7 +317,36 @@ export function EnvironmentsAdminPage() {
 
       <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
         <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Register Azure environment</h2>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. AI Day)" style={inputStyle} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Cyber Range name (e.g. Contoso Breach)" style={inputStyle} />
+        <select
+          value={dayId}
+          onChange={(e) => setDayId(e.target.value ? Number(e.target.value) : '')}
+          style={{ ...inputStyle, background: 'var(--surface-1)' }}
+        >
+          <option value="">Day…</option>
+          {daysData?.days.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value as 'intermediate' | 'advanced' | '')}
+          style={{ ...inputStyle, background: 'var(--surface-1)' }}
+        >
+          <option value="">Difficulty…</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+        <input
+          value={expectedDurationMinutes}
+          onChange={(e) => setExpectedDurationMinutes(e.target.value)}
+          placeholder="Expected duration (minutes, optional)"
+          type="number"
+          min="1"
+          style={inputStyle}
+        />
         <input value={externalAccountId} onChange={(e) => setExternalAccountId(e.target.value)} placeholder="Subscription ID" style={inputStyle} />
         <input value={externalScope} onChange={(e) => setExternalScope(e.target.value)} placeholder="Resource group" style={inputStyle} />
         <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Tenant ID" style={inputStyle} />

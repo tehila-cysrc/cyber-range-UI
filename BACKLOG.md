@@ -22,6 +22,7 @@ Format:
 - [ ] 2026-09-10 | from-plan:azure-swirling-mitten | `cloud_environments.default_vm_credential_id` (an environment-wide fallback credential for nodes with no explicit access target) is now unused/vestigial — Phase 2's credential model is per-node (`access_targets.username` + Key Vault secret) with no environment-level default. Column kept, not dropped; revisit if a "default credential per environment" convenience is wanted back.
 - [ ] 2026-09-10 | from-plan:azure-swirling-mitten | QRadar's specialized-image credential (confirmed real: `QRADAR01` has `osProfile: null`) flows through the same generic Key Vault access-target UI as any other VM — there's no distinguishing "appliance-managed, don't expect normal rotation to work" UI treatment yet (design doc §11.9).
 - [ ] 2026-09-10 | from-plan:azure-swirling-mitten | `EnvironmentsAdminPage.tsx` doesn't surface the auto-discovered `bastion_host_id`/`key_vault_uri` anywhere in the UI — useful for instructor troubleshooting ("why can't students connect") but not load-bearing for the feature to work.
+- [ ] 2026-09-14 | manual | `TopologyGraph.tsx` `NODE_TYPE_FALLBACK_STYLE` (nodes with no assigned role) still reuses the 4 signal colors and collides the same way `ROLE_STYLE` did before today's fix (e.g. `nsg`/`key_vault` both `--signal-alert`, `public_ip`/`load_balancer` both `--signal-tertiary`) — not visible in the legend today (legend only renders `ROLE_STYLE`), so left as-is, but worth the same `--role-*` treatment if the fallback map ever gets its own legend.
 
 ## Done
 

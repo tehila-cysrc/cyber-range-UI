@@ -8,7 +8,7 @@ import { expireSession } from './accessBroker.service.js';
 function sweep() {
   const expired = db
     .prepare(`SELECT id, team_id AS teamId FROM access_sessions WHERE outcome = 'active' AND expires_at <= ?`)
-    .all(new Date().toISOString()) as { id: number; teamId: number }[];
+    .all(new Date().toISOString()) as { id: number; teamId: number | null }[];
 
   for (const row of expired) {
     expireSession(row.id, row.teamId);

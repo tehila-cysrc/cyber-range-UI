@@ -19,4 +19,20 @@ export default defineConfig({
       },
     },
   },
+  // Mirrors `server` above so `vite preview` (one bundled JS file — far fewer requests than dev
+  // mode's per-module fetches) also works behind a QA localtunnel, which chokes on dev mode's
+  // request fan-out (its connection pool is too small for ~50 concurrent module requests).
+  preview: {
+    allowedHosts: ['.loca.lt'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/socket.io': {
+        target: 'http://localhost:4000',
+        ws: true,
+      },
+    },
+  },
 })

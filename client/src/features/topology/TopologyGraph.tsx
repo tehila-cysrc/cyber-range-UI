@@ -62,13 +62,13 @@ const ROLE_STYLE: Record<string, { border: string; label: string }> = {
   domain_controller: { border: 'var(--signal-secondary)', label: 'Domain Controller' },
   kali_attacker: { border: 'var(--signal-alert)', label: 'Attacker' },
   siem: { border: 'var(--signal-tertiary)', label: 'SIEM' },
-  web_server: { border: 'var(--signal-primary)', label: 'Web Server' },
-  mail_server: { border: 'var(--signal-primary)', label: 'Mail Server' },
-  database_server: { border: 'var(--signal-primary)', label: 'Database' },
+  web_server: { border: 'var(--role-blue)', label: 'Web Server' },
+  mail_server: { border: 'var(--role-violet)', label: 'Mail Server' },
+  database_server: { border: 'var(--role-teal)', label: 'Database' },
   workstation: { border: 'var(--text-telemetry)', label: 'Workstation' },
-  linux_server: { border: 'var(--signal-primary)', label: 'Linux Server' },
-  generic_server: { border: 'var(--signal-primary)', label: 'Server' },
-  firewall: { border: 'var(--signal-alert)', label: 'Firewall' },
+  linux_server: { border: 'var(--role-orange)', label: 'Linux Server' },
+  generic_server: { border: 'var(--role-lime)', label: 'Server' },
+  firewall: { border: 'var(--role-pink)', label: 'Firewall' },
   internet_gateway: { border: 'var(--text-muted)', label: 'Internet' },
 };
 
@@ -273,6 +273,7 @@ export function TopologyGraph({
         }}
         onPaneClick={() => onPaneClick?.()}
         fitView
+        proOptions={{ hideAttribution: true }}
       >
         <Background color="var(--surface-border)" gap={24} />
         <Controls showInteractive={false} />
