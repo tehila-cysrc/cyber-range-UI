@@ -58,9 +58,21 @@ router.post('/environments', (req, res) => {
 
 router.patch('/environments/:id', (req, res) => {
   const id = Number(req.params.id);
-  const { name, externalScope, clientSecret, discoveryMode, discoveryIntervalMinutes } = req.body ?? {};
+  const { name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes } = req.body ?? {};
 
-  const environment = updateEnvironment(id, { name, externalScope, clientSecret, discoveryMode, discoveryIntervalMinutes }, req.user!.username);
+  const stringFields = { name, externalAccountId, externalScope, tenantId, clientId, clientSecret };
+  for (const [key, value] of Object.entries(stringFields)) {
+    if (value !== undefined && typeof value !== 'string') {
+      res.status(400).json({ error: `${key} must be a string when provided` });
+      return;
+    }
+  }
+
+  const environment = updateEnvironment(
+    id,
+    { name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes },
+    req.user!.username,
+  );
   if (!environment) {
     res.status(404).json({ error: 'environment not found' });
     return;

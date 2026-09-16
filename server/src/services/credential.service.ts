@@ -52,6 +52,20 @@ export function rotateCredential(credentialId: number, plaintextSecret: string):
   ).run(ciphertext, iv, authTag, new Date().toISOString(), credentialId);
 }
 
+// Merges into the existing metadata (e.g. correcting a mistyped tenantId/clientId) rather than
+// replacing it wholesale, so a partial edit never wipes fields the caller didn't touch.
+export function updateCredentialMetadata(credentialId: number, metadataPatch: Record<string, unknown>): void {
+  const row = db.prepare('SELECT metadata_json AS metadataJson FROM credentials WHERE id = ?').get(credentialId) as
+    | { metadataJson: string | null }
+    | undefined;
+  if (!row) {
+    throw new Error(`no credential with id ${credentialId}`);
+  }
+
+  const merged = { ...(row.metadataJson ? JSON.parse(row.metadataJson) : {}), ...metadataPatch };
+  db.prepare('UPDATE credentials SET metadata_json = ? WHERE id = ?').run(JSON.stringify(merged), credentialId);
+}
+
 // The only function in the codebase that ever produces plaintext secret material. Callers must use
 // the result immediately (e.g. to build an Azure credential object) and never store or log it.
 export function readCredentialPlaintext(credentialId: number): string {

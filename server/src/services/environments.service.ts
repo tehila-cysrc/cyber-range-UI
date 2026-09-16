@@ -1,7 +1,7 @@
 import { ClientSecretCredential } from '@azure/identity';
 import { ResourceManagementClient } from '@azure/arm-resources';
 import { db } from '../db/index.js';
-import { deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential } from './credential.service.js';
+import { deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential, updateCredentialMetadata } from './credential.service.js';
 import { writeAudit } from './audit.service.js';
 import { classifyAzureError } from './azureErrors.js';
 import type { ResolvedCloudCredential } from './discovery/discoveryProvider.js';
@@ -131,11 +131,30 @@ export function updateEnvironment(
   db.prepare(
     `UPDATE cloud_environments SET
        name = COALESCE(?, name),
+       external_account_id = COALESCE(?, external_account_id),
        external_scope = COALESCE(?, external_scope),
        discovery_mode = COALESCE(?, discovery_mode),
        discovery_interval_minutes = COALESCE(?, discovery_interval_minutes)
      WHERE id = ?`,
-  ).run(input.name ?? null, input.externalScope ?? null, input.discoveryMode ?? null, input.discoveryIntervalMinutes ?? null, id);
+  ).run(
+    input.name ?? null,
+    input.externalAccountId ?? null,
+    input.externalScope ?? null,
+    input.discoveryMode ?? null,
+    input.discoveryIntervalMinutes ?? null,
+    id,
+  );
+
+  // tenantId/clientId aren't secret (see toSummary/CLAUDE/invariants.md) — they live in the
+  // credential row's metadata alongside the actual secret only because that's where the Service
+  // Principal's identity was first captured, so correcting a mistyped one is a metadata merge, not
+  // a rotation.
+  if (input.tenantId || input.clientId) {
+    updateCredentialMetadata(existing.credentialId, {
+      ...(input.tenantId ? { tenantId: input.tenantId } : {}),
+      ...(input.clientId ? { clientId: input.clientId } : {}),
+    });
+  }
 
   if (input.clientSecret) {
     rotateCredential(existing.credentialId, input.clientSecret);

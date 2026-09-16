@@ -73,6 +73,73 @@ function runBadge(run: DiscoveryRun | undefined) {
   return <TelemetryBadge tone="alert">Discovery failed: {run.errors?.[0]?.message ?? 'unknown error'}</TelemetryBadge>;
 }
 
+function EditEnvironmentForm({ env, onCancel, onSaved }: { env: CloudEnvironment; onCancel: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(env.name);
+  const [externalAccountId, setExternalAccountId] = useState(env.externalAccountId);
+  const [externalScope, setExternalScope] = useState(env.externalScope ?? '');
+  const [tenantId, setTenantId] = useState(env.tenantId ?? '');
+  const [clientId, setClientId] = useState(env.clientId ?? '');
+  const [clientSecret, setClientSecret] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/environments/${env.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name,
+          externalAccountId,
+          externalScope: externalScope || null,
+          tenantId,
+          clientId,
+          ...(clientSecret ? { clientSecret } : {}),
+        }),
+      }),
+    onSuccess: onSaved,
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to save environment'),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !externalAccountId.trim() || !tenantId.trim() || !clientId.trim()) {
+      setError('Name, subscription/account id, tenant id and client id are all required');
+      return;
+    }
+    save.mutate();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" style={inputStyle} />
+      <input
+        value={externalAccountId}
+        onChange={(e) => setExternalAccountId(e.target.value)}
+        placeholder="Subscription ID"
+        style={inputStyle}
+      />
+      <input value={externalScope} onChange={(e) => setExternalScope(e.target.value)} placeholder="Resource group" style={inputStyle} />
+      <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Tenant ID" style={inputStyle} />
+      <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID (Service Principal)" style={inputStyle} />
+      <input
+        value={clientSecret}
+        onChange={(e) => setClientSecret(e.target.value)}
+        placeholder="Client secret (leave blank to keep unchanged)"
+        type="password"
+        style={inputStyle}
+      />
+      {error && <div style={{ color: 'var(--signal-alert)', fontSize: 14 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button type="submit" variant="ghost" disabled={save.isPending}>
+          Save
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function EnvironmentCard({
   env,
   checkResult,
@@ -87,6 +154,7 @@ function EnvironmentCard({
   onDelete: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
 
   const { data: runsData } = useQuery({
     queryKey: ['discovery-runs', env.id],
@@ -110,6 +178,29 @@ function EnvironmentCard({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['linked-cyber-ranges', env.id] }),
   });
 
+  if (isEditing) {
+    return (
+      <div
+        style={{
+          padding: 'var(--space-md)',
+          border: '1px solid var(--surface-border)',
+          borderRadius: 'var(--radius-container)',
+          background: 'var(--surface-1)',
+        }}
+      >
+        <div style={{ marginBottom: 8, color: 'var(--text-muted)', fontSize: 13 }}>Editing {env.name}</div>
+        <EditEnvironmentForm
+          env={env}
+          onCancel={() => setIsEditing(false)}
+          onSaved={() => {
+            setIsEditing(false);
+            queryClient.invalidateQueries({ queryKey: ['admin-environments'] });
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -127,6 +218,9 @@ function EnvironmentCard({
           </Button>
           <Button variant="ghost" disabled={discover.isPending || latestRun?.status === 'running'} onClick={() => discover.mutate()}>
             Discover now
+          </Button>
+          <Button variant="ghost" onClick={() => setIsEditing(true)}>
+            Edit
           </Button>
           <Button variant="destructive" onClick={onDelete}>
             Delete
