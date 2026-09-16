@@ -1,0 +1,13 @@
+id: inj-eventlog-breadcrumb
+name: Event log breadcrumb
+description: Writes Application marker for correlation across the day.
+target_role: windows_server
+trigger:
+  type: elapsed_seconds
+  value: 120
+script_id: logging-win-event-marker
+expected_student_observations:
+  - Application EventID 1000 Source CyberRangeLab
+  - SIEM hit for CR-MARKER:logging-win-event-marker
+instructor_notes:
+  - Good T+2m automatic inject after Start

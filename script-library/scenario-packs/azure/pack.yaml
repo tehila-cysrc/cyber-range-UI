@@ -1,0 +1,13 @@
+id: pack-azure
+name: Azure Pack
+complexity: basic
+scripts:
+  - cloud-az-vm-metadata
+  - cloud-az-vm-metadata-linux
+  - health-internet-access
+  - qradar-win-pipeline-probe
+  - qradar-linux-pipeline-probe
+  - user-create-temp-file
+objectives:
+  - Confirm Azure VM metadata readable
+  - Confirm pipeline probe from Azure guest reaches QRadar

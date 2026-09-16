@@ -1,0 +1,16 @@
+id: inj-new-local-account
+name: New local account created
+description: Creates a lab local user cr-lab-* generating Windows account-management telemetry.
+target_role: windows_server
+trigger:
+  type: manual
+  # future: elapsed_seconds: 600
+script_id: admin-create-local-user
+expected_student_observations:
+  - Security EventID 4720 (user account created)
+  - Account name matching cr-lab-
+  - Optional documentation of who/what/when
+instructor_notes:
+  - Good first beat of SOC Analyst Pack
+  - Cleanup with Remove-LocalUser or leave for disable inject
+  - Score via documentation quality — no auto-flag

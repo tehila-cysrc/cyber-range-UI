@@ -1,0 +1,14 @@
+id: inj-qradar-win-probe
+name: QRadar Windows pipeline probe
+description: Emit a unique CR-MARKER on a Windows VM to prove VM → agent → QRadar.
+target_role: windows_server
+trigger:
+  type: manual
+script_id: qradar-win-pipeline-probe
+expected_student_observations:
+  - Marker may appear in SIEM search within collection window
+  - Application Event Log Source CyberRangeLab EventID 1001 on the host
+instructor_notes:
+  - Run before the training day; confirm AQL/quick search finds CR-MARKER:qradar-win-pipeline-probe
+  - If missing in QRadar but present on host, fix collection — do not blame students
+  - Not a scored student objective unless the day is explicitly "validate pipeline"

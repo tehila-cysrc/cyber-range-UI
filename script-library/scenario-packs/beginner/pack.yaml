@@ -1,0 +1,12 @@
+id: pack-beginner
+name: Beginner Pack
+complexity: basic
+injects:
+  - inj-dns-health-check
+  - inj-service-restart
+  - inj-new-local-account
+  - inj-disable-user
+objectives:
+  - Investigate DNS/connectivity check outcome
+  - Find service restart evidence
+  - Find account disabled (4725) after creation (4720)

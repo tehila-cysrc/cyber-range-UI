@@ -1,0 +1,13 @@
+id: inj-local-admin-group
+name: Local Administrators group membership change
+description: Adds newest cr-lab-* user to Administrators (lab VM only).
+target_role: windows_server
+trigger:
+  type: manual
+script_id: admin-add-local-group
+expected_student_observations:
+  - Security EventID 4732
+  - Member cr-lab-* added to Administrators
+instructor_notes:
+  - Requires inj-new-local-account first
+  - Emphasize privilege escalation narrative without real exploit

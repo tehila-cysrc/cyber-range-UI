@@ -1,0 +1,13 @@
+id: inj-service-restart
+name: Service restart (ops event)
+description: Restarts allowlisted Spooler (or set ServiceName) to generate SCM events.
+target_role: windows_server
+trigger:
+  type: manual
+script_id: infra-restart-service
+expected_student_observations:
+  - System log Service Control Manager state change for Spooler
+  - Possible brief print-spooler blip (lab OK)
+instructor_notes:
+  - Beginner Pack "service restart" beat
+  - Extend allowlist only for known lab services

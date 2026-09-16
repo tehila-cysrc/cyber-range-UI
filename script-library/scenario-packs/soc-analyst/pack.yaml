@@ -1,0 +1,14 @@
+id: pack-soc-analyst
+name: SOC Analyst Pack
+complexity: intermediate
+injects:
+  - inj-eventlog-breadcrumb
+  - inj-new-local-account
+  - inj-local-admin-group
+  - inj-scheduled-task
+  - inj-service-restart
+  - inj-file-activity
+objectives:
+  - Timeline account create → group add → scheduled task
+  - Document findings on shared timeline
+  - Optional correlate service restart

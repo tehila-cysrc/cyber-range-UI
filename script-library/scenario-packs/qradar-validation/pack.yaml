@@ -1,0 +1,15 @@
+id: pack-qradar-validation
+name: QRadar Validation Pack
+complexity: basic
+audience: instructor_ops
+injects:
+  - inj-qradar-win-probe
+  - inj-qradar-linux-probe
+scripts:
+  - logging-win-event-marker
+  - logging-linux-syslog-marker
+  - logging-write-custom-applog
+  - logging-write-custom-applog-linux
+pass_criteria:
+  - Host produces CR-MARKER
+  - QRadar search returns same CR-MARKER

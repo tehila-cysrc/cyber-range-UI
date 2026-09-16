@@ -1,0 +1,13 @@
+id: inj-disable-user
+name: User account disabled / locked-out narrative
+description: Disables newest cr-lab-* user (4725). Use as "locked out" story for beginners without lockout storms.
+target_role: windows_server
+trigger:
+  type: manual
+script_id: admin-disable-local-user
+expected_student_observations:
+  - Security EventID 4725
+  - Account cr-lab-* disabled
+instructor_notes:
+  - Prefer this over real lockout floods
+  - Pair with helpdesk ticket flavor in verbal brief

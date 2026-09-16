@@ -1,0 +1,15 @@
+id: pack-active-directory
+name: Active Directory Pack
+complexity: intermediate
+status: partial
+injects:
+  - inj-dns-health-check
+scripts_direct:
+  - health-ldap-probe
+planned_scripts:
+  - ad-create-user
+  - ad-add-group-member
+  - ad-disable-user
+objectives:
+  - Verify DC LDAP reachability
+  - Investigate account and group changes on DC Security log / QRadar

@@ -8,7 +8,8 @@
     "build": "tsc -b",
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "import-script-library": "tsx src/db/importScriptLibrary.ts"
   },
   "dependencies": {
     "@azure/arm-compute": "^25.1.1",

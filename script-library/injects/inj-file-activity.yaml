@@ -1,0 +1,14 @@
+id: inj-file-activity
+name: Benign file creation
+description: Creates a marked file under C:\CyberRange\Lab\activity.
+target_role: windows_server
+trigger:
+  type: elapsed_seconds
+  value: 300
+script_id: user-create-temp-file
+expected_student_observations:
+  - New file path with CR-MARKER
+  - FIM/Sysmon file create if onboarded
+instructor_notes:
+  - Safe candidate for first automatic timed inject
+  - Low risk if auto-fired

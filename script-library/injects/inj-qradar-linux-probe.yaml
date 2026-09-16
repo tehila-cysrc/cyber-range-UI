@@ -1,0 +1,12 @@
+id: inj-qradar-linux-probe
+name: QRadar Linux pipeline probe
+description: Emit CR-MARKER via syslog + probe file on Linux.
+target_role: linux_server
+trigger:
+  type: manual
+script_id: qradar-linux-pipeline-probe
+expected_student_observations:
+  - Syslog/journal line tagged CyberRangeLab
+  - SIEM hit for CR-MARKER:qradar-linux-pipeline-probe
+instructor_notes:
+  - Pair with Windows probe for dual-OS pipeline day

@@ -1,0 +1,12 @@
+id: inj-dns-health-fail-check
+name: DNS reachability check (beginner ops)
+description: Runs DNS resolve; instructor can point at a bad name to demo "DNS issue" or use defaults for healthy baseline.
+target_role: windows_server
+trigger:
+  type: manual
+script_id: health-dns-resolve
+expected_student_observations:
+  - Connectivity / DNS troubleshooting from host or SIEM absence of related noise
+instructor_notes:
+  - For true DNS-failure narrative, edit -Names to a nonexistent host OR break lab DNS intentionally outside this script
+  - Script itself is safe and read-only

@@ -1,0 +1,14 @@
+id: inj-scheduled-task
+name: Suspicious (lab) scheduled task
+description: Registers a harmless CR-Lab-Marker-* task that writes a marker file.
+target_role: windows_server
+trigger:
+  type: manual
+script_id: admin-scheduled-task
+expected_student_observations:
+  - New scheduled task name CR-Lab-Marker-*
+  - Task Scheduler Operational events
+  - Later file under C:\CyberRange\Lab\activity
+instructor_notes:
+  - Persistence technique discussion without malware
+  - Cleanup Unregister-ScheduledTask after debrief

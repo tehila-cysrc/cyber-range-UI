@@ -288,7 +288,7 @@ export function EnvironmentsAdminPage() {
       !clientId.trim() ||
       !clientSecret.trim()
     ) {
-      setError('Name, day, difficulty, subscription/account id, tenant id, client id and client secret are all required');
+      setError('Name, type, difficulty, subscription/account id, tenant id, client id and client secret are all required');
       return;
     }
     createEnvironment.mutate();
@@ -323,7 +323,7 @@ export function EnvironmentsAdminPage() {
           onChange={(e) => setDayId(e.target.value ? Number(e.target.value) : '')}
           style={{ ...inputStyle, background: 'var(--surface-1)' }}
         >
-          <option value="">Day…</option>
+          <option value="">Type…</option>
           {daysData?.days.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label}
