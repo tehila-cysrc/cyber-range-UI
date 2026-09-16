@@ -61,6 +61,22 @@ If no active event exists, it creates the default event, instructor, and demo te
 listed above. Existing active events, users, and teams are preserved on restart.
 The server build copies the SQL schema into `dist/db/schema` for this startup step.
 
+### Free Render demo with local data
+
+Run `npm run snapshot-demo -w server -- ../.env.demo-snapshot.json` locally to
+export a consistent snapshot (existing login sessions are excluded). Treat the
+output as private data; upload it as a Render Secret File named `demo-snapshot.json`.
+Set `DEMO_SNAPSHOT_PATH=/etc/secrets/demo-snapshot.json` and copy the local
+`CREDENTIAL_MASTER_KEY` into the service's environment settings so the encrypted
+cloud credentials can be read. Never commit the snapshot or encryption key.
+
+Keep the Render service on Free, with root directory `server`, build command
+`npm install && npm run build`, and start command `npm start`.
+Each process validates and restores the snapshot to a fresh temporary database
+before opening the API. Changes made on the demo reset whenever the server restarts.
+Updating the demo's initial data requires uploading a new snapshot and redeploying.
+Without `DEMO_SNAPSHOT_PATH`, normal `DB_PATH` storage behavior is unchanged.
+
 ## Project layout
 
 ```

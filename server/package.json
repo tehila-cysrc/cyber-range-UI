@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -b && node scripts/copy-schema.mjs",
-    "start": "node dist/server.js",
+    "start": "node dist/start.js",
+    "snapshot-demo": "node scripts/create-demo-snapshot.mjs",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "import-script-library": "tsx src/db/importScriptLibrary.ts"

@@ -1,6 +1,7 @@
 import { useAuthStore } from '../stores/authStore';
 
-const API_BASE_URL = 'https://cyber-range-ui.onrender.com/api';
+export const API_ORIGIN = 'https://cyber-range-ui.onrender.com';
+const API_BASE_URL = `${API_ORIGIN}/api`;
 
 export class ApiError extends Error {
   status: number;

@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
+import { API_ORIGIN } from './apiClient';
 
 let socket: Socket | null = null;
 
@@ -10,7 +11,7 @@ export function getSocket(): Socket | null {
   if (!token) return null;
 
   if (!socket) {
-    socket = io({ auth: { token } });
+    socket = io(API_ORIGIN, { auth: { token } });
   }
 
   return socket;
