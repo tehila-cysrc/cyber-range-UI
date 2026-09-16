@@ -1,5 +1,7 @@
 import { useAuthStore } from '../stores/authStore';
 
+const API_BASE_URL = 'https://cyber-range-ui.onrender.com/api';
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -16,7 +18,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
     useAuthStore.getState().clear();
