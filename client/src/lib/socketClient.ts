@@ -11,7 +11,10 @@ export function getSocket(): Socket | null {
   if (!token) return null;
 
   if (!socket) {
-    socket = io(API_ORIGIN, { auth: { token } });
+    // API_ORIGIN is '' in dev (see apiClient.ts) — pass undefined so socket.io-client connects to
+    // the current page's own origin (proxied to the local backend by vite.config.ts), not the
+    // literal empty string.
+    socket = io(API_ORIGIN || undefined, { auth: { token } });
   }
 
   return socket;
