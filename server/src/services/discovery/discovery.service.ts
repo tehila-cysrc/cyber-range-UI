@@ -3,6 +3,7 @@ import { getResolvedCredential } from '../environments.service.js';
 import { writeAudit } from '../audit.service.js';
 import { classifyAzureError } from '../azureErrors.js';
 import { AzureDiscoveryProvider } from './azureDiscoveryProvider.js';
+import { TopologyLayoutPlanner } from './topologyLayout.js';
 import type { DiscoveredResource, DiscoveryProvider, DiscoveryResult, DiscoveryWarning } from './discoveryProvider.js';
 
 // Adding a provider (AWS, ...) is writing an implementation of DiscoveryProvider and registering it
@@ -202,13 +203,34 @@ export function upsertForCyberRange(cyberRangeId: number, discovery: DiscoveryRe
 
   const nodeIdByExternalKey = new Map<string, number>();
 
+  // A freshly-imported topology must come out fully organized with zero required manual step — the
+  // planner assigns every brand-new node a non-overlapping grid slot within its zone (see
+  // topologyLayout.ts). An already-existing node's position is never touched here regardless of what
+  // the planner would compute for it — that's what the ON CONFLICT clause below omitting pos_x/pos_y
+  // guarantees, same write-once-then-preserved rule as zone_id/role/is_visible_to_students.
+  const planner = new TopologyLayoutPlanner(cyberRangeId);
+  const existingExternalKeys = new Set(
+    (db.prepare('SELECT external_key AS externalKey FROM topology_nodes WHERE cyber_range_id = ?').all(cyberRangeId) as { externalKey: string }[]).map(
+      (r) => r.externalKey,
+    ),
+  );
+  const resolvedZoneIdByResourceKey = new Map<string, number | null>();
+  const newResourceCountByZoneId = new Map<number | null, number>();
+  for (const resource of discovery.resources) {
+    const zoneId = resource.zoneExternalKey ? (zoneIdByExternalKey.get(resource.zoneExternalKey) ?? null) : null;
+    resolvedZoneIdByResourceKey.set(resource.externalKey, zoneId);
+    if (!existingExternalKeys.has(resource.externalKey)) {
+      newResourceCountByZoneId.set(zoneId, (newResourceCountByZoneId.get(zoneId) ?? 0) + 1);
+    }
+  }
+
   // zone_id, role, and is_visible_to_students are set only on first insert (omitted from the SET
   // clause below) so an instructor's manual zone reassignment / role fix / visibility override
   // survives every later re-discovery.
   const insertNode = db.prepare(
     `INSERT INTO topology_nodes
        (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json, environment_id, discovery_run_id, zone_id, role, is_visible_to_students)
-     VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (cyber_range_id, external_key) WHERE external_key IS NOT NULL DO UPDATE SET
        label = excluded.label,
        node_type = excluded.node_type,
@@ -219,12 +241,21 @@ export function upsertForCyberRange(cyberRangeId: number, discovery: DiscoveryRe
   const selectNodeId = db.prepare('SELECT id FROM topology_nodes WHERE cyber_range_id = ? AND external_key = ?');
 
   for (const resource of discovery.resources) {
-    const zoneId = resource.zoneExternalKey ? (zoneIdByExternalKey.get(resource.zoneExternalKey) ?? null) : null;
+    const zoneId = resolvedZoneIdByResourceKey.get(resource.externalKey) ?? null;
+    let posX = 0;
+    let posY = 0;
+    if (!existingExternalKeys.has(resource.externalKey)) {
+      const pos = planner.nextPosition(zoneId, newResourceCountByZoneId.get(zoneId) ?? 1);
+      posX = pos.x;
+      posY = pos.y;
+    }
     insertNode.run(
       cyberRangeId,
       resource.externalKey,
       resource.label,
       resource.nodeType,
+      posX,
+      posY,
       JSON.stringify(resource.metadata),
       environmentId,
       runId,

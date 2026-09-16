@@ -7,6 +7,7 @@ import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
 import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
 import { requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
+import { TopologyLayoutPlanner } from '../../services/discovery/topologyLayout.js';
 
 const router = Router();
 
@@ -21,6 +22,19 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
     return;
   }
 
+  const resolvedZoneId = typeof zoneId === 'number' ? zoneId : null;
+  // A manually-added node must land in an open, non-overlapping grid slot by default (same planner
+  // discovery uses) — no reliance on the instructor dragging it afterward. Explicit posX/posY are
+  // still honored if a caller ever sends them.
+  let placedX = typeof posX === 'number' ? posX : null;
+  let placedY = typeof posY === 'number' ? posY : null;
+  if (placedX === null || placedY === null) {
+    const planner = new TopologyLayoutPlanner(cyberRangeId);
+    const pos = planner.nextPosition(resolvedZoneId, 1);
+    placedX = pos.x;
+    placedY = pos.y;
+  }
+
   const result = db
     .prepare(
       `INSERT INTO topology_nodes (cyber_range_id, external_key, label, node_type, pos_x, pos_y, metadata_json, role, zone_id, is_visible_to_students)
@@ -31,11 +45,11 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
       'pending',
       label,
       nodeType,
-      posX ?? 0,
-      posY ?? 0,
+      placedX,
+      placedY,
       metadata ? JSON.stringify(metadata) : null,
       typeof role === 'string' ? role : null,
-      typeof zoneId === 'number' ? zoneId : null,
+      resolvedZoneId,
     );
 
   const id = result.lastInsertRowid as number;

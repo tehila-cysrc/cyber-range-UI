@@ -106,8 +106,6 @@ export function TopologyAdminPage() {
           nodeType: 'host',
           role: newNodeRole || null,
           zoneId: newNodeZoneId === '' ? null : newNodeZoneId,
-          posX: Math.random() * 500,
-          posY: Math.random() * 350,
         }),
       }),
     onSuccess: () => {
