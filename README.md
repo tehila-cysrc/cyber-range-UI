@@ -46,6 +46,21 @@ Run from the repo root (npm workspaces):
 | `npm run seed` | Seeds the default event/teams/users above |
 | `npm run build` | Builds server and client for production |
 
+## Deployment
+
+On Vercel, set the Root Directory to `client` and use the Vite preset.
+`client/vercel.json` serves `index.html` for application routes such as `/login`.
+
+For Render, build with `npm ci && npm run build -w server` from the repository
+root, then start with `npm run start -w server`. Use Node.js 24 and set
+`CLIENT_ORIGIN=https://cyber-range-ui.vercel.app`. Set `DB_PATH` to a file on a
+persistent disk to retain event data across deployments.
+
+The server applies migrations and seeds missing defaults before accepting requests.
+If no active event exists, it creates the default event, instructor, and demo teams
+listed above. Existing active events, users, and teams are preserved on restart.
+The server build copies the SQL schema into `dist/db/schema` for this startup step.
+
 ## Project layout
 
 ```
