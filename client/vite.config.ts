@@ -26,11 +26,11 @@ export default defineConfig({
     allowedHosts: ['.loca.lt'],
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'https://cyber-range-ui.onrender.com',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:4000',
+        target: 'https://cyber-range-ui.onrender.com',
         ws: true,
       },
     },
