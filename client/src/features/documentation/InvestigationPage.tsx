@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
@@ -10,6 +10,48 @@ import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
 import { useAuthStore } from '../../stores/authStore';
+
+// React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
+// Timeline-only visit to /investigation never pays its bundle cost; it only loads the first time
+// someone clicks the Canvas tab.
+const InvestigationCanvasContainer = lazy(() =>
+  import('./canvas/InvestigationCanvasContainer').then((m) => ({ default: m.InvestigationCanvasContainer })),
+);
+
+function CanvasFallback() {
+  return <div style={{ padding: 'var(--space-md)', color: 'var(--text-muted)' }}>Loading canvas…</div>;
+}
+
+type InvestigationView = 'timeline' | 'canvas';
+
+// Two lenses on the same team+range investigation, not two separate screens — direct visual echo
+// of AppShell.tsx's NavItem active-state convention (2px bottom border, mono uppercase).
+function InvestigationTabs({ view, onChange }: { view: InvestigationView; onChange: (v: InvestigationView) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-lg)', marginBottom: 'var(--space-md)' }}>
+      {(['timeline', 'canvas'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: view === v ? '2px solid var(--signal-primary)' : '2px solid transparent',
+            color: view === v ? 'var(--text-primary)' : 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            padding: '4px 0',
+            cursor: 'pointer',
+          }}
+        >
+          {v === 'timeline' ? 'Timeline' : 'Canvas'}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface ActiveCyberRange {
   cyberRangeId: number;
@@ -49,7 +91,9 @@ export function InvestigationPage() {
   const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
   const isInstructor = role === 'instructor';
+  const ownTeamId = useAuthStore((s) => s.user?.teamId);
 
+  const [view, setView] = useState<InvestigationView>('timeline');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [isImportant, setIsImportant] = useState(false);
@@ -220,7 +264,21 @@ export function InvestigationPage() {
         ) : !active ? (
           <EmptyState message="No active Cyber Range for this team." />
         ) : (
-          <Timeline entries={entriesData?.entries} />
+          <>
+            <InvestigationTabs view={view} onChange={setView} />
+            {view === 'timeline' ? (
+              <Timeline entries={entriesData?.entries} />
+            ) : (
+              <Suspense fallback={<CanvasFallback />}>
+                <InvestigationCanvasContainer
+                  cyberRangeId={active.cyberRangeId}
+                  teamId={Number(selectedTeamId)}
+                  teamIdParam={Number(selectedTeamId)}
+                  editable={false}
+                />
+              </Suspense>
+            )}
+          </>
         )}
       </div>
     );
@@ -235,59 +293,61 @@ export function InvestigationPage() {
   }
 
   return (
-    <div
-      style={{
-        padding: 'var(--space-xl)',
-        display: 'grid',
-        gridTemplateColumns: '60% 40%',
-        gap: 'var(--space-xl)',
-      }}
-    >
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
-          <div>
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--text-telemetry)',
-                marginBottom: 4,
-              }}
-            >
-              Incident Timeline
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
-              <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Timeline — {active.name}</h1>
-              {entriesData && (
-                <TelemetryBadge tone="secondary">
-                  {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}
-                </TelemetryBadge>
-              )}
-            </div>
+    <div style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--text-telemetry)',
+              marginBottom: 4,
+            }}
+          >
+            Incident Timeline
           </div>
-          <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-            View topology →
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
+            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Timeline — {active.name}</h1>
+            {entriesData && (
+              <TelemetryBadge tone="secondary">
+                {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}
+              </TelemetryBadge>
+            )}
+          </div>
         </div>
-        <Timeline entries={entriesData?.entries} />
+        <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+          View topology →
+        </Link>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-sm)',
-          background: 'var(--surface-1)',
-          border: '1px solid var(--surface-border)',
-          borderRadius: 'var(--radius-container)',
-          padding: 'var(--space-lg)',
-          alignSelf: 'start',
-        }}
-      >
-        <h2
+      <InvestigationTabs view={view} onChange={setView} />
+
+      {view === 'canvas' ? (
+        <Suspense fallback={<CanvasFallback />}>
+          <InvestigationCanvasContainer cyberRangeId={active.cyberRangeId} teamId={ownTeamId ?? 0} teamIdParam={null} editable />
+        </Suspense>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: 'var(--space-xl)' }}>
+          <div>
+            <Timeline entries={entriesData?.entries} />
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-sm)',
+              background: 'var(--surface-1)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 'var(--radius-container)',
+              padding: 'var(--space-lg)',
+              alignSelf: 'start',
+            }}
+          >
+            <h2
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 12,
@@ -383,7 +443,9 @@ export function InvestigationPage() {
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? 'Adding…' : 'Add entry'}
         </Button>
-      </form>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

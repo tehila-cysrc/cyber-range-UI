@@ -66,3 +66,26 @@ export function emitAccessSessionEnded(teamId: number | null, accessSessionId: n
     .to(teamId != null ? [teamRoom(teamId), INSTRUCTOR_ROOM] : [INSTRUCTOR_ROOM])
     .emit('access_session:ended', { accessSessionId, outcome });
 }
+
+// Investigation Canvas — same "teamId travels alongside the payload" reasoning as
+// emitDocumentationNew: an instructor's client receives this for every team, and two teams can
+// share the same active cyber range, so cyberRangeId alone can't disambiguate.
+export function emitInvestigationCanvasNodeCreated(teamId: number, node: unknown) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:node_created', { node, teamId });
+}
+
+export function emitInvestigationCanvasNodeUpdated(teamId: number, node: unknown) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:node_updated', { node, teamId });
+}
+
+export function emitInvestigationCanvasNodeDeleted(teamId: number, nodeId: number) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:node_deleted', { nodeId, teamId });
+}
+
+export function emitInvestigationCanvasEdgeCreated(teamId: number, edge: unknown) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:edge_created', { edge, teamId });
+}
+
+export function emitInvestigationCanvasEdgeDeleted(teamId: number, edgeId: number) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:edge_deleted', { edgeId, teamId });
+}

@@ -105,6 +105,52 @@ CREATE TABLE IF NOT EXISTS access_sessions (
   client_ip TEXT
 );
 
+-- Investigation Canvas: a per-team, per-cyber-range freeform node/edge board — the graphical
+-- counterpart to documentation_entries' Timeline, not a replacement for it. Student-authored, RUN-
+-- scoped (team_id cascades from event_runs via teams), same authorship model as documentation_entries:
+-- students build it, instructors only view it (team-picker, never author). Unlike documentation_entries
+-- (append-only), nodes/edges here are dragged/renamed/deleted in place, so both tables carry a real
+-- PATCH/DELETE surface and an updated_at column. Normalized rows (not a single JSON blob per team+range)
+-- so two teammates dragging different nodes at the same moment never race on one read-modify-write.
+CREATE TABLE IF NOT EXISTS investigation_canvas_nodes (
+  id INTEGER PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  author_user_id INTEGER NOT NULL REFERENCES users(id),
+  node_type TEXT NOT NULL, -- 'entry'|'system'|'evidence'|'finding'|'decision'|'action'|'impact', free text (no CHECK), same precedent as topology_nodes.node_type
+  label TEXT NOT NULL,
+  body TEXT,
+  pos_x REAL NOT NULL DEFAULT 0,
+  pos_y REAL NOT NULL DEFAULT 0,
+  metadata_json TEXT, -- opaque/variable extra data only, same role as topology_nodes.metadata_json
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+  -- Future extensibility (NOT built now): a nullable linked_documentation_entry_id
+  -- REFERENCES documentation_entries(id), added later via migrate.ts's addColumnIfMissing, once
+  -- "link a canvas node to a Timeline finding" is actually designed.
+);
+
+-- Edges are always node-to-node here (no zone-boundary concept — this isn't a network diagram).
+-- team_id/cyber_range_id are duplicated onto the edge row rather than derived via a join on every
+-- read, same denormalization precedent as topology_edges.cyber_range_id.
+CREATE TABLE IF NOT EXISTS investigation_canvas_edges (
+  id INTEGER PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  author_user_id INTEGER NOT NULL REFERENCES users(id),
+  from_node_id INTEGER NOT NULL REFERENCES investigation_canvas_nodes(id),
+  to_node_id INTEGER NOT NULL REFERENCES investigation_canvas_nodes(id),
+  label TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (from_node_id != to_node_id)
+);
+-- DB-enforced belt-and-suspenders (app-level checks live in investigationCanvas.routes.ts): no
+-- self-loop (CHECK above) and no duplicate edge between the same ordered pair. A->B and B->A are
+-- distinct edges (e.g. "escalated to" vs "reported by" can legitimately run both ways) — only an
+-- exact repeat of the same direction is blocked.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_investigation_canvas_edges_unique_pair
+  ON investigation_canvas_edges (from_node_id, to_node_id);
+
 -- An instructor-triggered Azure VM Run Command invocation (Phase 3). RUN — an execution is tied to
 -- one live event/instructor action, same lifecycle as access_sessions, not reusable infrastructure
 -- (the reusable part, if any, is the linked `scripts` library row, which is CONFIG). script_id is

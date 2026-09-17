@@ -3,6 +3,7 @@ import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
 import teamsRoutes from './routes/teams.routes.js';
 import documentationRoutes from './routes/documentation.routes.js';
+import investigationCanvasRoutes from './routes/investigationCanvas.routes.js';
 import cyberRangesRoutes from './routes/cyberRanges.routes.js';
 import topologyRoutes from './routes/topology.routes.js';
 import helpRequestsRoutes from './routes/helpRequests.routes.js';
@@ -39,6 +40,7 @@ export function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/teams', teamsRoutes);
   app.use('/api', documentationRoutes);
+  app.use('/api', investigationCanvasRoutes);
   app.use('/api', cyberRangesRoutes);
   app.use('/api', topologyRoutes);
   app.use('/api', helpRequestsRoutes);
