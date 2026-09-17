@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -19,6 +19,7 @@ export interface CanvasNodeDataDTO {
   id: number;
   nodeType: CanvasNodeTypeKey;
   label: string;
+  body: string | null;
   posX: number;
   posY: number;
 }
@@ -34,9 +35,15 @@ interface InvestigationCanvasProps {
   nodes: CanvasNodeDataDTO[];
   edges: CanvasEdgeDataDTO[];
   editable?: boolean;
+  // Controlled selection (owned by the container, not this presentational component) so the
+  // container can auto-open the inspector on a node *it* just created/duplicated — without also
+  // stealing focus locally when a teammate creates one via realtime.
+  selectedNodeId: number | null;
+  onSelectionChange: (nodeId: number | null) => void;
   onNodeCreate?: (type: CanvasNodeTypeKey, x: number, y: number) => void;
   onNodeDragStop?: (nodeId: number, x: number, y: number) => void;
   onLabelChange?: (nodeId: number, label: string) => void;
+  onBodyChange?: (nodeId: number, body: string) => void;
   onNodeDelete?: (nodeId: number) => void;
   onNodeDuplicate?: (node: CanvasNodeDataDTO) => void;
   onConnect?: (fromNodeId: number, toNodeId: number) => void;
@@ -52,16 +59,18 @@ function CanvasInner({
   nodes,
   edges,
   editable = false,
+  selectedNodeId,
+  onSelectionChange,
   onNodeCreate,
   onNodeDragStop,
   onLabelChange,
+  onBodyChange,
   onNodeDelete,
   onNodeDuplicate,
   onConnect,
   onEdgeDelete,
 }: InvestigationCanvasProps) {
   const reactFlowInstance = useReactFlow();
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
 
   const nodesById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const selectedNode = selectedNodeId != null ? (nodesById.get(selectedNodeId) ?? null) : null;
@@ -113,8 +122,8 @@ function CanvasInner({
     onNodeCreate?.(type, position.x, position.y);
   }
 
-  const handleNodeClick: NodeMouseHandler = (_, node) => setSelectedNodeId(parseFlowNodeId(node.id));
-  const handlePaneClick = () => setSelectedNodeId(null);
+  const handleNodeClick: NodeMouseHandler = (_, node) => onSelectionChange(parseFlowNodeId(node.id));
+  const handlePaneClick = () => onSelectionChange(null);
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -175,10 +184,11 @@ function CanvasInner({
         {editable && selectedNode && (
           <CanvasNodeInspector
             node={selectedNode}
-            onClose={() => setSelectedNodeId(null)}
+            onClose={() => onSelectionChange(null)}
             onDuplicate={() => onNodeDuplicate?.(selectedNode)}
+            onBodyChange={(body) => onBodyChange?.(selectedNode.id, body)}
             onDelete={() => {
-              setSelectedNodeId(null);
+              onSelectionChange(null);
               onNodeDelete?.(selectedNode.id);
             }}
           />
