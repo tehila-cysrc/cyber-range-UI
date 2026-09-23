@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { Avatar } from '../../components/Avatar';
 import { LifeBuoyIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
+import { mttdSummaryLabel, type MttdSummary } from '../../lib/mitre';
 
 interface TeamStatus {
   teamId: number;
@@ -18,6 +19,14 @@ interface TeamStatus {
     entryCount: number;
     findingCount: number;
     lastEntryAt: string | null;
+    // null = the scenario defines no expected ATT&CK techniques.
+    ttp: {
+      earnedPoints: number;
+      availablePoints: number;
+      expectedCount: number;
+      detectedCount: number;
+      mttd: MttdSummary;
+    } | null;
   } | null;
   openHelpCount: number;
   completedCount: number;
@@ -324,6 +333,17 @@ export function InstructorDashboardPage() {
                 <span>{team.active.entryCount} entries</span>
                 <span>{team.active.findingCount} findings</span>
                 <span>last entry {formatAgo(team.active.lastEntryAt)}</span>
+              </div>
+            )}
+            {team.active?.ttp && (
+              <div className="tabular" style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
+                <span style={{ color: 'var(--signal-secondary)' }}>
+                  ATT&amp;CK {team.active.ttp.detectedCount}/{team.active.ttp.expectedCount}
+                </span>
+                <span>
+                  {team.active.ttp.earnedPoints}/{team.active.ttp.availablePoints} pts
+                </span>
+                <span>{mttdSummaryLabel(team.active.ttp.mttd)}</span>
               </div>
             )}
             <div className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
