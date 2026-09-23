@@ -1,9 +1,35 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { emitDocumentationNew } from '../sockets/emitters.js';
+import { emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
 import { activeCyberRangeIdForTeam } from '../services/cyberRangeProgress.service.js';
+import { isValidTechniqueId } from '../services/mitreCatalog.js';
+import { budgetFor, checkBudget, MAX_TTPS_PER_ENTRY, setEntryTtps, tagsByEntry } from '../services/ttpScoring.service.js';
+import { reconcileAndAnnounce } from '../services/ttpAnnounce.js';
+
+// Optional ATT&CK tags on an entry: a list of catalog technique ids and nothing else — correctness,
+// points and timestamps are always decided server-side (ttpScoring.service.ts).
+function parseTechniqueIds(raw: unknown): { ok: true; ids: string[] } | { ok: false; error: string } {
+  if (raw == null) return { ok: true, ids: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: 'techniqueIds must be an array of ATT&CK technique ids' };
+  const ids = [...new Set(raw)];
+  if (ids.length > MAX_TTPS_PER_ENTRY) return { ok: false, error: `at most ${MAX_TTPS_PER_ENTRY} ATT&CK techniques per entry` };
+  const invalid = ids.find((id) => !isValidTechniqueId(id));
+  if (invalid !== undefined) return { ok: false, error: `unknown ATT&CK technique: ${String(invalid)}` };
+  return { ok: true, ids: ids as string[] };
+}
+
+const ENTRY_COLUMNS = `
+  e.id AS id,
+  e.body AS body,
+  e.image_data_url AS imageDataUrl,
+  e.is_important_finding AS isImportantFinding,
+  e.created_at AS createdAt,
+  u.id AS authorUserId,
+  u.display_name AS authorName,
+  c.key AS categoryKey,
+  c.label AS categoryLabel`;
 
 const router = Router();
 
@@ -38,28 +64,37 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   const teamId = resolveTeamId(req, res);
   if (teamId === null) return;
 
-  const entries = db
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  const rows = db
     .prepare(
-      `SELECT
-         e.id AS id,
-         e.body AS body,
-         e.image_data_url AS imageDataUrl,
-         e.is_important_finding AS isImportantFinding,
-         e.created_at AS createdAt,
-         u.id AS authorUserId,
-         u.display_name AS authorName,
-         c.key AS categoryKey,
-         c.label AS categoryLabel
+      `SELECT ${ENTRY_COLUMNS}
        FROM documentation_entries e
        JOIN users u ON u.id = e.author_user_id
        LEFT JOIN documentation_categories c ON c.id = e.category_id
        WHERE e.team_id = ? AND e.cyber_range_id = ?
        ORDER BY e.created_at ASC`,
     )
-    .all(teamId, Number(req.params.cyberRangeId));
+    .all(teamId, cyberRangeId) as { id: number }[];
 
-  res.json({ entries });
+  const tags = tagsByEntry(teamId, cyberRangeId);
+  const entries = rows.map((row) => ({ ...row, ttps: tags.get(row.id) ?? [] }));
+  // ttpBudget is the team's own remaining technique budget (null = this scenario scores no ATT&CK
+  // techniques). Never the expected list or the points on offer — see CLAUDE/invariants.md.
+  res.json({ entries, ttpBudget: budgetFor(teamId, cyberRangeId) });
 });
+
+function entryDTO(entryId: number, teamId: number, cyberRangeId: number) {
+  const entry = db
+    .prepare(
+      `SELECT ${ENTRY_COLUMNS}
+       FROM documentation_entries e
+       JOIN users u ON u.id = e.author_user_id
+       LEFT JOIN documentation_categories c ON c.id = e.category_id
+       WHERE e.id = ?`,
+    )
+    .get(entryId) as Record<string, unknown>;
+  return { ...entry, ttps: tagsByEntry(teamId, cyberRangeId).get(entryId) ?? [] };
+}
 
 // Free-text categories (e.g. a student typing "IOC" or something not in the seeded list) are
 // find-or-created here rather than requiring an instructor to pre-configure every category —
@@ -104,9 +139,14 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
     return;
   }
 
-  const { body, categoryId, newCategoryLabel, isImportantFinding, imageDataUrl } = req.body ?? {};
+  const { body, categoryId, newCategoryLabel, isImportantFinding, imageDataUrl, techniqueIds } = req.body ?? {};
   if (typeof body !== 'string' || body.trim().length === 0) {
     res.status(400).json({ error: 'body is required' });
+    return;
+  }
+  const parsedTtps = parseTechniqueIds(techniqueIds);
+  if (!parsedTtps.ok) {
+    res.status(400).json({ error: parsedTtps.error });
     return;
   }
 
@@ -124,6 +164,12 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   if (activeCyberRangeIdForTeam(req.user!.teamId) !== cyberRangeId) {
     res.status(409).json({ error: "this isn't your team's active Cyber Range — refresh the page" });
+    return;
+  }
+  // Checked before anything is written, so a refused tag never leaves a half-saved entry behind.
+  const budgetError = checkBudget(req.user!.teamId, cyberRangeId, parsedTtps.ids);
+  if (budgetError) {
+    res.status(409).json({ error: budgetError });
     return;
   }
 
@@ -158,28 +204,54 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
       createdAt,
     );
 
-  const entry = db
-    .prepare(
-      `SELECT
-         e.id AS id,
-         e.body AS body,
-         e.image_data_url AS imageDataUrl,
-         e.is_important_finding AS isImportantFinding,
-         e.created_at AS createdAt,
-         u.id AS authorUserId,
-         u.display_name AS authorName,
-         c.key AS categoryKey,
-         c.label AS categoryLabel
-       FROM documentation_entries e
-       JOIN users u ON u.id = e.author_user_id
-       LEFT JOIN documentation_categories c ON c.id = e.category_id
-       WHERE e.id = ?`,
-    )
-    .get(result.lastInsertRowid);
+  const entryId = Number(result.lastInsertRowid);
+  if (parsedTtps.ids.length > 0) {
+    setEntryTtps(entryId, req.user!.teamId, cyberRangeId, req.user!.id, parsedTtps.ids);
+    reconcileAndAnnounce(req.user!.teamId, cyberRangeId);
+  }
 
+  const entry = entryDTO(entryId, req.user!.teamId, cyberRangeId);
   emitDocumentationNew(req.user!.teamId, entry);
 
   res.status(201).json({ entry });
+});
+
+// Add/change/remove an entry's ATT&CK tags. Entries themselves stay append-only; only the optional
+// tag association is editable. Any teammate may tag any of the team's entries, but only while the
+// scenario is the team's active one (same write gate as creating entries).
+router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', (req, res) => {
+  if (req.user!.role !== 'student' || !req.user!.teamId) {
+    res.status(403).json({ error: 'only a student on a team can tag documentation' });
+    return;
+  }
+  const teamId = req.user!.teamId;
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  const entryId = Number(req.params.entryId);
+
+  const parsed = parseTechniqueIds(req.body?.techniqueIds);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+  if (activeCyberRangeIdForTeam(teamId) !== cyberRangeId) {
+    res.status(409).json({ error: "this isn't your team's active Cyber Range — refresh the page" });
+    return;
+  }
+  if (!db.prepare('SELECT 1 FROM documentation_entries WHERE id = ? AND team_id = ? AND cyber_range_id = ?').get(entryId, teamId, cyberRangeId)) {
+    res.status(404).json({ error: 'entry not found' });
+    return;
+  }
+
+  const result = setEntryTtps(entryId, teamId, cyberRangeId, req.user!.id, parsed.ids);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  if (result.changed) reconcileAndAnnounce(teamId, cyberRangeId);
+
+  const entry = entryDTO(entryId, teamId, cyberRangeId);
+  if (result.changed) emitDocumentationUpdated(teamId, entry);
+  res.json({ entry, ttpBudget: budgetFor(teamId, cyberRangeId) });
 });
 
 export default router;
