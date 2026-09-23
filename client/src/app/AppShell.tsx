@@ -9,7 +9,6 @@ import { useSocketEvent } from '../hooks/useSocketEvent';
 import { Toaster } from '../components/Toaster';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
-import { TelemetryBadge } from '../components/TelemetryBadge';
 import logoUrl from '../assets/company-logo.svg';
 import appIconUrl from '../assets/app-icon.svg';
 
@@ -81,7 +80,18 @@ function LiveStatusBadge() {
     };
   }, []);
 
-  return <TelemetryBadge tone={connected ? 'primary' : 'muted'}>{connected ? 'Live' : 'Offline'}</TelemetryBadge>;
+  // Deliberately not a bordered badge — boxed next to the account button it read as clickable.
+  return (
+    <span
+      className="live-status"
+      role="status"
+      data-connected={connected}
+      title={connected ? 'Realtime connection active' : 'Realtime connection lost — reconnecting'}
+    >
+      <span className="live-status-dot" aria-hidden="true" />
+      {connected ? 'Live' : 'Offline'}
+    </span>
+  );
 }
 
 // Collapsed to just a green identity icon per user request — the name/role/sign-out live in a
