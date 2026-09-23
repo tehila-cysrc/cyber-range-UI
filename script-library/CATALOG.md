@@ -156,6 +156,65 @@ See `scripts/web/PLANNED.md` — all **P** until lab app URL known.
 
 ---
 
+## ai-agent
+
+Capabilities for the external LLM-driven Agent Simulator (separate repo). See
+`AGENT_SIMULATOR_INTEGRATION.md` for the full tool table, classifications, and adapter dispatch
+keys — this section is the human index of the underlying script files only.
+
+**Sub-categories** (the actual `category` value in `catalog.json` / the `scripts` DB table / the
+Instructor Console's category filter — split out so Normal/Suspicious/Adversarial are distinguishable
+in the product UI, not just in this doc):
+
+| DB/UI category | Classification | Count |
+| --- | --- | --- |
+| `ai-agent-normal` | Normal | 18 (9 tools × Windows/Linux) |
+| `ai-agent-suspicious` | Suspicious | 10 (5 tools × Windows/Linux) |
+| `ai-agent-adversarial` | Adversarial-simulated | 10 (5 tools × Windows/Linux) |
+
+| ID | File | OS | Classification | Status |
+| --- | --- | --- | --- | --- |
+| list-running-processes | `scripts/ai-agent/list-running-processes.ps1` | Windows | Normal | I |
+| list-running-processes-linux | `.../list-running-processes-linux.sh` | Linux | Normal | I |
+| check-disk-space | `.../check-disk-space.ps1` | Windows | Normal | I |
+| check-disk-space-linux | `.../check-disk-space-linux.sh` | Linux | Normal | I |
+| read-local-log-tail | `.../read-local-log-tail.ps1` | Windows | Normal | I |
+| read-local-log-tail-linux | `.../read-local-log-tail-linux.sh` | Linux | Normal | I |
+| check-scheduled-tasks | `.../check-scheduled-tasks.ps1` | Windows | Normal | I |
+| check-scheduled-tasks-linux | `.../check-scheduled-tasks-linux.sh` | Linux | Normal | I |
+| check-service-status | `.../check-service-status.ps1` | Windows | Normal | I |
+| check-service-status-linux | `.../check-service-status-linux.sh` | Linux | Normal | I |
+| resolve-internal-hostname | `.../resolve-internal-hostname.ps1` | Windows | Normal | I |
+| resolve-internal-hostname-linux | `.../resolve-internal-hostname-linux.sh` | Linux | Normal | I |
+| check-local-time-sync | `.../check-local-time-sync.ps1` | Windows | Normal | I |
+| check-local-time-sync-linux | `.../check-local-time-sync-linux.sh` | Linux | Normal | I |
+| enumerate-local-users | `.../enumerate-local-users.ps1` | Windows | Normal | I |
+| enumerate-local-users-linux | `.../enumerate-local-users-linux.sh` | Linux | Normal | I |
+| enumerate-installed-software | `.../enumerate-installed-software.ps1` | Windows | Normal | I |
+| enumerate-installed-software-linux | `.../enumerate-installed-software-linux.sh` | Linux | Normal | I |
+| enumerate-network-shares | `.../enumerate-network-shares.ps1` | Windows | Suspicious | I |
+| enumerate-network-shares-linux | `.../enumerate-network-shares-linux.sh` | Linux | Suspicious | I |
+| probe-internal-service-ports | `.../probe-internal-service-ports.ps1` | Windows | Suspicious | I |
+| probe-internal-service-ports-linux | `.../probe-internal-service-ports-linux.sh` | Linux | Suspicious | I |
+| query-decoy-destination | `.../query-decoy-destination.ps1` | Windows | Suspicious | I |
+| query-decoy-destination-linux | `.../query-decoy-destination-linux.sh` | Linux | Suspicious | I |
+| repeated-failed-lookup-burst | `.../repeated-failed-lookup-burst.ps1` | Windows | Suspicious | I |
+| repeated-failed-lookup-burst-linux | `.../repeated-failed-lookup-burst-linux.sh` | Linux | Suspicious | I |
+| inspect-safe-environment-variables | `.../inspect-safe-environment-variables.ps1` | Windows | Suspicious | I |
+| inspect-safe-environment-variables-linux | `.../inspect-safe-environment-variables-linux.sh` | Linux | Suspicious | I |
+| simulate-privilege-check | `.../simulate-privilege-check.ps1` | Windows | Adversarial-simulated | I |
+| simulate-privilege-check-linux | `.../simulate-privilege-check-linux.sh` | Linux | Adversarial-simulated | I |
+| write-decoy-payload-file | `.../write-decoy-payload-file.ps1` | Windows | Adversarial-simulated | I |
+| write-decoy-payload-file-linux | `.../write-decoy-payload-file-linux.sh` | Linux | Adversarial-simulated | I |
+| archive-scratch-directory | `.../archive-scratch-directory.ps1` | Windows | Adversarial-simulated | I |
+| archive-scratch-directory-linux | `.../archive-scratch-directory-linux.sh` | Linux | Adversarial-simulated | I |
+| simulate-credential-probe | `.../simulate-credential-probe.ps1` | Windows | Adversarial-simulated (dry-run only) | I |
+| simulate-credential-probe-linux | `.../simulate-credential-probe-linux.sh` | Linux | Adversarial-simulated (dry-run only) | I |
+| beacon-to-decoy-endpoint | `.../beacon-to-decoy-endpoint.ps1` | Windows | Adversarial-simulated (dry-run only) | I |
+| beacon-to-decoy-endpoint-linux | `.../beacon-to-decoy-endpoint-linux.sh` | Linux | Adversarial-simulated (dry-run only) | I |
+
+---
+
 ## Injects
 
 See `injects/*.yaml` — 10 injects defined.

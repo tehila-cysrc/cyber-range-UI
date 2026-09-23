@@ -18,6 +18,24 @@
 - Unbounded stress (fork bombs, fill-disk)
 - Hard-coded production secrets
 
+## AI Agent Simulator capability set (`scripts/ai-agent/`)
+
+Additional notes specific to the 19 capabilities exposed to the external LLM-driven Agent
+Simulator (see `../AGENT_SIMULATOR_INTEGRATION.md`) — the rules above still apply in full; these
+are clarifications for that set:
+
+- All 19 tools are **parameterless** — every target (service name, port list, decoy hostname,
+  env-var allowlist, scratch-dir path) is hardcoded in the script, never passed in by the caller.
+- Bounded, local-only network probes (loopback port checks, fixed internal hostname resolution)
+  are allowed; scanning a range or accepting a caller-supplied host/port is not.
+- Decoy scratch-dir writes (`write_decoy_payload_file`, `archive_scratch_directory`) use a
+  **fixed, overwritten** filename, never timestamped, so repeated agent turns cannot accumulate
+  files — this library still has no destructive/unbounded write capability.
+- `simulate_credential_probe` and `beacon_to_decoy_endpoint` are `dry_run_only`: they print a
+  `SIMULATED:` narrative and perform zero real action, regardless of caller. This library still
+  has **no default external decoy destination** — the "never phones home to non-lab infra" rule
+  above is why beaconing stays synthetic rather than pointed at a real address.
+
 ## Conventions
 
 1. Every script prints a clear `CR-SCRIPT-ID=<id>` and `CR-RUN-ID=<uuid-or-timestamp>` line to stdout.

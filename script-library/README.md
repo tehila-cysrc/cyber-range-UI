@@ -24,6 +24,12 @@ script-library/
 ├── PRIORITIES.md             ← MVP / later / never-as-attack
 ├── CATALOG.md                ← human index of every script
 ├── catalog.json              ← machine-readable index (future seed)
+├── AGENT_SIMULATOR_INTEGRATION.md ← ai-agent tool table + adapter integration notes
+├── agent-tools/               ← ToolDeclaration catalog + adapter for the external Agent Simulator
+│   ├── catalog.json
+│   ├── adapter.mjs
+│   ├── adapter.test.mjs
+│   └── verify.mjs
 ├── docs/
 │   ├── safety.md
 │   ├── metadata-schema.md
@@ -37,7 +43,8 @@ script-library/
 │   ├── logging/
 │   ├── qradar/
 │   ├── active-directory/
-│   └── cloud/
+│   ├── cloud/
+│   └── ai-agent/             ← normal/suspicious/adversarial-simulated capabilities for the Agent Simulator
 ├── injects/                  ← inject definitions (reference scripts by id)
 └── scenario-packs/
     ├── beginner/

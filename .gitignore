@@ -17,3 +17,6 @@ FOLLOWUPS.md
 PROGRESS.txt
 PROGRESS_OLD_*.txt
 hooks/
+
+.vercel
+.env*

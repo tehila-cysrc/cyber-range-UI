@@ -57,6 +57,10 @@ export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId
   });
   const compatibleScripts = (scriptsData?.scripts ?? []).filter((s) => !required || s.scriptType === required);
   const hiddenCount = (scriptsData?.scripts.length ?? 0) - compatibleScripts.length;
+  // Real categories present in the library, not the fixed SUGGESTED_CATEGORIES list — that list is
+  // just free-text naming suggestions for new scripts and drifts from what's actually in the DB (e.g.
+  // it never had the ai-agent-* categories, so scripts under them couldn't be filtered to here).
+  const availableCategories = Array.from(new Set((scriptsData?.scripts ?? []).map((s) => s.category).filter((c): c is string => !!c))).sort();
   const selectedScript = compatibleScripts.find((s) => s.id === selectedScriptId) ?? null;
 
   const { data: historyData, refetch: refetchHistory } = useQuery({
@@ -148,7 +152,7 @@ export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId
           <div>
             <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...fieldStyle, marginBottom: 8 }}>
               <option value="">All categories</option>
-              {SUGGESTED_CATEGORIES.map((c) => (
+              {availableCategories.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
