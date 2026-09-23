@@ -54,14 +54,15 @@ export function startCyberRangeForTeam(teamId: number, cyberRangeId: number): St
     ).run(teamId, cyberRangeId);
 
     db.prepare(
-      `INSERT INTO team_cyber_range_progress (team_id, cyber_range_id, status, started_at, time_limit_seconds)
-       VALUES (?, ?, 'active', ?, ?)
+      `INSERT INTO team_cyber_range_progress (team_id, cyber_range_id, status, started_at, first_started_at, time_limit_seconds)
+       VALUES (?, ?, 'active', ?, ?, ?)
        ON CONFLICT (team_id, cyber_range_id) DO UPDATE SET
          status = 'active',
          started_at = excluded.started_at,
+         first_started_at = COALESCE(team_cyber_range_progress.first_started_at, excluded.first_started_at),
          time_limit_seconds = excluded.time_limit_seconds,
          completed_at = NULL`,
-    ).run(teamId, cyberRangeId, startedAt, timeLimitSeconds);
+    ).run(teamId, cyberRangeId, startedAt, startedAt, timeLimitSeconds);
 
     db.exec('COMMIT');
   } catch (err) {

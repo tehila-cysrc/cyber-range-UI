@@ -5,6 +5,7 @@ import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
 import { useDebriefTeam } from './useDebriefTeam';
+import { TtpDebriefSection } from './TtpDebriefSection';
 
 interface DocEntry {
   id: number;
@@ -71,6 +72,8 @@ export function CyberRangeSummaryPage() {
               Team score: {data.scoreTotal}
             </span>
           </div>
+
+          <TtpDebriefSection cyberRangeId={data.cyberRange.id} />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
             <span

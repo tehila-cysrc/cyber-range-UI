@@ -25,7 +25,7 @@ router.get('/scores', (req, res) => {
          s.id AS id, s.points AS points, s.is_gamified AS isGamified, s.note AS note,
          s.created_at AS createdAt, s.student_user_id AS studentUserId,
          s.documentation_entry_id AS documentationEntryId, s.cyber_range_id AS cyberRangeId,
-         u.display_name AS studentName
+         s.source AS source, u.display_name AS studentName
        FROM scores s
        LEFT JOIN users u ON u.id = s.student_user_id
        WHERE s.team_id = ?

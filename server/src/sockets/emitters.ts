@@ -8,6 +8,12 @@ export function emitDocumentationNew(teamId: number, entry: unknown) {
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('documentation:new', { entry, teamId });
 }
 
+// An existing entry's ATT&CK tags changed (entries are otherwise append-only). Same rooms and shape
+// as documentation:new so teammates' and instructors' timelines update in place.
+export function emitDocumentationUpdated(teamId: number, entry: unknown) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('documentation:updated', { entry, teamId });
+}
+
 export function emitHelpRequestNew(helpRequest: unknown) {
   getIo().to(INSTRUCTOR_ROOM).emit('help_request:new', { helpRequest });
 }
@@ -56,6 +62,13 @@ export function emitLeaderboardUpdate(teams: unknown, enabled = true) {
 // Investigation, Topology) must refetch instead of silently writing to / timing the old one.
 export function emitProgressChanged(teamId: number, payload: { cyberRangeId: number; status: string }) {
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('progress:changed', { teamId, ...payload });
+}
+
+// ATT&CK detections changed for a team (credit, void, manual credit, expected-TTP edit). Instructor
+// room ONLY — the payload is just ids, and the team learns about its own credits through the regular
+// score:awarded event; nothing here may hint at expected-but-undetected techniques.
+export function emitTtpChanged(teamId: number, cyberRangeId: number) {
+  getIo().to(INSTRUCTOR_ROOM).emit('ttp:changed', { teamId, cyberRangeId });
 }
 
 // teamId is null for an instructor's own Connect session (not tied to any team) — it only ever

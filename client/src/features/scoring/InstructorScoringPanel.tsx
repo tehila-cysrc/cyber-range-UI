@@ -6,6 +6,9 @@ import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
+import { TtpChip } from '../../components/TechniquePicker';
+import { useMitreCatalog, type EntryTtp } from '../../lib/mitre';
+import { TtpDetectionsPanel } from './TtpDetectionsPanel';
 
 interface TeamStatus {
   teamId: number;
@@ -39,6 +42,7 @@ interface DocEntry {
   authorName: string;
   isImportantFinding: number;
   createdAt: string;
+  ttps?: EntryTtp[];
 }
 
 const selectStyle: React.CSSProperties = {
@@ -165,6 +169,7 @@ export function InstructorScoringPanel() {
   const queryClient = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
   const [quickAwardStudentId, setQuickAwardStudentId] = useState<number | ''>('');
+  const { data: catalog } = useMitreCatalog();
 
   const { data: dashboardData } = useQuery({
     queryKey: ['instructor-dashboard'],
@@ -204,11 +209,22 @@ export function InstructorScoringPanel() {
   useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:new', ({ teamId }) => {
     if (teamId === selectedTeamId) queryClient.invalidateQueries({ queryKey: ['documentation'] });
   });
+  useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:updated', ({ teamId }) => {
+    if (teamId === selectedTeamId) queryClient.invalidateQueries({ queryKey: ['documentation'] });
+  });
+  // An automatic ATT&CK credit is a new scores row this panel didn't create.
+  useSocketEvent<{ teamId: number }>('ttp:changed', ({ teamId }) => {
+    if (teamId === selectedTeamId) {
+      queryClient.invalidateQueries({ queryKey: ['admin-scores'] });
+      queryClient.invalidateQueries({ queryKey: ['documentation'] });
+    }
+  });
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['documentation'] });
     queryClient.invalidateQueries({ queryKey: ['admin-scores'] });
     queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['ttp-report'] });
   }
 
   return (
@@ -308,6 +324,13 @@ export function InstructorScoringPanel() {
             />
           </div>
 
+          <TtpDetectionsPanel
+            teamId={selectedTeam.teamId}
+            cyberRangeId={selectedTeam.active.cyberRangeId}
+            entries={entriesData?.entries ?? []}
+            onChanged={refresh}
+          />
+
           <div>
             <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
               Documentation — {selectedTeam.active.name}
@@ -350,6 +373,13 @@ export function InstructorScoringPanel() {
                     ) : null}
                   </div>
                   <div className="prose-pre" style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
+                  {!!entry.ttps?.length && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {entry.ttps.map((t) => (
+                        <TtpChip key={t.techniqueId} techniqueId={t.techniqueId} catalog={catalog} credited={t.credited} />
+                      ))}
+                    </div>
+                  )}
                   {awardedByEntry.has(entry.id) && (
                     <div style={{ fontSize: 13, color: 'var(--signal-primary)' }}>
                       Already awarded:{' '}

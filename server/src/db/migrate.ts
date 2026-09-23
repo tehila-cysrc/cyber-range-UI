@@ -84,6 +84,39 @@ function relaxAccessSessionsTeamId() {
   `);
 }
 
+// scores predates auto-credited ATT&CK detections: awarded_by_user_id was NOT NULL (every award came
+// from an instructor) and there was no source column. A system award has no instructor, so a database
+// created before the MITRE TTP feature needs the table rebuilt once, same approach as
+// relaxAccessSessionsTeamId above. Guarded by the source column's presence so re-running is a no-op.
+// Runs right after run.sql, before any ttp_detections row can reference a score.
+function relaxScoresForTtpAwards() {
+  const columns = db.prepare(`PRAGMA table_info(scores)`).all() as { name: string }[];
+  if (columns.some((c) => c.name === 'source')) return;
+
+  // One transaction: a crash between DROP and RENAME must never lose the scores table.
+  db.exec(`
+    BEGIN;
+    CREATE TABLE scores_new (
+      id INTEGER PRIMARY KEY,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      student_user_id INTEGER REFERENCES users(id),
+      documentation_entry_id INTEGER REFERENCES documentation_entries(id),
+      cyber_range_id INTEGER REFERENCES cyber_ranges(id),
+      points INTEGER NOT NULL,
+      is_gamified INTEGER NOT NULL DEFAULT 0,
+      awarded_by_user_id INTEGER REFERENCES users(id),
+      note TEXT,
+      created_at TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'ttp'))
+    );
+    INSERT INTO scores_new (id, team_id, student_user_id, documentation_entry_id, cyber_range_id, points, is_gamified, awarded_by_user_id, note, created_at)
+      SELECT id, team_id, student_user_id, documentation_entry_id, cyber_range_id, points, is_gamified, awarded_by_user_id, note, created_at FROM scores;
+    DROP TABLE scores;
+    ALTER TABLE scores_new RENAME TO scores;
+    COMMIT;
+  `);
+}
+
 export function migrate() {
   // Order matters: run.sql's foreign keys reference config.sql's tables.
   runSchemaFile('schema/config.sql');
@@ -136,6 +169,23 @@ export function migrate() {
   // a range with any history can't be deleted without destroying that history. is_active=0 removes it
   // from the picker lists (GET /cyber-ranges) without touching anything that already references it.
   addColumnIfMissing('cyber_ranges', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+
+  // MITRE TTP feature. started_at is overwritten on every (re)start, so it can't anchor an MTTD window
+  // after a pause/switch-back; first_started_at is set once, on the progress row's first insert, and
+  // kept by startCyberRangeForTeam's ON CONFLICT clause. Backfilled from started_at for existing rows.
+  addColumnIfMissing('team_cyber_range_progress', 'first_started_at', 'TEXT');
+  db.exec(
+    `UPDATE team_cyber_range_progress SET first_started_at = started_at
+     WHERE first_started_at IS NULL AND started_at IS NOT NULL`,
+  );
+  // Set once, on the first "complete" (never cleared by a restart): the ATT&CK debrief may reveal the
+  // answer key from then on, so tags made after it never auto-score (ttpScoring.service.ts).
+  addColumnIfMissing('team_cyber_range_progress', 'first_completed_at', 'TEXT');
+  db.exec(
+    `UPDATE team_cyber_range_progress SET first_completed_at = completed_at
+     WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,
+  );
+  relaxScoresForTtpAwards();
 
   // external_key is the Azure ARM resource id for discovered nodes/edges — globally unique per
   // cyber range, so a safe upsert target for re-running discovery (INSERT ... ON CONFLICT DO UPDATE)

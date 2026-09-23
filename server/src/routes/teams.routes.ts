@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { budgetFor, buildTeamTtpReport } from '../services/ttpScoring.service.js';
 
 const router = Router();
 
@@ -109,7 +110,7 @@ router.get('/me/scores', (req, res) => {
     .prepare(
       `SELECT
          s.id AS id, s.points AS points, s.is_gamified AS isGamified, s.note AS note,
-         s.created_at AS createdAt, s.student_user_id AS studentUserId,
+         s.created_at AS createdAt, s.student_user_id AS studentUserId, s.source AS source,
          u.display_name AS studentName,
          s.documentation_entry_id AS documentationEntryId,
          substr(e.body, 1, 140) AS documentationExcerpt,
@@ -138,6 +139,54 @@ router.get('/me/scores', (req, res) => {
     .all(teamId, teamId);
 
   res.json({ entries, teamTotal: teamTotalRow.total, perStudent });
+});
+
+// The team's own ATT&CK results. While the scenario is running: only what the team already learned
+// live (its credited techniques + points) and its remaining technique budget — no expected list, no
+// "x of y", no points on offer, nothing about misses. Once the instructor has completed the scenario
+// for EVERY team on it, the full breakdown (expected / detected / missed / incorrect + MTTD) is
+// revealed, minus the instructor's private notes. Tags made after a team's first completion never
+// score (see reconcileTeamTtps), so re-opening a revealed scenario can't be farmed.
+router.get('/me/cyber-ranges/:cyberRangeId/ttp-summary', (req, res) => {
+  const teamId = requireTeam(req, res);
+  if (teamId === null) return;
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  const progress = db
+    .prepare('SELECT status FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?')
+    .get(teamId, cyberRangeId) as { status: string } | undefined;
+  if (!progress) {
+    res.status(404).json({ error: "your team hasn't been assigned this scenario" });
+    return;
+  }
+
+  const report = buildTeamTtpReport(teamId, cyberRangeId, { includeInstructorNotes: false });
+  if (!report || report.totals.expectedCount === 0) {
+    res.json({ scored: false, revealed: false, budget: budgetFor(teamId, cyberRangeId) });
+    return;
+  }
+  // Revealed per SCENARIO, not per team: while any other team is still working this range, one
+  // finished team's students could otherwise pass the answer key across the room.
+  const unfinished = db
+    .prepare(`SELECT COUNT(*) AS n FROM team_cyber_range_progress WHERE cyber_range_id = ? AND status != 'completed'`)
+    .get(cyberRangeId) as { n: number };
+  if (progress.status === 'completed' && unfinished.n === 0) {
+    res.json({ scored: true, revealed: true, report });
+    return;
+  }
+  res.json({
+    scored: true,
+    revealed: false,
+    earnedPoints: report.totals.earnedPoints,
+    credited: report.expected
+      .filter((e) => e.detection)
+      .map((e) => ({
+        // The team's OWN tagged technique (what it identified), not the expectation it satisfied.
+        techniqueId: e.detection!.taggedTechniqueId ?? e.techniqueId,
+        pointsAwarded: e.detection!.pointsAwarded,
+        detectedAt: e.detection!.detectedAt,
+      })),
+    budget: budgetFor(teamId, cyberRangeId),
+  });
 });
 
 export default router;

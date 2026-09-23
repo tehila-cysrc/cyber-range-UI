@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import { teamTtpSummary } from '../../services/ttpScoring.service.js';
 
 const router = Router();
 
@@ -86,6 +87,8 @@ router.get('/dashboard', (_req, res) => {
             entryCount: activity!.entryCount,
             findingCount: activity!.findingCount,
             lastEntryAt: activity!.lastEntryAt,
+            // null when the scenario defines no expected ATT&CK techniques.
+            ttp: teamTtpSummary(team.id, active.cyberRangeId),
           }
         : null,
       openHelpCount,

@@ -32,6 +32,7 @@ const HIDDEN_FOR_INSTRUCTOR = new Set(['/', '/topology', '/team']);
 
 const INSTRUCTOR_NAV_ITEMS = [
   { to: '/instructor', label: 'Instructor' },
+  { to: '/admin/scenarios', label: 'Scenarios' },
   { to: '/admin/topology', label: 'Topology Admin' },
   { to: '/admin/scripts', label: 'Script Library' },
   { to: '/admin/teams', label: 'Roster' },

@@ -191,3 +191,29 @@ CREATE TABLE IF NOT EXISTS audit_log (
   metadata_json TEXT,
   created_at TEXT NOT NULL
 );
+
+-- Expected MITRE ATT&CK techniques for a scenario (cyber range), defined by the instructor before the
+-- run. CONFIG: part of the scenario definition, survives event resets. technique_id/tactic_id are
+-- validated against the static catalog (src/data/mitre/enterprise-attack.json, services/mitreCatalog.ts)
+-- — no FK, the catalog isn't a table. description/points/the list itself are instructor-only data and
+-- must never reach a student response (see CLAUDE/invariants.md). Soft-deleted via is_active so a RUN
+-- ttp_detections row can keep pointing at a removed expectation. trigger_script_id: the library script
+-- whose successful run means "this technique just happened" — feeds MTTD only, never scoring.
+CREATE TABLE IF NOT EXISTS cyber_range_expected_ttps (
+  id INTEGER PRIMARY KEY,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  technique_id TEXT NOT NULL,
+  tactic_id TEXT NOT NULL,
+  points INTEGER NOT NULL CHECK (points BETWEEN 1 AND 1000),
+  description TEXT,
+  topology_node_id INTEGER REFERENCES topology_nodes(id) ON DELETE SET NULL,
+  trigger_script_id INTEGER REFERENCES scripts(id) ON DELETE SET NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+-- One live expectation per technique per scenario — repeated occurrences of the same technique are
+-- ttp_occurrences rows, not duplicate expectations.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_expected_ttps_one_active_per_technique
+  ON cyber_range_expected_ttps (cyber_range_id, technique_id) WHERE is_active = 1;

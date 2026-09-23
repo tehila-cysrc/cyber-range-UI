@@ -27,6 +27,11 @@ const TopologyAdminPage = lazy(() =>
   import('../features/topology/admin/TopologyAdminPage').then((m) => ({ default: m.TopologyAdminPage })),
 );
 
+// Instructor-only, rarely opened — kept out of the main bundle like the topology screens.
+const ScenarioConfigPage = lazy(() =>
+  import('../features/scenarios/ScenarioConfigPage').then((m) => ({ default: m.ScenarioConfigPage })),
+);
+
 function TopologyFallback() {
   return <div style={{ padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading topology…</div>;
 }
@@ -111,6 +116,16 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requireRole="instructor">
             <ScriptLibraryPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin/scenarios',
+        element: (
+          <ProtectedRoute requireRole="instructor">
+            <Suspense fallback={<div style={{ padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading…</div>}>
+              <ScenarioConfigPage />
+            </Suspense>
           </ProtectedRoute>
         ),
       },

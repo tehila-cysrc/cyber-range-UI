@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { writeAudit } from './audit.service.js';
 import { classifyAzureError } from './azureErrors.js';
 import { getResolvedCredential } from './environments.service.js';
+import { recordScriptOccurrencesAndAnnounce } from './ttpAnnounce.js';
 import type { ResolvedCloudCredential } from './discovery/discoveryProvider.js';
 
 export type ScriptType = 'powershell' | 'bash';
@@ -281,6 +282,15 @@ async function executeInBackground(
       executionId,
     );
     writeAudit(actorUsername, 'script.execution_finished', 'topology_node', nodeId, { executionId, status: hadErrorLevel ? 'failed' : 'succeeded' });
+    if (!hadErrorLevel) {
+      // MITRE TTP feature: a successful trigger-script run stamps when its expected technique occurred
+      // (MTTD only). Isolated so an MTTD bookkeeping failure can never mark a good run as failed.
+      try {
+        recordScriptOccurrencesAndAnnounce(executionId);
+      } catch (err) {
+        console.error('[ttp] failed to record occurrence for execution', executionId, err instanceof Error ? err.message : err);
+      }
+    }
   } catch (err) {
     const { message } = classifyAzureError(err);
     db.prepare(`UPDATE script_executions SET status = 'failed', finished_at = ?, error_text = ? WHERE id = ?`).run(

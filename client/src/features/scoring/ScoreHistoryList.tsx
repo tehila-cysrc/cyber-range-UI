@@ -14,6 +14,7 @@ interface ScoreEntry {
   studentName: string | null;
   documentationExcerpt: string | null;
   cyberRangeName: string | null;
+  source?: 'manual' | 'ttp';
 }
 
 interface ScoresResponse {
@@ -103,6 +104,7 @@ export function ScoreHistoryList() {
                 {entry.studentName && <Avatar name={entry.studentName} size={20} />}
                 {entry.studentName ?? 'Whole team'}
                 {entry.isGamified ? <TelemetryBadge tone="tertiary">Gamified</TelemetryBadge> : null}
+                {entry.source === 'ttp' ? <TelemetryBadge tone="secondary">ATT&amp;CK</TelemetryBadge> : null}
                 <span className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
                   {new Date(entry.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   {entry.cyberRangeName ? ` · ${entry.cyberRangeName}` : ''}

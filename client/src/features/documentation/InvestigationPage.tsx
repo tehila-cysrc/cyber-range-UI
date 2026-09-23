@@ -10,6 +10,8 @@ import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
 import { useAuthStore } from '../../stores/authStore';
+import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
+import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
 
 // React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
 // Timeline-only visit to /investigation never pays its bundle cost; it only loads the first time
@@ -83,7 +85,15 @@ interface DocEntry {
   authorName: string;
   categoryKey: string | null;
   categoryLabel: string | null;
+  ttps: EntryTtp[];
 }
+
+interface EntriesResponse {
+  entries: DocEntry[];
+  ttpBudget: TtpBudget | null;
+}
+
+const MAX_TTPS_PER_ENTRY = 3;
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB raw file, before base64 inflation
 
@@ -99,6 +109,8 @@ export function InvestigationPage() {
   const [isImportant, setIsImportant] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [techniqueIds, setTechniqueIds] = useState<string[]>([]);
+  const { data: catalog } = useMitreCatalog();
 
   // Student: own team's active range, resolved server-side from the auth token — never a
   // cross-team leak. Instructor: no team of their own, so this query stays off and they instead
@@ -149,10 +161,12 @@ export function InvestigationPage() {
     enabled: !!cyberRangeId && (!isInstructor || !!teamIdParam),
     queryKey: ['documentation', cyberRangeId, teamIdParam],
     queryFn: () =>
-      apiFetch<{ entries: DocEntry[] }>(
+      apiFetch<EntriesResponse>(
         `/cyber-ranges/${cyberRangeId}/documentation${teamIdParam ? `?teamId=${teamIdParam}` : ''}`,
       ),
   });
+  const ttpBudget = entriesData?.ttpBudget ?? null;
+  const documentationKey = ['documentation', cyberRangeId, teamIdParam];
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -164,10 +178,12 @@ export function InvestigationPage() {
           newCategoryLabel: newCategoryLabel.trim() || undefined,
           isImportantFinding: isImportant,
           imageDataUrl: imageDataUrl ?? undefined,
+          techniqueIds: techniqueIds.length ? techniqueIds : undefined,
         }),
       }),
     onSuccess: () => {
       if (cyberRangeId) clearDraft(cyberRangeId);
+      setTechniqueIds([]);
       setIsImportant(false);
       setCategoryId('');
       setNewCategoryLabel('');
@@ -214,14 +230,28 @@ export function InvestigationPage() {
   useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:new', ({ entry, teamId }) => {
     if (!cyberRangeId) return;
     if (isInstructor && teamId !== selectedTeamId) return;
-    queryClient.setQueryData<{ entries: DocEntry[] }>(
-      ['documentation', cyberRangeId, teamIdParam],
-      (current) => {
-        if (!current) return current;
-        if (current.entries.some((e) => e.id === entry.id)) return current;
-        return { entries: [...current.entries, entry] };
-      },
+    queryClient.setQueryData<EntriesResponse>(documentationKey, (current) => {
+      if (!current) return current;
+      if (current.entries.some((e) => e.id === entry.id)) return current;
+      return { ...current, entries: [...current.entries, entry] };
+    });
+  });
+
+  // A teammate (or this user in another tab) changed an entry's ATT&CK tags.
+  useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:updated', ({ entry, teamId }) => {
+    if (!cyberRangeId) return;
+    if (isInstructor && teamId !== selectedTeamId) return;
+    queryClient.setQueryData<EntriesResponse>(documentationKey, (current) =>
+      current ? { ...current, entries: current.entries.map((e) => (e.id === entry.id ? entry : e)) } : current,
     );
+  });
+
+  // A new ATT&CK credit can turn tags on OTHER entries (same technique) credited too, and uses up
+  // budget — refetch rather than patch every entry by hand.
+  useSocketEvent<{ score: { source?: string; teamId?: number } }>('score:awarded', ({ score }) => {
+    if (score?.source !== 'ttp') return;
+    if (isInstructor && score.teamId !== selectedTeamId) return;
+    queryClient.invalidateQueries({ queryKey: ['documentation', cyberRangeId] });
   });
 
   if (isInstructor) {
@@ -274,7 +304,7 @@ export function InvestigationPage() {
           <>
             <InvestigationTabs view={view} onChange={setView} />
             {view === 'timeline' ? (
-              <Timeline entries={entriesData?.entries} />
+              <Timeline entries={entriesData?.entries} catalog={catalog} />
             ) : (
               <Suspense fallback={<CanvasFallback />}>
                 <InvestigationCanvasContainer
@@ -338,7 +368,11 @@ export function InvestigationPage() {
       ) : (
         <div className="split-main-side">
           <div>
-            <Timeline entries={entriesData?.entries} />
+            <Timeline
+              entries={entriesData?.entries}
+              catalog={catalog}
+              editing={{ cyberRangeId: active.cyberRangeId, budget: ttpBudget, queryKey: documentationKey }}
+            />
           </div>
 
           <form
@@ -381,6 +415,11 @@ export function InvestigationPage() {
             resize: 'vertical',
           }}
         />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 15, color: 'var(--text-muted)' }}>MITRE ATT&amp;CK (optional)</span>
+          <TechniquePicker value={techniqueIds} onChange={setTechniqueIds} max={MAX_TTPS_PER_ENTRY} />
+          <TtpBudgetHint budget={ttpBudget} />
+        </div>
         <select
           aria-label="Category"
           value={categoryId}
@@ -468,7 +507,34 @@ export function InvestigationPage() {
 // A connected vertical thread rather than a flat list of boxes — each entry gets a marker (filled
 // for an important finding, hollow otherwise) joined to the next by a line segment, echoing the
 // shared, ongoing nature of the timeline (US-003) instead of implying discrete, closed steps.
-function Timeline({ entries }: { entries: DocEntry[] | undefined }) {
+interface TtpEditing {
+  cyberRangeId: number;
+  budget: TtpBudget | null;
+  queryKey: unknown[];
+}
+
+// The team's own technique budget (anti-guessing cap). null = the scenario scores no techniques.
+function TtpBudgetHint({ budget }: { budget: TtpBudget | null }) {
+  if (!budget) return null;
+  const left = Math.max(0, budget.limit - budget.used);
+  return (
+    <span style={{ fontSize: 13, color: left === 0 ? 'var(--signal-tertiary)' : 'var(--text-telemetry)' }}>
+      {left === 0
+        ? 'Technique budget used up — you can still re-use techniques your team already tried.'
+        : `Your team can try ${left} more distinct technique${left === 1 ? '' : 's'} in this scenario — tag from evidence, not guesses.`}
+    </span>
+  );
+}
+
+function Timeline({
+  entries,
+  catalog,
+  editing,
+}: {
+  entries: DocEntry[] | undefined;
+  catalog: IndexedCatalog | undefined;
+  editing?: TtpEditing;
+}) {
   if (!entries) return null;
   if (entries.length === 0) return <EmptyState message="No entries yet." />;
 
@@ -503,7 +569,7 @@ function Timeline({ entries }: { entries: DocEntry[] | undefined }) {
             )}
           </div>
           <div style={{ flex: 1, paddingBottom: 'var(--space-lg)', minWidth: 0 }}>
-            <TimelineEntry entry={entry} />
+            <TimelineEntry entry={entry} catalog={catalog} editing={editing} />
           </div>
         </div>
       ))}
@@ -516,7 +582,34 @@ export function formatEntryTime(iso: string) {
   return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function TimelineEntry({ entry }: { entry: DocEntry }) {
+function TimelineEntry({
+  entry,
+  catalog,
+  editing,
+}: {
+  entry: DocEntry;
+  catalog: IndexedCatalog | undefined;
+  editing?: TtpEditing;
+}) {
+  const queryClient = useQueryClient();
+  const [editingTtps, setEditingTtps] = useState(false);
+  const [draftTtps, setDraftTtps] = useState<string[]>([]);
+  const ttps = entry.ttps ?? [];
+
+  const saveTtps = useMutation({
+    mutationFn: (techniqueIds: string[]) =>
+      apiFetch<{ entry: DocEntry; ttpBudget: TtpBudget | null }>(
+        `/cyber-ranges/${editing!.cyberRangeId}/documentation/${entry.id}/ttps`,
+        { method: 'PUT', body: JSON.stringify({ techniqueIds }) },
+      ),
+    onSuccess: ({ entry: updated, ttpBudget }) => {
+      queryClient.setQueryData<EntriesResponse>(editing!.queryKey, (current) =>
+        current ? { ttpBudget, entries: current.entries.map((e) => (e.id === updated.id ? updated : e)) } : current,
+      );
+      setEditingTtps(false);
+    },
+  });
+
   return (
     <div
       style={{
@@ -552,6 +645,56 @@ function TimelineEntry({ entry }: { entry: DocEntry }) {
         </span>
       </div>
       <div className="prose-pre" style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
+      {editingTtps ? (
+        <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <TechniquePicker value={draftTtps} onChange={setDraftTtps} max={MAX_TTPS_PER_ENTRY} />
+          <TtpBudgetHint budget={editing?.budget ?? null} />
+          {saveTtps.isError && (
+            <div role="alert" style={{ color: 'var(--signal-alert)', fontSize: 13 }}>
+              {saveTtps.error instanceof ApiError ? saveTtps.error.message : 'Could not save the ATT&CK tags.'}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+            <Button type="button" onClick={() => saveTtps.mutate(draftTtps)} disabled={saveTtps.isPending}>
+              {saveTtps.isPending ? 'Saving…' : 'Save ATT&CK'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setEditingTtps(false)} disabled={saveTtps.isPending}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        (ttps.length > 0 || editing) && (
+          <div style={{ marginTop: 'var(--space-sm)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {ttps.map((t) => (
+              <TtpChip key={t.techniqueId} techniqueId={t.techniqueId} catalog={catalog} credited={t.credited} />
+            ))}
+            {editing && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftTtps(ttps.map((t) => t.techniqueId));
+                  saveTtps.reset();
+                  setEditingTtps(true);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: 'var(--signal-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {ttps.length ? 'Edit ATT&CK' : '+ ATT&CK technique'}
+              </button>
+            )}
+          </div>
+        )
+      )}
       {entry.imageDataUrl && (
         <img
           src={entry.imageDataUrl}
