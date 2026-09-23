@@ -86,3 +86,70 @@ input[type='file']::file-selector-button:hover {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Two-column work layouts (list + side form). The old inline `60% 40%` + gap summed to >100% and
+   forced horizontal scroll; this shrinks safely and stacks on narrow screens. */
+.split-main-side {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  gap: var(--space-xl);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .split-main-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Free-text investigation notes: keep analysts' line breaks (pasted log lines, commands) and never
+   let a long hash/URL/path blow out the card width. */
+.prose-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Top nav: wraps onto a second row instead of overflowing when the instructor's 11 destinations
+   don't fit, and scrolls horizontally on phones. */
+.app-nav {
+  min-height: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-1);
+}
+
+.app-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .app-nav {
+    padding: var(--space-sm) var(--space-md);
+  }
+  .app-nav-links {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    order: 3;
+    flex-basis: 100%;
+    padding-bottom: 4px;
+  }
+  .app-nav-links a {
+    white-space: nowrap;
+  }
+  .page {
+    padding: var(--space-md) !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal-secondary);
+  outline-offset: 2px;
+}

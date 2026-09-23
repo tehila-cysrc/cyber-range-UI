@@ -45,10 +45,24 @@ router.get('/dashboard', (_req, res) => {
     `SELECT COUNT(*) AS n FROM team_cyber_range_progress WHERE team_id = ? AND status = 'completed'`,
   );
 
+  // Live progress signals for the active scenario, so an instructor can spot a stalled team (no
+  // entries for a while) without opening each team's timeline one by one.
+  const activityStmt = db.prepare(
+    `SELECT COUNT(*) AS entryCount,
+            COALESCE(SUM(is_important_finding), 0) AS findingCount,
+            MAX(created_at) AS lastEntryAt
+     FROM documentation_entries WHERE team_id = ? AND cyber_range_id = ?`,
+  );
+  const totalPointsStmt = db.prepare('SELECT COALESCE(SUM(points), 0) AS total FROM scores WHERE team_id = ?');
+  const memberCountStmt = db.prepare("SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND role = 'student'");
+
   const result = teams.map((team) => {
     const active = activeStmt.get(team.id) as ActiveRow | undefined;
     const openHelpCount = (openHelpCountStmt.get(team.id) as { n: number }).n;
     const completedCount = (completedCountStmt.get(team.id) as { n: number }).n;
+    const activity = active
+      ? (activityStmt.get(team.id, active.cyberRangeId) as { entryCount: number; findingCount: number; lastEntryAt: string | null })
+      : null;
 
     const remainingSeconds =
       active?.timeLimitSeconds != null
@@ -69,10 +83,15 @@ router.get('/dashboard', (_req, res) => {
             difficulty: active.difficulty,
             dayLabel: active.dayLabel,
             remainingSeconds,
+            entryCount: activity!.entryCount,
+            findingCount: activity!.findingCount,
+            lastEntryAt: activity!.lastEntryAt,
           }
         : null,
       openHelpCount,
       completedCount,
+      totalPoints: (totalPointsStmt.get(team.id) as { total: number }).total,
+      memberCount: (memberCountStmt.get(team.id) as { n: number }).n,
     };
   });
 

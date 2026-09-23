@@ -24,3 +24,11 @@ export function disconnectSocket() {
   socket?.disconnect();
   socket = null;
 }
+
+// The socket's room (team:{id} / instructor) is fixed at handshake time from the token it was opened
+// with. If the token changes — sign-out, a 401 auto-clear, or a different user signing in on the
+// same lab machine — the old socket would keep delivering the PREVIOUS user's team events, so drop it
+// and let the next getSocket() reconnect with the new identity.
+useAuthStore.subscribe((state, prev) => {
+  if (state.token !== prev.token) disconnectSocket();
+});

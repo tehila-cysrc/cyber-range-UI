@@ -83,7 +83,18 @@ router.patch('/environments/:id', (req, res) => {
 
 router.delete('/environments/:id', (req, res) => {
   const id = Number(req.params.id);
-  const deleted = deleteEnvironment(id, req.user!.username);
+  let deleted: boolean;
+  try {
+    deleted = deleteEnvironment(id, req.user!.username);
+  } catch {
+    // FOREIGN KEY failure: a discovered node still has access-session / script-execution history (or
+    // a configured access target) that must not be silently erased — explain instead of a bare 500.
+    res.status(409).json({
+      error:
+        "this environment's hosts have recorded access-session or script history (or configured access targets) and can't be deleted — remove the access targets first, or keep the environment",
+    });
+    return;
+  }
   if (!deleted) {
     res.status(404).json({ error: 'environment not found' });
     return;

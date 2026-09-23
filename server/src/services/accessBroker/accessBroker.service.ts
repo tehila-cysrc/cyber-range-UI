@@ -41,15 +41,24 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
   const node = db
     .prepare(
       `SELECT tn.id AS id, tn.cyber_range_id AS cyberRangeId, tn.external_key AS externalKey, tn.environment_id AS environmentId,
-              ce.bastion_host_id AS bastionHostId
+              tn.is_visible_to_students AS isVisibleToStudents, ce.bastion_host_id AS bastionHostId
        FROM topology_nodes tn LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
        WHERE tn.id = ?`,
     )
     .get(topologyNodeId) as
-    | { id: number; cyberRangeId: number; externalKey: string; environmentId: number | null; bastionHostId: string | null }
+    | { id: number; cyberRangeId: number; externalKey: string; environmentId: number | null; isVisibleToStudents: number; bastionHostId: string | null }
     | undefined;
 
-  if (!node || node.cyberRangeId !== activeProgress.cyberRangeId) {
+  // A node that doesn't exist can't be recorded in access_sessions (FK) — audit and refuse without
+  // the insert that used to surface as a 500 (FOLLOWUPS.md P3).
+  if (!node) {
+    writeAudit(user.username, 'access_session.denied', 'topology_node', topologyNodeId, { reason: 'node_not_found', teamId: user.teamId });
+    return { ok: false, status: 403, reason: 'node_not_in_active_range', message: "this node is not part of your team's active cyber range" };
+  }
+
+  // A node the instructor hid from students is treated exactly like one outside the range — the
+  // student UI never shows it, so reaching it would mean a hand-crafted request by id.
+  if (node.cyberRangeId !== activeProgress.cyberRangeId || node.isVisibleToStudents !== 1) {
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'node_not_in_active_range', 403, "this node is not part of your team's active cyber range");
   }
 

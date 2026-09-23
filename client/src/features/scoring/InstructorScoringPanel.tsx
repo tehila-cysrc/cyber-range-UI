@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { apiFetch } from '../../lib/apiClient';
+import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
+import { useSocketEvent } from '../../hooks/useSocketEvent';
 
 interface TeamStatus {
   teamId: number;
@@ -20,6 +21,15 @@ interface TeamRosterMember {
 interface TeamRoster {
   id: number;
   members: TeamRosterMember[];
+}
+
+interface AwardedScore {
+  id: number;
+  points: number;
+  documentationEntryId: number | null;
+  studentName: string | null;
+  note: string | null;
+  createdAt: string;
 }
 
 interface DocEntry {
@@ -53,18 +63,33 @@ function ScoreForm({
   cyberRangeId?: number;
   onDone: () => void;
 }) {
-  const [points, setPoints] = useState(1);
+  const [points, setPoints] = useState('1');
+  const [note, setNote] = useState('');
   const [isGamified, setIsGamified] = useState(false);
   const [justAwarded, setJustAwarded] = useState(false);
+  const parsedPoints = Number(points);
+  const pointsValid = points.trim() !== '' && Number.isInteger(parsedPoints) && parsedPoints !== 0 && Math.abs(parsedPoints) <= 1000;
 
   const mutation = useMutation({
     mutationFn: () =>
       apiFetch('/admin/scores', {
         method: 'POST',
-        body: JSON.stringify({ teamId, studentUserId, documentationEntryId, cyberRangeId, points, isGamified }),
+        body: JSON.stringify({
+          teamId,
+          studentUserId,
+          documentationEntryId,
+          cyberRangeId,
+          points: parsedPoints,
+          isGamified,
+          // Shown to the students on their Progress page — scoring is only useful feedback if they
+          // can see what earned (or cost) the points.
+          note: note.trim() || undefined,
+        }),
       }),
+    onError: () => undefined, // shown inline below
     onSuccess: () => {
       onDone();
+      setNote('');
       // The score:awarded socket event already updates the leaderboard/student's own Progress page
       // live — this is just confirmation for the instructor that the click actually sent.
       setJustAwarded(true);
@@ -79,10 +104,14 @@ function ScoreForm({
           Points
           <input
             type="number"
+            step={1}
+            min={-1000}
+            max={1000}
             value={points}
-            onChange={(e) => setPoints(Number(e.target.value))}
+            onChange={(e) => setPoints(e.target.value)}
+            aria-invalid={!pointsValid}
             style={{
-              width: 64,
+              width: 72,
               background: 'transparent',
               border: '1px solid var(--surface-border)',
               borderRadius: 'var(--radius-control)',
@@ -96,14 +125,38 @@ function ScoreForm({
           <input type="checkbox" checked={isGamified} onChange={(e) => setIsGamified(e.target.checked)} />
           Gamified
         </label>
-        <Button variant="ghost" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={500}
+          placeholder="Reason (visible to students)"
+          aria-label="Reason for the award"
+          style={{
+            flex: '1 1 180px',
+            minWidth: 0,
+            background: 'var(--surface-1)',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-control)',
+            padding: '6px 8px',
+            color: 'var(--text-primary)',
+            fontSize: 14,
+          }}
+        />
+        <Button variant="ghost" onClick={() => mutation.mutate()} disabled={mutation.isPending || !pointsValid}>
           {mutation.isPending ? 'Sending…' : 'Award'}
         </Button>
       </div>
       {justAwarded && (
         <span style={{ fontSize: 13, color: 'var(--signal-primary)' }}>Awarded — updated for everyone ✓</span>
       )}
-      {mutation.isError && <span style={{ fontSize: 13, color: 'var(--signal-alert)' }}>Failed to send</span>}
+      {!pointsValid && (
+        <span style={{ fontSize: 13, color: 'var(--signal-alert)' }}>Points must be a whole number between -1000 and 1000 (not 0).</span>
+      )}
+      {mutation.isError && (
+        <span role="alert" style={{ fontSize: 13, color: 'var(--signal-alert)' }}>
+          {mutation.error instanceof ApiError ? mutation.error.message : 'Failed to send'}
+        </span>
+      )}
     </div>
   );
 }
@@ -135,12 +188,31 @@ export function InstructorScoringPanel() {
       ),
   });
 
+  // What this team has already been awarded, per entry — without it an instructor hopping between
+  // teams mid-event had no way to tell an entry was already scored, and double-awarded.
+  const { data: awardedData } = useQuery({
+    enabled: !!selectedTeamId,
+    queryKey: ['admin-scores', selectedTeamId],
+    queryFn: () => apiFetch<{ entries: AwardedScore[]; teamTotal: number }>(`/admin/scores?teamId=${selectedTeamId}`),
+  });
+  const awardedByEntry = new Map<number, AwardedScore[]>();
+  for (const s of awardedData?.entries ?? []) {
+    if (s.documentationEntryId == null) continue;
+    awardedByEntry.set(s.documentationEntryId, [...(awardedByEntry.get(s.documentationEntryId) ?? []), s]);
+  }
+
+  useSocketEvent<{ entry: DocEntry; teamId: number }>('documentation:new', ({ teamId }) => {
+    if (teamId === selectedTeamId) queryClient.invalidateQueries({ queryKey: ['documentation'] });
+  });
+
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['documentation'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-scores'] });
+    queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
   }
 
   return (
-    <div style={{ padding: 'var(--space-xl)', maxWidth: 760 }}>
+    <div className="page" style={{ padding: 'var(--space-xl)', maxWidth: 860 }}>
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Progress — Scoring</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: '0 0 var(--space-lg)' }}>
         Award points to a team or an individual student — it updates live on their Progress page and
@@ -187,7 +259,10 @@ export function InstructorScoringPanel() {
 
       {selectedTeam?.active && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center' }}>
+            {awardedData && (
+              <TelemetryBadge tone="primary">Team total {awardedData.teamTotal} pts</TelemetryBadge>
+            )}
             <TelemetryBadge tone="secondary">{selectedTeam.active.dayLabel}</TelemetryBadge>
             <TelemetryBadge tone={selectedTeam.active.difficulty === 'advanced' ? 'alert' : 'tertiary'}>
               {selectedTeam.active.difficulty}
@@ -265,7 +340,8 @@ export function InstructorScoringPanel() {
                     }}
                   >
                     <Avatar name={entry.authorName} size={20} />
-                    {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
+                    {entry.authorName} ·{' '}
+                    {new Date(entry.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     {entry.isImportantFinding ? (
                       <TelemetryBadge tone="primary">
                         <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
@@ -273,7 +349,16 @@ export function InstructorScoringPanel() {
                       </TelemetryBadge>
                     ) : null}
                   </div>
-                  <div style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
+                  <div className="prose-pre" style={{ fontSize: 15, color: 'var(--text-primary)' }}>{entry.body}</div>
+                  {awardedByEntry.has(entry.id) && (
+                    <div style={{ fontSize: 13, color: 'var(--signal-primary)' }}>
+                      Already awarded:{' '}
+                      {awardedByEntry
+                        .get(entry.id)!
+                        .map((s) => `${s.points > 0 ? '+' : ''}${s.points}${s.note ? ` (${s.note})` : ''}`)
+                        .join(', ')}
+                    </div>
+                  )}
                   <div style={{ borderTop: '1px solid rgba(51, 65, 85, 0.3)', paddingTop: 'var(--space-sm)' }}>
                     <ScoreForm
                       teamId={selectedTeam.teamId}

@@ -273,6 +273,7 @@ export function TopologyAdminPage() {
 
             {selectedZone && (
               <ZonePanel
+                key={selectedZone.id}
                 zone={selectedZone}
                 memberCount={allNodes.filter((n) => n.zoneId === selectedZone.id).length}
                 onClose={() => setSelection(null)}
@@ -345,6 +346,7 @@ function NodePanel({
   const metadata = parseMetadata(node.metadataJson);
   const osType = metadata?.osType === 'Windows' || metadata?.osType === 'Linux' ? metadata.osType : null;
 
+  const queryClient = useQueryClient();
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [showRunScript, setShowRunScript] = useState(false);
@@ -366,13 +368,17 @@ function NodePanel({
       }),
     onSuccess: () => {
       setAccessPassword('');
+      queryClient.invalidateQueries({ queryKey: ['access-target', node.id] });
       onAccessTargetChanged();
     },
   });
 
   const removeAccessTarget = useMutation({
     mutationFn: () => apiFetch(`/admin/topology/nodes/${node.id}/access-target`, { method: 'DELETE' }),
-    onSuccess: onAccessTargetChanged,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['access-target', node.id] });
+      onAccessTargetChanged();
+    },
   });
 
   const connect = useMutation({
@@ -546,7 +552,7 @@ function ZonePanel({
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== zone.name && onSave({ name: name.trim() })} style={{ ...fieldStyle, width: '100%' }} />
       </Field>
       <Field label="CIDR">
-        <input value={cidr} onChange={(e) => setCidr(e.target.value)} onBlur={() => onSave({ cidr })} style={{ ...fieldStyle, width: '100%' }} />
+        <input value={cidr} onChange={(e) => setCidr(e.target.value)} onBlur={() => cidr !== (zone.cidr ?? '') && onSave({ cidr })} style={{ ...fieldStyle, width: '100%' }} />
       </Field>
       <p style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
         {memberCount} node{memberCount === 1 ? '' : 's'} in this zone.

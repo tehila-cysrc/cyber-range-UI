@@ -8,8 +8,16 @@ import {
   emitInvestigationCanvasEdgeCreated,
   emitInvestigationCanvasEdgeDeleted,
 } from '../sockets/emitters.js';
+import { activeCyberRangeIdForTeam } from '../services/cyberRangeProgress.service.js';
 
 const router = Router();
+
+// Must match the client's palette (canvasNodeSpec.ts) — the client looks the spec up by type, so one
+// unknown value (e.g. from a hand-crafted request) crashed the canvas for every teammate and the
+// instructor viewing that team.
+const CANVAS_NODE_TYPES = new Set(['entry', 'system', 'evidence', 'finding', 'decision', 'action', 'impact']);
+const MAX_LABEL_LENGTH = 200;
+const MAX_BODY_LENGTH = 10_000;
 
 router.use(requireAuth);
 
@@ -87,8 +95,20 @@ router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes', (req, res)
     res.status(400).json({ error: 'nodeType and label are required' });
     return;
   }
+  if (!CANVAS_NODE_TYPES.has(nodeType.trim())) {
+    res.status(400).json({ error: 'unknown nodeType' });
+    return;
+  }
+  if (label.length > MAX_LABEL_LENGTH || (typeof body === 'string' && body.length > MAX_BODY_LENGTH)) {
+    res.status(400).json({ error: 'label or body is too long' });
+    return;
+  }
 
   const cyberRangeId = Number(req.params.cyberRangeId);
+  if (activeCyberRangeIdForTeam(req.user!.teamId) !== cyberRangeId) {
+    res.status(409).json({ error: "this isn't your team's active Cyber Range — refresh the page" });
+    return;
+  }
   const now = new Date().toISOString();
 
   const result = db
@@ -142,6 +162,14 @@ router.patch('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', (
   }
 
   const { label, body, nodeType, posX, posY } = req.body ?? {};
+  if (typeof nodeType === 'string' && nodeType.trim() && !CANVAS_NODE_TYPES.has(nodeType.trim())) {
+    res.status(400).json({ error: 'unknown nodeType' });
+    return;
+  }
+  if ((typeof label === 'string' && label.length > MAX_LABEL_LENGTH) || (typeof body === 'string' && body.length > MAX_BODY_LENGTH)) {
+    res.status(400).json({ error: 'label or body is too long' });
+    return;
+  }
 
   db.prepare(
     `UPDATE investigation_canvas_nodes SET

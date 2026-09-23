@@ -24,8 +24,8 @@ export function LeaderboardPage() {
     queryFn: () => apiFetch<LeaderboardResponse>('/leaderboard'),
   });
 
-  useSocketEvent<{ teams: LeaderboardEntry[] }>('leaderboard:update', ({ teams }) => {
-    queryClient.setQueryData<LeaderboardResponse>(['leaderboard'], { enabled: true, teams });
+  useSocketEvent<{ teams: LeaderboardEntry[]; enabled?: boolean }>('leaderboard:update', ({ teams, enabled }) => {
+    queryClient.setQueryData<LeaderboardResponse>(['leaderboard'], { enabled: enabled ?? true, teams });
   });
 
   if (data && !data.enabled) {
@@ -43,7 +43,7 @@ export function LeaderboardPage() {
   const leaderShare = spotlightTotal > 0 ? (leader!.totalPoints / spotlightTotal) * 100 : 50;
 
   return (
-    <div style={{ padding: 'var(--space-xl)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2xl)' }}>
+    <div className="page" style={{ padding: 'var(--space-xl)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2xl)' }}>
       <div>
         <div
           style={{
@@ -80,7 +80,7 @@ export function LeaderboardPage() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'stretch', gap: 'var(--space-lg)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)', alignItems: 'stretch', gap: 'var(--space-md)' }}>
             <SpotlightCard entry={leader} rank={1} tone="primary" />
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span

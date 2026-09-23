@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls, type Edge, type Node } from 'reactflow';
+import { useEffect, useMemo, useState } from 'react';
+import ReactFlow, { Background, Controls, useEdgesState, useNodesState, type Edge, type Node } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 export interface TopologyZoneData {
@@ -205,12 +205,12 @@ export function TopologyGraph({
                 />
                 <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</span>
                 {!!n.hasAccessTarget && (
-                  <span title="Connectable" style={{ fontSize: 10, color: 'var(--signal-primary)' }}>
+                  <span title="Connectable" aria-label="Connectable" style={{ fontSize: 12, color: 'var(--signal-primary)' }}>
                     ⏻
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{typeLabel}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{typeLabel}</div>
             </div>
           ),
         },
@@ -243,6 +243,24 @@ export function TopologyGraph({
     return result;
   }, [edges, renderedIds]);
 
+  // Local React Flow state, re-synced from props: with controlled `nodes` and no onNodesChange, an
+  // instructor's drag didn't follow the cursor (it only jumped after the save round-trip) and nodes
+  // could never show as selected.
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState(flowNodes);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(flowEdges);
+  useEffect(() => {
+    setRfNodes((prev) => {
+      // Keep React Flow's measured size too: it reads width/height off the node object, and a node
+      // without them is treated as unmeasured (hidden, edges not drawn) until a resize that never comes.
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      return flowNodes.map((n) => {
+        const p = prevById.get(n.id);
+        return { ...n, selected: !!p?.selected, width: p?.width, height: p?.height };
+      });
+    });
+  }, [flowNodes, setRfNodes]);
+  useEffect(() => setRfEdges(flowEdges), [flowEdges, setRfEdges]);
+
   return (
     <div
       style={{
@@ -255,8 +273,13 @@ export function TopologyGraph({
       }}
     >
       <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
+        nodes={rfNodes}
+        edges={rfEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        // Topology deletes go through the side panel (server-confirmed) — a stray Backspace must not
+        // drop a node from the local view only.
+        deleteKeyCode={null}
         nodesDraggable={editable}
         nodesConnectable={editable}
         elementsSelectable

@@ -104,15 +104,26 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =>
 
 router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) => {
   const nodeId = Number(req.params.nodeId);
-  db.prepare('DELETE FROM topology_edges WHERE from_node_id = ? OR to_node_id = ?').run(nodeId, nodeId);
-  db.prepare('DELETE FROM access_targets WHERE topology_node_id = ?').run(nodeId);
-  try {
-    db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(nodeId);
-  } catch {
-    // Deliberately NOT cleaning up access_sessions here — a node with real historical access-session
-    // rows shouldn't be silently deletable out from under its own audit trail (see CLAUDE/db.md).
-    res.status(409).json({ error: 'this node has recorded access-session history and cannot be deleted' });
+  // Deliberately NOT cleaning up access_sessions / script_executions — a node with real history
+  // shouldn't be silently deletable out from under its own audit trail (see CLAUDE/db.md). Checked
+  // up front so a refused delete no longer leaves the node stripped of its edges and access target.
+  const hasSessions = !!db.prepare('SELECT 1 FROM access_sessions WHERE topology_node_id = ? LIMIT 1').get(nodeId);
+  const hasScriptRuns = !!db.prepare('SELECT 1 FROM script_executions WHERE topology_node_id = ? LIMIT 1').get(nodeId);
+  if (hasSessions || hasScriptRuns) {
+    res.status(409).json({
+      error: `this node has recorded ${hasSessions ? 'access-session' : 'script-execution'} history and cannot be deleted — hide it from students instead`,
+    });
     return;
+  }
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM topology_edges WHERE from_node_id = ? OR to_node_id = ?').run(nodeId, nodeId);
+    db.prepare('DELETE FROM access_targets WHERE topology_node_id = ?').run(nodeId);
+    db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(nodeId);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
   }
   res.json({ ok: true });
 });

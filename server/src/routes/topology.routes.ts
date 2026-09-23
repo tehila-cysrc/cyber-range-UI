@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
 
 const router = Router();
 
@@ -13,6 +14,13 @@ router.use(requireAuth);
 router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const isInstructor = req.user!.role === 'instructor';
+
+  // A student may only look at scenarios their team has actually been assigned — otherwise any
+  // student could preview the next day's range (hosts, IPs, zones) before the instructor starts it.
+  if (!isInstructor && (!req.user!.teamId || !teamHasProgressOn(req.user!.teamId, cyberRangeId))) {
+    res.status(403).json({ error: 'this Cyber Range is not assigned to your team' });
+    return;
+  }
 
   const zones = db
     .prepare(

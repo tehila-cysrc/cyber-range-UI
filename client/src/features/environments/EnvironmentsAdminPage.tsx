@@ -400,7 +400,17 @@ export function EnvironmentsAdminPage() {
               checkResult={checkResults[env.id]}
               isChecking={checkConnectivity.isPending}
               onCheckConnectivity={() => checkConnectivity.mutate(env.id)}
-              onDelete={() => deleteEnvironment.mutate(env.id)}
+              onDelete={() => {
+                // Deleting an environment removes every topology node it discovered for its linked
+                // cyber ranges — mid-exercise that blanks the students' topology view.
+                if (
+                  window.confirm(
+                    `Delete environment "${env.name}"?\n\nIts stored credential is deleted and every topology node it discovered is removed from the linked cyber range(s). Students on those ranges lose those hosts from their Topology view. This cannot be undone.`,
+                  )
+                ) {
+                  deleteEnvironment.mutate(env.id);
+                }
+              }}
             />
           ))}
           {data?.environments.length === 0 && (

@@ -45,10 +45,29 @@ export function TeamsAdminPage() {
     },
   });
 
+  // Deleting a team cascades to its accounts, timeline, canvas, scores and help requests — one
+  // stray click mid-exercise used to wipe a whole team's investigation with no prompt.
   const deleteTeam = useMutation({
     mutationFn: (id: number) => apiFetch(`/admin/teams/${id}`, { method: 'DELETE' }),
     onSuccess: refresh,
   });
+
+  function handleDeleteTeam(team: TeamWithMembers) {
+    const typed = window.prompt(
+      `Delete "${team.name}" permanently?\n\nThis removes its ${team.members.length} account(s) and ALL of its timeline entries, canvas, scores and help requests. This cannot be undone.\n\nType the team name to confirm:`,
+    );
+    if (typed == null) return;
+    if (typed.trim() !== team.name) {
+      window.alert('Team name did not match — nothing was deleted.');
+      return;
+    }
+    deleteTeam.mutate(team.id);
+  }
+
+  function handleRemoveMember(m: Member, team: TeamWithMembers) {
+    if (!window.confirm(`Remove ${m.displayName} (@${m.username}) from ${team.name}? They will no longer be able to sign in.`)) return;
+    deleteUser.mutate(m.id);
+  }
 
   const createUser = useMutation({
     mutationFn: () =>
@@ -94,7 +113,7 @@ export function TeamsAdminPage() {
   }
 
   const inputStyle = {
-    background: 'transparent',
+    background: 'var(--surface-1)',
     border: '1px solid var(--surface-border)',
     borderRadius: 'var(--radius-control)',
     padding: 8,
@@ -102,10 +121,13 @@ export function TeamsAdminPage() {
   };
 
   return (
-    <div style={{ padding: 'var(--space-xl)', display: 'grid', gridTemplateColumns: '60% 40%', gap: 'var(--space-xl)' }}>
+    <div className="page split-main-side" style={{ padding: 'var(--space-xl)' }}>
       <div>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Teams & Accounts</h1>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+          {data && data.teams.length === 0 && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No teams yet — create one on the right.</div>
+          )}
           {data?.teams.map((team) => (
             <div
               key={team.id}
@@ -118,7 +140,7 @@ export function TeamsAdminPage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.name}</strong>
-                <Button variant="destructive" onClick={() => deleteTeam.mutate(team.id)}>
+                <Button variant="destructive" onClick={() => handleDeleteTeam(team)} disabled={deleteTeam.isPending}>
                   Delete team
                 </Button>
               </div>
@@ -129,7 +151,9 @@ export function TeamsAdminPage() {
                     {m.displayName} <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
                   </span>
                   <button
-                    onClick={() => deleteUser.mutate(m.id)}
+                    onClick={() => handleRemoveMember(m, team)}
+                    aria-label={`Remove ${m.displayName}`}
+                    disabled={deleteUser.isPending}
                     style={{ background: 'none', border: 'none', color: 'var(--signal-alert)', cursor: 'pointer', fontSize: 13 }}
                   >
                     remove
@@ -147,15 +171,15 @@ export function TeamsAdminPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
         <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New team</h2>
-          <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" style={inputStyle} />
+          <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" aria-label="Team name" style={inputStyle} />
           <Button type="submit" variant="ghost">Create team</Button>
         </form>
 
         <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New account</h2>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" style={inputStyle} />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" style={inputStyle} />
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" style={inputStyle} />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" aria-label="Password" autoComplete="new-password" style={inputStyle} />
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
           <select value={role} onChange={(e) => setRole(e.target.value as 'student' | 'instructor')} style={{ ...inputStyle, background: 'var(--surface-1)' }}>
             <option value="student">Student</option>
             <option value="instructor">Instructor</option>

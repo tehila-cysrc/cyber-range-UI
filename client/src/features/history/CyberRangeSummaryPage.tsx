@@ -4,6 +4,7 @@ import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
+import { useDebriefTeam } from './useDebriefTeam';
 
 interface DocEntry {
   id: number;
@@ -24,16 +25,19 @@ interface SummaryResponse {
 export function CyberRangeSummaryPage() {
   const { cyberRangeId } = useParams();
 
-  const { data } = useQuery({
-    queryKey: ['history', cyberRangeId],
-    queryFn: () => apiFetch<SummaryResponse>(`/history/${cyberRangeId}`),
+  const { query, ready } = useDebriefTeam();
+  const { data, isError } = useQuery({
+    queryKey: ['history', cyberRangeId, query],
+    queryFn: () => apiFetch<SummaryResponse>(`/history/${cyberRangeId}${query}`),
+    enabled: ready,
   });
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <Link to="/debrief" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-        ← Back to history
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <Link to={`/debrief${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+        ← Back to debrief
       </Link>
+      {isError && <div style={{ marginTop: 'var(--space-md)', color: 'var(--text-muted)' }}>Couldn't load this debrief — try refreshing.</div>}
 
       {data && (
         <>
@@ -131,7 +135,7 @@ export function CyberRangeSummaryPage() {
                       {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
                     </div>
                   </div>
-                  <div style={{ fontSize: 15, color: 'var(--text-primary)', marginTop: 'var(--space-xs)' }}>{entry.body}</div>
+                  <div className="prose-pre" style={{ fontSize: 15, color: 'var(--text-primary)', marginTop: 'var(--space-xs)' }}>{entry.body}</div>
                   {entry.imageDataUrl && (
                     <img
                       src={entry.imageDataUrl}

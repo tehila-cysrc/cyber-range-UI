@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
 import teamsRoutes from './routes/teams.routes.js';
@@ -62,6 +62,23 @@ export function createApp() {
   app.use('/api/admin', adminAuditLogRoutes);
   app.use('/api/admin', adminCyberRangesRoutes);
   app.use('/api/admin', adminScriptsRoutes);
+
+  // Express's default handler answers an unhandled throw (e.g. a FOREIGN KEY failure) with an HTML
+  // page containing the full stack trace and absolute server paths — never send that to a client.
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    const isBadJson = (err as { type?: string })?.type === 'entity.parse.failed';
+    const isTooLarge = (err as { type?: string })?.type === 'entity.too.large';
+    if (isBadJson || isTooLarge) {
+      res.status(isTooLarge ? 413 : 400).json({ error: isTooLarge ? 'request body too large' : 'malformed JSON body' });
+      return;
+    }
+    console.error('[api] unhandled error:', err instanceof Error ? err.message : err);
+    res.status(500).json({ error: 'internal server error' });
+  });
 
   return app;
 }

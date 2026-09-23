@@ -22,9 +22,7 @@ router.put('/scoring-config', (req, res) => {
     leaderboardEnabled ? 1 : 0,
   );
 
-  if (leaderboardEnabled) {
-    emitLeaderboardUpdate(computeLeaderboard());
-  }
+  emitLeaderboardUpdate(leaderboardEnabled ? computeLeaderboard() : [], !!leaderboardEnabled);
 
   res.json({ ok: true });
 });

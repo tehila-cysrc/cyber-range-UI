@@ -27,6 +27,16 @@ router.post('/help-requests', (req, res) => {
     return;
   }
 
+  // One open request per team: repeated clicks (or several teammates asking at once) shouldn't flood
+  // the instructor's queue with duplicates — the team just sees its request is already pending.
+  const alreadyOpen = db
+    .prepare(`SELECT id FROM help_requests WHERE team_id = ? AND status = 'open' ORDER BY created_at LIMIT 1`)
+    .get(req.user!.teamId) as { id: number } | undefined;
+  if (alreadyOpen) {
+    res.status(200).json({ alreadyOpen: true, helpRequestId: alreadyOpen.id });
+    return;
+  }
+
   const createdAt = new Date().toISOString();
   const result = db
     .prepare(

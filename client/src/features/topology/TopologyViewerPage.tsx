@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
@@ -91,6 +92,20 @@ export function TopologyViewerPage() {
   const disconnect = useMutation({
     mutationFn: (accessSessionId: number) => apiFetch(`/teams/me/access-sessions/${accessSessionId}/end`, { method: 'POST' }),
     onSuccess: () => setSession(null),
+  });
+
+  // The instructor's force-close and the server's expiry sweep both end the session server-side —
+  // without this the panel kept offering a dead "Open" link.
+  useSocketEvent<{ accessSessionId: number; outcome: string }>('access_session:ended', ({ accessSessionId, outcome }) => {
+    if (session?.accessSessionId !== accessSessionId) return;
+    setSession(null);
+    setConnectError(
+      outcome === 'force_closed'
+        ? 'The instructor closed your remote session.'
+        : outcome === 'expired'
+          ? 'Your remote session expired — connect again if you still need it.'
+          : null,
+    );
   });
 
   if (!active) {
@@ -200,7 +215,15 @@ export function TopologyViewerPage() {
 
               {!!selectedNode.hasAccessTarget && (
                 <button
-                  onClick={() => connect.mutate(selectedNode)}
+                  onClick={() => {
+                    // One session at a time: a second Connect used to replace the panel while the
+                    // first session stayed active server-side with no way to end it.
+                    if (session) {
+                      setConnectError(`Disconnect from ${session.nodeLabel} first.`);
+                      return;
+                    }
+                    connect.mutate(selectedNode);
+                  }}
                   disabled={connectingNodeId === selectedNode.id}
                   style={{
                     marginTop: 14,

@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
+import { useClockStore } from '../stores/clockStore';
 import { disconnectSocket, getSocket } from '../lib/socketClient';
+import { apiFetch } from '../lib/apiClient';
+import { useSocketEvent } from '../hooks/useSocketEvent';
+import { Toaster } from '../components/Toaster';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
 import { TelemetryBadge } from '../components/TelemetryBadge';
@@ -23,6 +28,7 @@ const NAV_ITEMS = [
 
 // Student-only views that have no working instructor equivalent (no team_id, no team-switcher) —
 // instructors use the corresponding INSTRUCTOR_NAV_ITEMS entry instead (e.g. Roster for Team).
+// Debrief stays: it has an instructor team picker.
 const HIDDEN_FOR_INSTRUCTOR = new Set(['/', '/topology', '/team']);
 
 const INSTRUCTOR_NAV_ITEMS = [
@@ -48,6 +54,7 @@ function NavItem({ to, label, end, alert }: { to: string; label: string; end?: b
         color: isActive ? (alert ? 'var(--signal-alert)' : 'var(--text-primary)') : 'var(--text-muted)',
         borderBottom: isActive ? `2px solid ${activeColor}` : '2px solid transparent',
         padding: '4px 0',
+        whiteSpace: 'nowrap',
       })}
     >
       {label}
@@ -157,8 +164,24 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
 export function AppShell() {
   const { user, clear } = useAuthStore();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const resetClock = useClockStore((s) => s.reset);
 
-  function handleLogout() {
+  // Mounted once for every page: when the instructor assigns/switches/completes this team's
+  // scenario, every open view (Home clock, Investigation, Topology, Debrief) must follow — without it
+  // a student kept writing to, and timing, the previous scenario until a manual refresh.
+  useSocketEvent<{ teamId: number }>('progress:changed', () => {
+    resetClock();
+    queryClient.invalidateQueries({ queryKey: ['active-cyber-range'] });
+    queryClient.invalidateQueries({ queryKey: ['history'] });
+    queryClient.invalidateQueries({ queryKey: ['event-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
+  });
+
+  async function handleLogout() {
+    // Revoke the token server-side too — otherwise it stays valid for its full 12h TTL on a shared
+    // lab machine, even though the UI looks signed out.
+    await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     disconnectSocket();
     clear();
     navigate('/login');
@@ -166,17 +189,7 @@ export function AppShell() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <nav
-        style={{
-          height: 56,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-lg)',
-          padding: '0 var(--space-lg)',
-          borderBottom: '1px solid var(--surface-border)',
-          background: 'var(--surface-1)',
-        }}
-      >
+      <nav className="app-nav" aria-label="Main">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
           <img src={appIconUrl} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-control)' }} />
           <span
@@ -193,7 +206,7 @@ export function AppShell() {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--space-lg)', flex: 1 }}>
+        <div className="app-nav-links">
           {NAV_ITEMS.filter((item) => user?.role !== 'instructor' || !HIDDEN_FOR_INSTRUCTOR.has(item.to)).map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
@@ -222,6 +235,7 @@ export function AppShell() {
       </footer>
 
       <GamifiedEffects />
+      <Toaster />
     </div>
   );
 }

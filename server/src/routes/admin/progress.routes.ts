@@ -3,16 +3,22 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { startCyberRangeForTeam } from '../../services/cyberRangeProgress.service.js';
+import { emitProgressChanged } from '../../sockets/emitters.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
-// Students normally start their own team's scenario via POST /api/teams/me/cyber-ranges/:id/start —
-// this instructor path stays available for overrides (e.g. re-starting a team stuck mid-range).
+// The only way a team's scenario is assigned/switched — students can't self-assign (see
+// CLAUDE/invariants.md).
 router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', (req, res) => {
   const teamId = Number(req.params.teamId);
   const cyberRangeId = Number(req.params.cyberRangeId);
+
+  if (!db.prepare('SELECT 1 FROM teams WHERE id = ?').get(teamId)) {
+    res.status(404).json({ error: 'team not found' });
+    return;
+  }
 
   const result = startCyberRangeForTeam(teamId, cyberRangeId);
   if (!result.ok) {
@@ -20,6 +26,7 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', (req, res) => {
     return;
   }
 
+  emitProgressChanged(teamId, { cyberRangeId, status: 'active' });
   res.json({ ok: true });
 });
 
@@ -40,6 +47,7 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', (req, res) => 
     return;
   }
 
+  emitProgressChanged(teamId, { cyberRangeId, status: 'completed' });
   res.json({ ok: true });
 });
 

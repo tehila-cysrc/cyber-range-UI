@@ -9,6 +9,27 @@ interface StartError {
   error: string;
 }
 
+// The only cyber range a team may currently write to (timeline entries, canvas nodes) — resolved
+// server-side, same principle as help_requests' cyberRangeId resolution: a student can't file work
+// under a scenario the instructor never assigned them.
+export function activeCyberRangeIdForTeam(teamId: number): number | null {
+  const row = db
+    .prepare(
+      `SELECT cyber_range_id AS cyberRangeId FROM team_cyber_range_progress
+       WHERE team_id = ? AND status = 'active' LIMIT 1`,
+    )
+    .get(teamId) as { cyberRangeId: number } | undefined;
+  return row?.cyberRangeId ?? null;
+}
+
+// Any scenario the team has ever been assigned (active, paused or completed) — the set of ranges
+// whose topology/debrief a student may read.
+export function teamHasProgressOn(teamId: number, cyberRangeId: number): boolean {
+  return !!db
+    .prepare('SELECT 1 FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?')
+    .get(teamId, cyberRangeId);
+}
+
 // Shared by the instructor admin route and the student self-service route — a team has at most one
 // "current" scenario, so starting a new one pauses whatever else was active for that team (progress
 // rows are kept, not deleted, so re-starting a paused range resumes its history).

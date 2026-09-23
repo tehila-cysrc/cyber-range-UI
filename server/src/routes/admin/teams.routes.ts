@@ -54,7 +54,11 @@ router.post('/teams', (req, res) => {
 router.delete('/teams/:id', (req, res) => {
   // Cascades to that team's users/progress/documentation/scores/help_requests too — deliberate:
   // an instructor removing a team they just created by mistake should not leave orphaned rows.
-  db.prepare('DELETE FROM teams WHERE id = ?').run(Number(req.params.id));
+  const result = db.prepare('DELETE FROM teams WHERE id = ?').run(Number(req.params.id));
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'team not found' });
+    return;
+  }
   res.json({ ok: true });
 });
 

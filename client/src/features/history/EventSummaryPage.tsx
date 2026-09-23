@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
+import { useDebriefTeam } from './useDebriefTeam';
 
 interface DaySummary {
   dayKey: string;
@@ -11,26 +12,33 @@ interface DaySummary {
 }
 
 export function EventSummaryPage() {
-  const { data } = useQuery({
-    queryKey: ['event-summary'],
-    queryFn: () => apiFetch<{ days: DaySummary[] }>('/history/event-summary'),
+  const { query, ready, picker } = useDebriefTeam();
+  const { data, isError } = useQuery({
+    queryKey: ['event-summary', query],
+    queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
+    enabled: ready,
   });
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <Link to="/debrief" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-        ← Back to history
-      </Link>
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Link to={`/debrief${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+          ← Back to debrief
+        </Link>
+        {picker}
+      </div>
 
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
         Event Summary
       </h1>
 
+      {!ready && <EmptyState message="Pick a team above to see its event summary." />}
+      {isError && <EmptyState message="Couldn't load the event summary — try refreshing." />}
       {data && data.days.length === 0 && (
         <EmptyState message="No activity recorded yet across the AI/Azure/AWS days." />
       )}
 
-      <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
         {data?.days.map((day) => (
           <div
             key={day.dayKey}

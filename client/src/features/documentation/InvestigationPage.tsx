@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { apiFetch } from '../../lib/apiClient';
+import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Avatar } from '../../components/Avatar';
@@ -179,6 +179,12 @@ export function InvestigationPage() {
         queryClient.invalidateQueries({ queryKey: ['documentation-categories'] });
       }
     },
+    onError: (err) => {
+      // 409 = the instructor switched this team's scenario underneath us; pick up the new one.
+      if (err instanceof ApiError && err.status === 409) {
+        queryClient.invalidateQueries({ queryKey: ['active-cyber-range'] });
+      }
+    },
   });
 
   function handleSubmit(e: FormEvent) {
@@ -220,8 +226,8 @@ export function InvestigationPage() {
 
   if (isInstructor) {
     return (
-      <div style={{ padding: 'var(--space-xl)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+      <div className="page" style={{ padding: 'var(--space-xl)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
           <div>
             <div
               style={{
@@ -240,6 +246,7 @@ export function InvestigationPage() {
             </h1>
           </div>
           <select
+            aria-label="Team"
             value={selectedTeamId}
             onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
             style={{
@@ -286,15 +293,15 @@ export function InvestigationPage() {
 
   if (!active) {
     return (
-      <div style={{ padding: 'var(--space-xl)' }}>
+      <div className="page" style={{ padding: 'var(--space-xl)' }}>
         <EmptyState message="No active Cyber Range — documentation opens once your team's investigation starts." />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
         <div>
           <div
             style={{
@@ -329,7 +336,7 @@ export function InvestigationPage() {
           <InvestigationCanvasContainer cyberRangeId={active.cyberRangeId} teamId={ownTeamId ?? 0} teamIdParam={null} editable />
         </Suspense>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', gap: 'var(--space-xl)' }}>
+        <div className="split-main-side">
           <div>
             <Timeline entries={entriesData?.entries} />
           </div>
@@ -362,8 +369,9 @@ export function InvestigationPage() {
         <textarea
           value={body}
           onChange={(e) => active && setDraft(active.cyberRangeId, e.target.value)}
-          rows={4}
-          placeholder="What did you find or do?"
+          rows={5}
+          aria-label="Entry text"
+          placeholder="What did you find or do? (host, time, evidence, what it means)"
           style={{
             background: 'transparent',
             border: '1px solid var(--surface-border)',
@@ -374,6 +382,7 @@ export function InvestigationPage() {
           }}
         />
         <select
+          aria-label="Category"
           value={categoryId}
           disabled={!!newCategoryLabel.trim()}
           onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
@@ -395,6 +404,7 @@ export function InvestigationPage() {
         <input
           value={newCategoryLabel}
           onChange={(e) => setNewCategoryLabel(e.target.value)}
+          aria-label="New category"
           placeholder="…or type a new category (e.g. IOC, C2)"
           style={{
             background: 'transparent',
@@ -440,7 +450,12 @@ export function InvestigationPage() {
           <input type="checkbox" checked={isImportant} onChange={(e) => setIsImportant(e.target.checked)} />
           Mark as important finding
         </label>
-        <Button type="submit" disabled={mutation.isPending}>
+        {mutation.isError && (
+          <div role="alert" style={{ color: 'var(--signal-alert)', fontSize: 14 }}>
+            {mutation.error instanceof ApiError ? mutation.error.message : 'Failed to add the entry — your text is kept, try again.'}
+          </div>
+        )}
+        <Button type="submit" disabled={mutation.isPending || !body.trim()}>
           {mutation.isPending ? 'Adding…' : 'Add entry'}
         </Button>
           </form>
@@ -496,6 +511,11 @@ function Timeline({ entries }: { entries: DocEntry[] | undefined }) {
   );
 }
 
+// Date + time: an exercise spans several days (AI/Azure/AWS), so a bare time is ambiguous in review.
+export function formatEntryTime(iso: string) {
+  return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 function TimelineEntry({ entry }: { entry: DocEntry }) {
   return (
     <div
@@ -519,7 +539,7 @@ function TimelineEntry({ entry }: { entry: DocEntry }) {
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Avatar name={entry.authorName} size={20} />
-          {entry.authorName} · {new Date(entry.createdAt).toLocaleTimeString()}
+          {entry.authorName} · {formatEntryTime(entry.createdAt)}
         </span>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {entry.isImportantFinding ? (
@@ -531,7 +551,7 @@ function TimelineEntry({ entry }: { entry: DocEntry }) {
           {entry.categoryLabel ? <TelemetryBadge>{entry.categoryLabel}</TelemetryBadge> : null}
         </span>
       </div>
-      <div style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
+      <div className="prose-pre" style={{ color: 'var(--text-primary)', fontSize: 15 }}>{entry.body}</div>
       {entry.imageDataUrl && (
         <img
           src={entry.imageDataUrl}

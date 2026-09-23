@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { useDebriefTeam } from './useDebriefTeam';
 
 interface CompletedRange {
   cyberRangeId: number;
@@ -13,33 +14,51 @@ interface CompletedRange {
 }
 
 export function HistoryPage() {
-  const { data } = useQuery({
-    queryKey: ['history'],
-    queryFn: () => apiFetch<{ completed: CompletedRange[] }>('/history'),
+  const { query, ready, picker, isInstructor } = useDebriefTeam();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['history', query],
+    queryFn: () => apiFetch<{ completed: CompletedRange[] }>(`/history${query}`),
+    enabled: ready,
   });
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-          History
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+          Debrief — completed scenarios
         </h1>
-        <Link to="/debrief/event-summary" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-          Event summary →
-        </Link>
+        <span style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
+          {picker}
+          {ready && (
+            <Link to={`/debrief/event-summary${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+              Event summary →
+            </Link>
+          )}
+        </span>
       </div>
 
+      {!ready && <EmptyState message="Pick a team above to review its completed scenarios." />}
+      {ready && isLoading && <div style={{ color: 'var(--text-muted)' }}>Loading…</div>}
+      {isError && <EmptyState message="Couldn't load the debrief — try refreshing." />}
       {data && data.completed.length === 0 && (
-        <EmptyState message="No Cyber Ranges completed yet." />
+        <EmptyState
+          message={
+            isInstructor
+              ? 'This team has no completed scenarios yet. Use "Mark scenario completed" on the Instructor dashboard when a team finishes.'
+              : 'No scenarios completed yet — a scenario appears here once the instructor marks it complete.'
+          }
+        />
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
         {data?.completed.map((cr) => (
           <Link
             key={cr.cyberRangeId}
-            to={`/debrief/${cr.cyberRangeId}`}
+            to={`/debrief/${cr.cyberRangeId}${query}`}
             style={{
               display: 'flex',
+              flexWrap: 'wrap',
+              gap: 'var(--space-sm)',
               justifyContent: 'space-between',
               padding: 'var(--space-sm) var(--space-md)',
               border: '1px solid var(--surface-border)',

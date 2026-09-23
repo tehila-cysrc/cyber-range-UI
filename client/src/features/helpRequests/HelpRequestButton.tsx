@@ -5,14 +5,15 @@ import { Button } from '../../components/Button';
 import { LifeBuoyIcon } from '../../components/icons';
 
 export function HelpRequestButton() {
-  const [justSent, setJustSent] = useState(false);
+  const [justSent, setJustSent] = useState<'sent' | 'already' | false>(false);
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => apiFetch('/help-requests', { method: 'POST' }),
-    onSuccess: () => {
+    mutationFn: () => apiFetch<{ alreadyOpen?: boolean }>('/help-requests', { method: 'POST' }),
+    onSuccess: (res) => {
       setError(null);
-      setJustSent(true);
+      // The server keeps one open request per team, so a second click doesn't spam the instructor.
+      setJustSent(res?.alreadyOpen ? 'already' : 'sent');
       setTimeout(() => setJustSent(false), 8000);
     },
     onError: (err) => {
@@ -32,8 +33,10 @@ export function HelpRequestButton() {
         {mutation.isPending ? 'Sending…' : 'Request instructor help'}
       </Button>
       {justSent && (
-        <span style={{ fontSize: 14, color: 'var(--signal-primary)' }}>
-          Sent — the instructor has been notified.
+        <span role="status" style={{ fontSize: 14, color: 'var(--signal-primary)' }}>
+          {justSent === 'already'
+            ? 'Your team already has an open request — the instructor has it and will come to you.'
+            : 'Sent — the instructor has been notified.'}
         </span>
       )}
       {error && <span style={{ fontSize: 14, color: 'var(--signal-alert)' }}>{error}</span>}

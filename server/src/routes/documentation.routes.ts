@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { emitDocumentationNew } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
+import { activeCyberRangeIdForTeam } from '../services/cyberRangeProgress.service.js';
 
 const router = Router();
 
@@ -120,9 +121,23 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
     }
   }
 
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  if (activeCyberRangeIdForTeam(req.user!.teamId) !== cyberRangeId) {
+    res.status(409).json({ error: "this isn't your team's active Cyber Range — refresh the page" });
+    return;
+  }
+
   let resolvedCategoryId: number | null = categoryId ?? null;
   if (typeof newCategoryLabel === 'string' && newCategoryLabel.trim().length > 0) {
     resolvedCategoryId = findOrCreateCategoryId(newCategoryLabel);
+  } else if (resolvedCategoryId != null) {
+    const exists = db
+      .prepare('SELECT 1 FROM documentation_categories WHERE id = ? AND active = 1')
+      .get(Number(resolvedCategoryId));
+    if (!exists) {
+      res.status(400).json({ error: 'unknown category' });
+      return;
+    }
   }
 
   const createdAt = new Date().toISOString();
@@ -134,7 +149,7 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
     )
     .run(
       req.user!.teamId,
-      Number(req.params.cyberRangeId),
+      cyberRangeId,
       req.user!.id,
       resolvedCategoryId,
       body.trim(),

@@ -46,8 +46,16 @@ export function emitScoreAwarded(
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('score:awarded', payload);
 }
 
-export function emitLeaderboardUpdate(teams: unknown) {
-  getIo().emit('leaderboard:update', { teams });
+// `enabled` travels with every update so turning the leaderboard OFF reaches already-open pages too
+// (previously only enabling it broadcast anything, so students kept seeing a stale board).
+export function emitLeaderboardUpdate(teams: unknown, enabled = true) {
+  getIo().emit('leaderboard:update', { teams: enabled ? teams : [], enabled });
+}
+
+// The instructor assigned, switched or completed a team's scenario — the team's open pages (Home,
+// Investigation, Topology) must refetch instead of silently writing to / timing the old one.
+export function emitProgressChanged(teamId: number, payload: { cyberRangeId: number; status: string }) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('progress:changed', { teamId, ...payload });
 }
 
 // teamId is null for an instructor's own Connect session (not tied to any team) — it only ever

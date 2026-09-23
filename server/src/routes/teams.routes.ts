@@ -110,9 +110,14 @@ router.get('/me/scores', (req, res) => {
       `SELECT
          s.id AS id, s.points AS points, s.is_gamified AS isGamified, s.note AS note,
          s.created_at AS createdAt, s.student_user_id AS studentUserId,
-         u.display_name AS studentName
+         u.display_name AS studentName,
+         s.documentation_entry_id AS documentationEntryId,
+         substr(e.body, 1, 140) AS documentationExcerpt,
+         cr.name AS cyberRangeName
        FROM scores s
        LEFT JOIN users u ON u.id = s.student_user_id
+       LEFT JOIN documentation_entries e ON e.id = s.documentation_entry_id
+       LEFT JOIN cyber_ranges cr ON cr.id = s.cyber_range_id
        WHERE s.team_id = ?
        ORDER BY s.created_at DESC`,
     )

@@ -1,10 +1,12 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MarkerType,
   ReactFlowProvider,
   useReactFlow,
+  useEdgesState,
+  useNodesState,
   type Edge,
   type Node,
   type NodeMouseHandler,
@@ -107,6 +109,30 @@ function CanvasInner({
       }));
   }, [edges, flowNodes]);
 
+  // React Flow only moves/selects nodes it holds in state: with controlled `nodes` and no
+  // onNodesChange, a dragged node didn't follow the cursor, nothing could be selected, and
+  // Delete/Backspace had nothing to delete (so edges were undeletable). Server data stays the source
+  // of truth — it re-syncs these local copies whenever it changes, keeping local selection flags.
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<CanvasNodeFlowData>(flowNodes);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState(flowEdges);
+  useEffect(() => {
+    setRfNodes((prev) => {
+      // Keep React Flow's measured size too: it reads width/height off the node object, and a node
+      // without them is treated as unmeasured (hidden, edges not drawn) until a resize that never comes.
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      return flowNodes.map((n) => {
+        const p = prevById.get(n.id);
+        return { ...n, selected: !!p?.selected, width: p?.width, height: p?.height };
+      });
+    });
+  }, [flowNodes, setRfNodes]);
+  useEffect(() => {
+    setRfEdges((prev) => {
+      const selected = new Set(prev.filter((e) => e.selected).map((e) => e.id));
+      return flowEdges.map((e) => ({ ...e, selected: selected.has(e.id) }));
+    });
+  }, [flowEdges, setRfEdges]);
+
   function handleDragOver(e: React.DragEvent) {
     if (!editable) return;
     e.preventDefault();
@@ -134,12 +160,15 @@ function CanvasInner({
         style={{ position: 'relative', flex: 1, background: 'var(--surface-floor)', borderRadius: 'var(--radius-container)' }}
       >
         <ReactFlow
-          nodes={flowNodes}
-          edges={flowEdges}
+          nodes={rfNodes}
+          edges={rfEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           nodeTypes={canvasNodeTypes}
           nodesDraggable={editable}
           nodesConnectable={editable}
           elementsSelectable
+          selectNodesOnDrag={false}
           deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
           onNodeDragStop={(_, node) => onNodeDragStop?.(parseFlowNodeId(node.id), node.position.x, node.position.y)}
           onConnect={(params) => {

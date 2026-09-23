@@ -61,7 +61,27 @@ router.post('/users', (req, res) => {
 });
 
 router.delete('/users/:id', (req, res) => {
-  db.prepare('DELETE FROM users WHERE id = ?').run(Number(req.params.id));
+  const id = Number(req.params.id);
+  if (id === req.user!.id) {
+    res.status(400).json({ error: "you can't remove your own account while signed in with it" });
+    return;
+  }
+  try {
+    const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'user not found' });
+      return;
+    }
+  } catch {
+    // FOREIGN KEY failure: the account authored timeline entries / canvas nodes / help requests or
+    // awarded scores. Deleting it would silently rewrite the team's investigation record, so refuse
+    // with an explanation instead of an opaque 500.
+    res.status(409).json({
+      error:
+        'This account has recorded activity (timeline entries, canvas items, help requests or scores) and cannot be removed without erasing it. Delete the whole team, or leave the account in place.',
+    });
+    return;
+  }
   res.json({ ok: true });
 });
 
