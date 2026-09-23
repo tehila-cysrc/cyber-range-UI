@@ -133,6 +133,34 @@ function CanvasInner({
     });
   }, [flowEdges, setRfEdges]);
 
+  // Keyboard delete, replacing React Flow's built-in deleteKeyCode: that removed *whatever* was
+  // selected — including a node still selected from an earlier click when the user meant to delete
+  // an edge — and wiped the node, its edges and a teammate's notes with no prompt. Edges (cheap to
+  // redraw) go immediately; a node needs confirmation.
+  useEffect(() => {
+    if (!editable) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      const edgesToDelete = rfEdges.filter((edge) => edge.selected);
+      if (edgesToDelete.length > 0) {
+        e.preventDefault();
+        edgesToDelete.forEach((edge) => onEdgeDelete?.(Number(edge.id.slice(FLOW_EDGE_PREFIX.length))));
+        return;
+      }
+      const node = rfNodes.find((n) => n.selected);
+      if (!node) return;
+      e.preventDefault();
+      if (window.confirm(`Delete "${node.data.label}" and its connections for the whole team?`)) {
+        onSelectionChange(null);
+        onNodeDelete?.(parseFlowNodeId(node.id));
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [editable, rfEdges, rfNodes, onEdgeDelete, onNodeDelete, onSelectionChange]);
+
   function handleDragOver(e: React.DragEvent) {
     if (!editable) return;
     e.preventDefault();
@@ -169,17 +197,17 @@ function CanvasInner({
           nodesConnectable={editable}
           elementsSelectable
           selectNodesOnDrag={false}
-          deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+          deleteKeyCode={null}
           onNodeDragStop={(_, node) => onNodeDragStop?.(parseFlowNodeId(node.id), node.position.x, node.position.y)}
           onConnect={(params) => {
             if (!params.source || !params.target) return;
             onConnect?.(parseFlowNodeId(params.source), parseFlowNodeId(params.target));
           }}
-          onNodesDelete={(deleted) => deleted.forEach((n) => onNodeDelete?.(parseFlowNodeId(n.id)))}
-          onEdgesDelete={(deleted) => deleted.forEach((e) => onEdgeDelete?.(Number(e.id.slice(FLOW_EDGE_PREFIX.length))))}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
           fitView
+          // Without a cap, a board with 1–3 nodes zooms in to 2x and the cards fill the screen.
+          fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="var(--surface-border)" gap={24} />
@@ -217,6 +245,7 @@ function CanvasInner({
             onDuplicate={() => onNodeDuplicate?.(selectedNode)}
             onBodyChange={(body) => onBodyChange?.(selectedNode.id, body)}
             onDelete={() => {
+              if (!window.confirm(`Delete "${selectedNode.label}" and its connections for the whole team?`)) return;
               onSelectionChange(null);
               onNodeDelete?.(selectedNode.id);
             }}

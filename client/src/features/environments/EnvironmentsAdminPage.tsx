@@ -210,9 +210,9 @@ function EnvironmentCard({
         background: 'var(--surface-1)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{env.name}</strong>
-        <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <strong style={{ color: 'var(--text-primary)', fontSize: 16, overflowWrap: 'anywhere' }}>{env.name}</strong>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <Button variant="ghost" disabled={isChecking} onClick={onCheckConnectivity}>
             Check connectivity
           </Button>
@@ -229,7 +229,7 @@ function EnvironmentCard({
       </div>
       <div style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span>
-          {env.provider} · subscription <span className="tabular">{env.externalAccountId}</span>
+          {env.provider} · subscription <span className="tabular" style={{ overflowWrap: 'anywhere' }}>{env.externalAccountId}</span>
         </span>
         {env.externalScope && <span>resource group: {env.externalScope}</span>}
       </div>
@@ -389,7 +389,7 @@ export function EnvironmentsAdminPage() {
   }
 
   return (
-    <div style={{ padding: 'var(--space-xl)', display: 'grid', gridTemplateColumns: '60% 40%', gap: 'var(--space-xl)' }}>
+    <div className="page split-main-side" style={{ padding: 'var(--space-xl)' }}>
       <div>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Cloud Environments</h1>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>

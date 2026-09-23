@@ -29,7 +29,7 @@ export function AuditLogPage() {
 
   const before = beforeStack[beforeStack.length - 1];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['audit-log', entityType, before],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -54,11 +54,12 @@ export function AuditLogPage() {
   }
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Audit Log</h1>
         <select
           value={entityType}
+          aria-label="Filter by entity type"
           onChange={(e) => handleFilterChange(e.target.value)}
           style={{
             background: 'var(--surface-1)',
@@ -73,10 +74,13 @@ export function AuditLogPage() {
           <option value="topology_node">Topology nodes / access targets</option>
           <option value="access_session">Access sessions</option>
           <option value="cyber_range_environment">Environment ↔ range links</option>
+          <option value="cyber_range">Cyber ranges (topology layout)</option>
+          <option value="script">Scripts / Run Script</option>
         </select>
       </div>
 
       {isLoading && <div style={{ color: 'var(--text-muted)' }}>Loading…</div>}
+      {isError && <div style={{ color: 'var(--signal-alert)' }}>Couldn't load the audit log — try refreshing.</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
         {data?.entries.map((entry) => (
@@ -93,14 +97,14 @@ export function AuditLogPage() {
               gap: 'var(--space-md)',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <span style={{ fontSize: 15, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                 <TelemetryBadge tone={toneForAction(entry.action)}>{entry.action}</TelemetryBadge>{' '}
                 {entry.entityType}
                 {entry.entityId != null ? ` #${entry.entityId}` : ''}
                 {entry.metadata && <span style={{ color: 'var(--text-muted)' }}> · {JSON.stringify(entry.metadata)}</span>}
               </span>
-              <span style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
                 {entry.actorUsername ?? 'system'} · {new Date(entry.createdAt).toLocaleString()}
               </span>
             </div>

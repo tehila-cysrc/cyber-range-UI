@@ -92,17 +92,17 @@ export function ScriptLibraryPage() {
   }
 
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Script Library</h1>
         <Button variant="primary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
           + New script
         </Button>
       </div>
 
-      <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name/description…" style={{ ...fieldStyle, flex: 1 }} />
-        <select value={category} onChange={(e) => setCategory(e.target.value)} style={fieldStyle}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name/description…" aria-label="Search scripts" style={{ ...fieldStyle, flex: '1 1 220px', minWidth: 0 }} />
+        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" style={{ ...fieldStyle, maxWidth: '100%' }}>
           <option value="">All categories</option>
           {categories.map((c) => (
             <option key={c} value={c}>
@@ -112,7 +112,7 @@ export function ScriptLibraryPage() {
         </select>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: draft ? '1fr 420px' : '1fr', gap: 'var(--space-xl)' }}>
+      <div className={draft ? 'split-main-side' : undefined} style={draft ? undefined : { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           {scripts.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No scripts yet — create one to get started.</p>}
           {scripts.map((s) => (

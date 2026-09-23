@@ -19,17 +19,25 @@ interface CanvasNodeInspectorProps {
 export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBodyChange }: CanvasNodeInspectorProps) {
   const spec = CANVAS_NODE_SPEC_BY_TYPE[node.nodeType];
   const [bodyDraft, setBodyDraft] = useState(node.body ?? '');
+  // Only a draft the user actually typed into is ever written back — otherwise focusing and leaving
+  // the field would save the stale text over a teammate's newer note.
+  const [dirty, setDirty] = useState(false);
 
   // Re-sync the draft when a different node is selected (or a teammate's realtime edit lands),
   // but never while this panel's own textarea is mid-edit — same "don't clobber what you're
   // typing" rule as the in-node label editor.
   useEffect(() => {
     setBodyDraft(node.body ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setDirty(false);
   }, [node.id]);
+  useEffect(() => {
+    if (!dirty) setBodyDraft(node.body ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.body]);
 
   function commitBody() {
-    if (bodyDraft !== (node.body ?? '')) onBodyChange(bodyDraft);
+    if (dirty && bodyDraft !== (node.body ?? '')) onBodyChange(bodyDraft);
+    setDirty(false);
   }
 
   return (
@@ -72,7 +80,10 @@ export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBo
         </span>
         <textarea
           value={bodyDraft}
-          onChange={(e) => setBodyDraft(e.target.value)}
+          onChange={(e) => {
+            setBodyDraft(e.target.value);
+            setDirty(true);
+          }}
           onBlur={commitBody}
           rows={4}
           placeholder="Write what you know about this…"
@@ -97,7 +108,7 @@ export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBo
           Delete
         </Button>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>Select + Backspace/Delete also removes it.</div>
+      <div style={{ fontSize: 11, color: 'var(--text-telemetry)' }}>Tip: select a connection line and press Delete to remove it.</div>
     </div>
   );
 }
