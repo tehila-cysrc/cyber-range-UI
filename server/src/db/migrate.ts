@@ -93,7 +93,9 @@ function relaxScoresForTtpAwards() {
   const columns = db.prepare(`PRAGMA table_info(scores)`).all() as { name: string }[];
   if (columns.some((c) => c.name === 'source')) return;
 
+  // One transaction: a crash between DROP and RENAME must never lose the scores table.
   db.exec(`
+    BEGIN;
     CREATE TABLE scores_new (
       id INTEGER PRIMARY KEY,
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
@@ -111,6 +113,7 @@ function relaxScoresForTtpAwards() {
       SELECT id, team_id, student_user_id, documentation_entry_id, cyber_range_id, points, is_gamified, awarded_by_user_id, note, created_at FROM scores;
     DROP TABLE scores;
     ALTER TABLE scores_new RENAME TO scores;
+    COMMIT;
   `);
 }
 
@@ -171,6 +174,13 @@ export function migrate() {
   db.exec(
     `UPDATE team_cyber_range_progress SET first_started_at = started_at
      WHERE first_started_at IS NULL AND started_at IS NOT NULL`,
+  );
+  // Set once, on the first "complete" (never cleared by a restart): the ATT&CK debrief may reveal the
+  // answer key from then on, so tags made after it never auto-score (ttpScoring.service.ts).
+  addColumnIfMissing('team_cyber_range_progress', 'first_completed_at', 'TEXT');
+  db.exec(
+    `UPDATE team_cyber_range_progress SET first_completed_at = completed_at
+     WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,
   );
   relaxScoresForTtpAwards();
 

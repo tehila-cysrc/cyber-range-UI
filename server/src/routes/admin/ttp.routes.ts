@@ -10,9 +10,11 @@ import {
   buildRangeTtpReport,
   buildTeamTtpReport,
   getExpectedTtp,
+  inTransaction,
   manualCredit,
   occurrencesForRange,
   teamIdsOnRange,
+  VOID_REASON_EXPECTATION_REMOVED,
   voidDetection,
 } from '../../services/ttpScoring.service.js';
 import { announceCredits, announceLeaderboard, reconcileRangeAndAnnounce } from '../../services/ttpAnnounce.js';
@@ -245,8 +247,11 @@ router.delete('/expected-ttps/:id', (req, res) => {
     return;
   }
 
-  for (const d of credited) voidDetection(d.id, req.user!.id, 'expected technique removed from scenario');
-  db.prepare('UPDATE cyber_range_expected_ttps SET is_active = 0, updated_at = ? WHERE id = ?').run(new Date().toISOString(), existing.id);
+  // One atomic unit: never "some credits voided, expectation still active".
+  inTransaction(() => {
+    for (const d of credited) voidDetection(d.id, req.user!.id, VOID_REASON_EXPECTATION_REMOVED);
+    db.prepare('UPDATE cyber_range_expected_ttps SET is_active = 0, updated_at = ? WHERE id = ?').run(new Date().toISOString(), existing.id);
+  });
 
   writeAudit(req.user!.username, 'ttp.expected_deleted', 'expected_ttp', existing.id, {
     cyberRangeId: existing.cyberRangeId,
@@ -352,7 +357,7 @@ router.post('/ttp-detections', (req, res) => {
     res.status(400).json({ error: 'note must be text of at most 500 characters' });
     return;
   }
-  const result = manualCredit(teamId, expectedTtpId, documentationEntryId, req.user!.id, typeof note === 'string' && note.trim() ? note.trim() : null);
+  const result = manualCredit(teamId, expectedTtpId, documentationEntryId, req.user!.id);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;
@@ -362,6 +367,8 @@ router.post('/ttp-detections', (req, res) => {
     expectedTtpId,
     documentationEntryId,
     points: result.points,
+    // Instructor-private: never copied into the student-visible scores.note.
+    note: typeof note === 'string' && note.trim() ? note.trim() : null,
   });
   announceCredits([{ scoreId: result.scoreId!, teamId, creditedUserId: result.creditedUserId ?? null }]);
   announceLeaderboard();
@@ -376,7 +383,9 @@ router.post('/ttp-detections/:id/void', (req, res) => {
     return;
   }
   const detectionId = Number(req.params.id);
-  const result = voidDetection(detectionId, req.user!.id, typeof reason === 'string' && reason.trim() ? reason.trim() : null);
+  const trimmed = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+  // The removal marker is reserved (it doesn't block re-credit) — an instructor can't reuse it.
+  const result = voidDetection(detectionId, req.user!.id, trimmed === VOID_REASON_EXPECTATION_REMOVED ? `${trimmed} (manual)` : trimmed);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;

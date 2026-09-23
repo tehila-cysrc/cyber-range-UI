@@ -69,6 +69,8 @@ export function summarizeMttd(results: MttdResult[]): MttdSummary {
 
 // Anti-guessing budget: with live feedback a team could otherwise tag every technique in the catalog
 // and harvest every expected one. Counts distinct techniques ever tagged (removed tags included).
+// Roughly 3x the expected count, but rounded up to a tier of 10 (min 10) so the budget a student can
+// see doesn't reveal the exact number of expected techniques — only a coarse range.
 export function techniqueBudget(expectedCount: number): number {
-  return Math.max(10, 3 * expectedCount);
+  return Math.max(10, Math.ceil((3 * expectedCount) / 10) * 10);
 }

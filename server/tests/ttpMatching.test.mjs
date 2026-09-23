@@ -89,10 +89,13 @@ test('MTTD summary is null (N/A) when nothing is measurable', () => {
   });
 });
 
-test('technique budget has a floor of 10 and scales 3x with the expected count', () => {
+test('technique budget is ~3x expected, tiered in 10s so it hides the exact expected count', () => {
   assert.equal(techniqueBudget(0), 10);
   assert.equal(techniqueBudget(3), 10);
-  assert.equal(techniqueBudget(5), 15);
+  assert.equal(techniqueBudget(4), 20);
+  assert.equal(techniqueBudget(5), 20);
+  assert.equal(techniqueBudget(6), 20);
+  assert.equal(techniqueBudget(7), 30);
 });
 
 test('catalog: known techniques resolve, unknown ids are rejected', () => {

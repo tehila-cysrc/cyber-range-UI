@@ -25,8 +25,8 @@ const monoLabel: React.CSSProperties = {
 };
 
 // The final ATT&CK report — the only cross-team technique matrix in the app (instructor), or the
-// team's own breakdown (student, only once the instructor has completed the scenario; before that it
-// would give away which techniques are still worth hunting for).
+// team's own breakdown (student, only once the scenario is completed for every team on it; before
+// that it would give away which techniques are still worth hunting for).
 export function TtpDebriefSection({ cyberRangeId }: { cyberRangeId: number }) {
   const isInstructor = useAuthStore((s) => s.user?.role) === 'instructor';
 
@@ -39,6 +39,9 @@ export function TtpDebriefSection({ cyberRangeId }: { cyberRangeId: number }) {
     queryKey: ['ttp-summary', cyberRangeId],
     queryFn: () => apiFetch<StudentSummary>(`/teams/me/cyber-ranges/${cyberRangeId}/ttp-summary`),
     enabled: !isInstructor,
+    // The reveal depends on OTHER teams finishing too, which this team gets no socket event for —
+    // poll gently until it happens.
+    refetchInterval: (query) => (query.state.data?.scored && !query.state.data.revealed ? 30_000 : false),
   });
 
   if (isInstructor) {
@@ -57,7 +60,7 @@ export function TtpDebriefSection({ cyberRangeId }: { cyberRangeId: number }) {
       <Section>
         <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
           ATT&amp;CK points so far: <span className="tabular" style={{ color: 'var(--signal-primary)' }}>{studentSummary.earnedPoints}</span>. The full
-          technique breakdown (including anything missed) is revealed when your instructor completes this scenario.
+          technique breakdown (including anything missed) is revealed once your instructor has completed this scenario for every team.
         </div>
       </Section>
     );

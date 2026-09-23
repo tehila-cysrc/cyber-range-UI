@@ -13,6 +13,10 @@ import { computeMttd, summarizeMttd, techniqueBudget, techniqueMatches, type Mtt
 
 export const MAX_TTPS_PER_ENTRY = 3;
 
+// void_reason used when the instructor removes the expectation itself (DELETE ?voidDetections=true),
+// as opposed to voiding a credit they judged wrong.
+export const VOID_REASON_EXPECTATION_REMOVED = 'expected technique removed from scenario';
+
 export interface ExpectedTtp {
   id: number;
   cyberRangeId: number;
@@ -73,7 +77,10 @@ export interface Credit {
   points: number;
 }
 
-function inTransaction<T>(fn: () => T): T {
+// Re-entrant: joins an already-open transaction (so e.g. a route can wrap "insert entry + tag it" or
+// "void every credit + deactivate" in one atomic unit) instead of throwing on a nested BEGIN.
+export function inTransaction<T>(fn: () => T): T {
+  if (db.isTransaction) return fn();
   db.exec('BEGIN');
   try {
     const result = fn();
@@ -106,12 +113,36 @@ export function reconcileTeamTtps(teamId: number, cyberRangeId: number): Credit[
           .all(teamId, cyberRangeId) as { id: number }[]
       ).map((r) => r.id),
     );
-    const activeTags = allTags(teamId, cyberRangeId).filter((t) => t.removedAt === null);
+    // An instructor void is about the TECHNIQUE, not the expectation row: removing and re-adding
+    // the same technique creates a new row id, and must not silently undo the void. (Voids caused
+    // by removing the expectation itself don't count — re-adding it should credit normally.)
+    const voidedTechniques = new Set(
+      (
+        db
+          .prepare(
+            `SELECT DISTINCT e.technique_id AS techniqueId FROM ttp_detections d
+             JOIN cyber_range_expected_ttps e ON e.id = d.expected_ttp_id
+             WHERE d.team_id = ? AND d.cyber_range_id = ? AND d.status = 'voided'
+               AND COALESCE(d.void_reason, '') != ?`,
+          )
+          .all(teamId, cyberRangeId, VOID_REASON_EXPECTATION_REMOVED) as { techniqueId: string }[]
+      ).map((r) => r.techniqueId),
+    );
+    // Once the team has completed this scenario once, the debrief may have shown it every missed
+    // technique — so a tag made after that (e.g. the instructor re-opened the scenario) never scores.
+    const progress = db
+      .prepare('SELECT first_completed_at AS firstCompletedAt FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?')
+      .get(teamId, cyberRangeId) as { firstCompletedAt: string | null } | undefined;
+    const cutoff = progress?.firstCompletedAt ?? null;
+    const activeTags = allTags(teamId, cyberRangeId).filter(
+      (t) => t.removedAt === null && (cutoff === null || t.taggedAt < cutoff),
+    );
     const credits: Credit[] = [];
     const now = new Date().toISOString();
 
     for (const exp of expected) {
       if (blocked.has(exp.id)) continue; // already credited, or voided by the instructor
+      if (voidedTechniques.has(exp.techniqueId)) continue;
       const tag = activeTags.find((t) => techniqueMatches(t.techniqueId, exp.techniqueId));
       if (!tag) continue;
 
@@ -172,9 +203,11 @@ export type SetTagsResult =
   | { ok: true; changed: boolean }
   | { ok: false; status: number; error: string };
 
-export function budgetFor(teamId: number, cyberRangeId: number): { limit: number; used: number } | null {
+// Always applied — even while a scenario has no expectations yet. Otherwise a team started before the
+// instructor wrote the answer key could tag the whole catalog and be credited for everything the
+// moment expectations are added (reconcile credits earlier tags).
+export function budgetFor(teamId: number, cyberRangeId: number): { limit: number; used: number } {
   const expectedCount = activeExpectedTtps(cyberRangeId).length;
-  if (expectedCount === 0) return null; // nothing to score -> nothing to guess at
   const used = db
     .prepare(
       `SELECT COUNT(DISTINCT technique_id) AS n FROM documentation_entry_ttps WHERE team_id = ? AND cyber_range_id = ?`,
@@ -186,8 +219,8 @@ export function budgetFor(teamId: number, cyberRangeId: number): { limit: number
 // null = fine; otherwise the user-facing refusal. Only brand-new distinct techniques count against the
 // budget — re-tagging something the team already tried (anywhere, even since removed) is free.
 export function checkBudget(teamId: number, cyberRangeId: number, techniqueIdsToAdd: string[]): string | null {
+  if (techniqueIdsToAdd.length === 0) return null;
   const budget = budgetFor(teamId, cyberRangeId);
-  if (!budget || techniqueIdsToAdd.length === 0) return null;
   const everTagged = new Set(
     (
       db
@@ -290,19 +323,24 @@ export function tagsByEntry(teamId: number, cyberRangeId: number): Map<number, E
 export function recordScriptOccurrences(executionId: number): { cyberRangeId: number; expectedTtpIds: number[] } | null {
   const execution = db
     .prepare(
-      `SELECT se.id, se.script_id AS scriptId, se.started_at AS startedAt, tn.cyber_range_id AS cyberRangeId
+      `SELECT se.id, se.script_id AS scriptId, se.started_at AS startedAt, se.topology_node_id AS nodeId,
+              tn.cyber_range_id AS cyberRangeId
        FROM script_executions se JOIN topology_nodes tn ON tn.id = se.topology_node_id
        WHERE se.id = ? AND se.status = 'succeeded'`,
     )
-    .get(executionId) as { id: number; scriptId: number | null; startedAt: string; cyberRangeId: number } | undefined;
+    .get(executionId) as { id: number; scriptId: number | null; startedAt: string; nodeId: number; cyberRangeId: number } | undefined;
   const eventRunId = getActiveEventRunId();
   if (!execution || execution.scriptId == null || eventRunId == null) return null;
 
+  // An expectation pinned to a host only "happens" when its trigger ran on THAT host; an unpinned one
+  // happens wherever the script ran in the range.
   const triggered = db
     .prepare(
-      `SELECT id FROM cyber_range_expected_ttps WHERE cyber_range_id = ? AND trigger_script_id = ? AND is_active = 1`,
+      `SELECT id FROM cyber_range_expected_ttps
+       WHERE cyber_range_id = ? AND trigger_script_id = ? AND is_active = 1
+         AND (topology_node_id IS NULL OR topology_node_id = ?)`,
     )
-    .all(execution.cyberRangeId, execution.scriptId) as { id: number }[];
+    .all(execution.cyberRangeId, execution.scriptId, execution.nodeId) as { id: number }[];
   const now = new Date().toISOString();
   for (const exp of triggered) {
     db.prepare(
@@ -372,7 +410,6 @@ export function manualCredit(
   expectedTtpId: number,
   documentationEntryId: number,
   instructorUserId: number,
-  note: string | null,
 ): OverrideResult & { detectionId?: number; scoreId?: number; creditedUserId?: number; points?: number } {
   const expected = getExpectedTtp(expectedTtpId);
   if (!expected || !expected.isActive) return { ok: false, status: 404, error: 'expected technique not found' };
@@ -404,7 +441,9 @@ export function manualCredit(
         expected.cyberRangeId,
         expected.points,
         instructorUserId,
-        `ATT&CK detection (instructor credit): ${techniqueLabel(expected.techniqueId)}${note ? ` — ${note}` : ''}`,
+        // scores.note is student-visible (Progress page, score:awarded), so the instructor's private
+        // note stays out of it — it is kept in the audit log only (ttp.routes.ts).
+        `ATT&CK detection (instructor credit): ${techniqueLabel(expected.techniqueId)}`,
         now,
       );
     const scoreId = Number(score.lastInsertRowid);
@@ -497,12 +536,14 @@ export function buildTeamTtpReport(teamId: number, cyberRangeId: number, opts: {
   const detections = db
     .prepare(
       `SELECT d.id, d.expected_ttp_id AS expectedTtpId, d.detected_at AS detectedAt, d.points_awarded AS pointsAwarded,
-              d.source, d.status, d.documentation_entry_id AS documentationEntryId, u.display_name AS creditedUserName,
+              d.source, d.status, d.void_reason AS voidReason, ce.technique_id AS expectedTechniqueId,
+              d.documentation_entry_id AS documentationEntryId, u.display_name AS creditedUserName,
               t.technique_id AS taggedTechniqueId, de.body AS entryBody
        FROM ttp_detections d
        LEFT JOIN users u ON u.id = d.credited_user_id
        LEFT JOIN documentation_entry_ttps t ON t.id = d.documentation_entry_ttp_id
        LEFT JOIN documentation_entries de ON de.id = d.documentation_entry_id
+       JOIN cyber_range_expected_ttps ce ON ce.id = d.expected_ttp_id
        WHERE d.team_id = ? AND d.cyber_range_id = ?
        ORDER BY d.id ASC`,
     )
@@ -513,6 +554,8 @@ export function buildTeamTtpReport(teamId: number, cyberRangeId: number, opts: {
     pointsAwarded: number;
     source: 'auto' | 'instructor';
     status: 'credited' | 'voided';
+    voidReason: string | null;
+    expectedTechniqueId: string;
     documentationEntryId: number | null;
     creditedUserName: string | null;
     taggedTechniqueId: string | null;
@@ -529,7 +572,10 @@ export function buildTeamTtpReport(teamId: number, cyberRangeId: number, opts: {
   const mttdResults: MttdResult[] = [];
   const expectedResults: ExpectedResultDTO[] = expected.map((exp) => {
     const credited = detections.find((d) => d.expectedTtpId === exp.id && d.status === 'credited');
-    const voided = detections.some((d) => d.expectedTtpId === exp.id && d.status === 'voided');
+    // Same rule as reconcileTeamTtps: an instructor void blocks the technique (across a remove+re-add).
+    const voided = detections.some(
+      (d) => d.expectedTechniqueId === exp.techniqueId && d.status === 'voided' && d.voidReason !== VOID_REASON_EXPECTATION_REMOVED,
+    );
     let detection: DetectionDTO | null = null;
     if (credited) {
       const mttd = computeMttd(occurrencesByExpected.get(exp.id) ?? [], progress?.firstStartedAt ?? null, credited.detectedAt);

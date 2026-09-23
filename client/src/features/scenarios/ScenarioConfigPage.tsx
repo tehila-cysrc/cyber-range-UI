@@ -182,7 +182,9 @@ export function ScenarioConfigPage() {
               <div style={{ ...monoLabel, color: 'var(--signal-secondary)' }}>{group.tacticName}</div>
               {group.rows.map((row) => (
                 <ExpectedRow
-                  key={row.id}
+                  // Remount when the server copy changes (another instructor's edit, a refetch), so
+                  // the row's local points/note drafts never overwrite newer data on blur.
+                  key={`${row.id}:${row.points}:${row.description ?? ''}`}
                   row={row}
                   techniqueName={techniqueDisplayName(catalog, row.techniqueId)}
                   occurrences={data!.occurrences.filter((o) => o.expectedTtpId === row.id)}

@@ -151,9 +151,46 @@ test('the technique budget stops shotgun tagging (history counts, re-tagging is 
   assert.equal(svc.setEntryTtps(entry(alpha, aliceId), alpha, rangeId, aliceId, [pool[0]]).ok, true, 're-tagging a tried technique is free');
 });
 
-test('no expected techniques: tagging works, nothing scores, no budget', () => {
+test('no expected techniques: tagging works, nothing scores, but the budget still applies', () => {
   assert.equal(tag(entry(alpha, aliceId), alpha, aliceId, ['T1087']).length, 0);
-  assert.equal(svc.budgetFor(alpha, rangeId), null);
+  assert.deepEqual(svc.budgetFor(alpha, rangeId), { limit: 10, used: 1 });
+});
+
+test('a team cannot pre-tag the whole catalog before the answer key exists', () => {
+  // Security review P1: with no expectations there used to be no budget, and adding expectations
+  // later retroactively credited everything.
+  const pool = ['T1003', 'T1021', 'T1560', 'T1059', 'T1016', 'T1082', 'T1083', 'T1049', 'T1057', 'T1069'];
+  for (const id of pool) tag(entry(alpha, aliceId), alpha, aliceId, [id]);
+  const refused = svc.setEntryTtps(entry(alpha, aliceId), alpha, rangeId, aliceId, ['T1087']);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.status, 409);
+  expect('T1087', 10);
+  assert.equal(svc.reconcileTeamTtps(alpha, rangeId).length, 0, 'the never-accepted T1087 tag cannot be credited');
+});
+
+test('tags made after the team first completed the scenario never score (reopen after reveal)', () => {
+  expect('T1087', 10);
+  db.prepare(
+    `UPDATE team_cyber_range_progress SET status = 'completed', completed_at = ?, first_completed_at = ? WHERE team_id = ? AND cyber_range_id = ?`,
+  ).run(now(), now(), alpha, rangeId);
+  startCyberRangeForTeam(alpha, rangeId); // instructor re-opens it
+  const row = db.prepare('SELECT status, first_completed_at AS f FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?').get(alpha, rangeId);
+  assert.equal(row.status, 'active');
+  assert.ok(row.f, 'first_completed_at survives the restart');
+  assert.equal(tag(entry(alpha, aliceId), alpha, aliceId, ['T1087']).length, 0);
+});
+
+test('inTransaction is re-entrant and rolls back the whole unit', () => {
+  expect('T1087', 10);
+  assert.throws(() =>
+    svc.inTransaction(() => {
+      entry(alpha, aliceId, 'inside tx');
+      svc.inTransaction(() => entry(alpha, aliceId, 'nested'));
+      throw new Error('boom');
+    }),
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM documentation_entries WHERE body IN ('inside tx', 'nested')").get().n, 0);
+  assert.equal(db.isTransaction, false);
 });
 
 test('adding an expectation mid-run credits an earlier tag at the tag time', () => {
@@ -177,10 +214,31 @@ test('void removes the points and blocks auto re-credit; manual credit restores 
   assert.equal(tag(entry(alpha, bobId), alpha, bobId, ['T1087']).length, 0, 'nor a fresh re-tag of the voided technique');
   assert.equal(svc.voidDetection(credit.detectionId, instructorId, null).status, 409);
 
-  const manual = svc.manualCredit(alpha, exp, e, instructorId, 'clear evidence in the entry');
+  const manual = svc.manualCredit(alpha, exp, e, instructorId);
   assert.equal(manual.ok, true);
   assert.equal(ttpPoints(alpha), 10);
-  assert.equal(svc.manualCredit(alpha, exp, e, instructorId, null).status, 409, 'only one credit at a time');
+  assert.equal(svc.manualCredit(alpha, exp, e, instructorId).status, 409, 'only one credit at a time');
+});
+
+test('removing and re-adding a technique does not undo an instructor void', () => {
+  const first = expect('T1087', 10);
+  const [credit] = tag(entry(alpha, aliceId), alpha, aliceId, ['T1087']);
+  svc.voidDetection(credit.detectionId, instructorId, 'guess');
+  db.prepare('UPDATE cyber_range_expected_ttps SET is_active = 0 WHERE id = ?').run(first);
+  expect('T1087', 10); // new row id
+  assert.equal(svc.reconcileTeamTtps(alpha, rangeId).length, 0);
+  assert.equal(ttpPoints(alpha), 0);
+  const report = svc.buildTeamTtpReport(alpha, rangeId, { includeInstructorNotes: true });
+  assert.equal(report.expected[0].voided, true);
+});
+
+test('re-adding an expectation that was removed (voiding its credits) credits normally again', () => {
+  const first = expect('T1087', 10);
+  const [credit] = tag(entry(alpha, aliceId), alpha, aliceId, ['T1087']);
+  svc.voidDetection(credit.detectionId, instructorId, svc.VOID_REASON_EXPECTATION_REMOVED);
+  db.prepare('UPDATE cyber_range_expected_ttps SET is_active = 0 WHERE id = ?').run(first);
+  expect('T1087', 10);
+  assert.equal(svc.reconcileTeamTtps(alpha, rangeId).length, 1);
 });
 
 test('recording an occurrence never changes credits or points — it only makes MTTD measurable', () => {
@@ -239,8 +297,18 @@ test('a succeeded trigger-script run records an occurrence for its expected tech
   assert.equal(occurrences[0].scriptName, 'enumerate-local-users');
   assert.equal(occurrences[0].nodeLabel, 'DC01');
 
+  // Pinned to a different host -> running the trigger here records nothing for it.
+  const otherNode = Number(
+    db.prepare(`INSERT INTO topology_nodes (cyber_range_id, external_key, label, node_type) VALUES (?, 'test-srv02', 'SRV02', 'vm')`).run(rangeId)
+      .lastInsertRowid,
+  );
+  db.prepare('UPDATE cyber_range_expected_ttps SET topology_node_id = ? WHERE id = ?').run(otherNode, exp);
+  assert.deepEqual(svc.recordScriptOccurrences(insertExec('succeeded')).expectedTtpIds, []);
+
   db.exec('DELETE FROM ttp_occurrences');
   db.exec('DELETE FROM script_executions');
+  db.prepare('UPDATE cyber_range_expected_ttps SET topology_node_id = NULL').run();
+  db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(otherNode);
   db.prepare('DELETE FROM topology_nodes WHERE id = ?').run(nodeId);
   db.prepare('UPDATE cyber_range_expected_ttps SET trigger_script_id = NULL').run();
   db.prepare('DELETE FROM scripts WHERE id = ?').run(scriptId);

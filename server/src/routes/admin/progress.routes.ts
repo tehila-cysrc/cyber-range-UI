@@ -37,10 +37,11 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', (req, res) => 
 
   const result = db
     .prepare(
-      `UPDATE team_cyber_range_progress SET status = 'completed', completed_at = ?
+      `UPDATE team_cyber_range_progress SET status = 'completed', completed_at = ?,
+         first_completed_at = COALESCE(first_completed_at, ?)
        WHERE team_id = ? AND cyber_range_id = ?`,
     )
-    .run(completedAt, teamId, cyberRangeId);
+    .run(completedAt, completedAt, teamId, cyberRangeId);
 
   if (result.changes === 0) {
     res.status(404).json({ error: 'no progress row for this team/cyber range — start it first' });

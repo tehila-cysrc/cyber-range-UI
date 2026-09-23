@@ -3,9 +3,9 @@ import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
-import { activeCyberRangeIdForTeam } from '../services/cyberRangeProgress.service.js';
+import { activeCyberRangeIdForTeam, teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
 import { isValidTechniqueId } from '../services/mitreCatalog.js';
-import { budgetFor, checkBudget, MAX_TTPS_PER_ENTRY, setEntryTtps, tagsByEntry } from '../services/ttpScoring.service.js';
+import { budgetFor, checkBudget, inTransaction, MAX_TTPS_PER_ENTRY, setEntryTtps, tagsByEntry } from '../services/ttpScoring.service.js';
 import { reconcileAndAnnounce } from '../services/ttpAnnounce.js';
 
 // Optional ATT&CK tags on an entry: a list of catalog technique ids and nothing else — correctness,
@@ -65,6 +65,12 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   if (teamId === null) return;
 
   const cyberRangeId = Number(req.params.cyberRangeId);
+  // Same rule as student topology reads: only scenarios the team has actually been assigned (the
+  // response carries the ATT&CK budget, which says something about a scenario's answer key).
+  if (req.user!.role === 'student' && !teamHasProgressOn(teamId, cyberRangeId)) {
+    res.status(403).json({ error: "your team hasn't been assigned this Cyber Range" });
+    return;
+  }
   const rows = db
     .prepare(
       `SELECT ${ENTRY_COLUMNS}
@@ -78,8 +84,8 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
 
   const tags = tagsByEntry(teamId, cyberRangeId);
   const entries = rows.map((row) => ({ ...row, ttps: tags.get(row.id) ?? [] }));
-  // ttpBudget is the team's own remaining technique budget (null = this scenario scores no ATT&CK
-  // techniques). Never the expected list or the points on offer — see CLAUDE/invariants.md.
+  // ttpBudget is the team's own technique budget (tiered, so it doesn't reveal the exact expected
+  // count). Never the expected list or the points on offer — see CLAUDE/invariants.md.
   res.json({ entries, ttpBudget: budgetFor(teamId, cyberRangeId) });
 });
 
@@ -187,31 +193,27 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
   }
 
   const createdAt = new Date().toISOString();
-  const result = db
-    .prepare(
-      `INSERT INTO documentation_entries
-         (team_id, cyber_range_id, author_user_id, category_id, body, image_data_url, is_important_finding, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      req.user!.teamId,
-      cyberRangeId,
-      req.user!.id,
-      resolvedCategoryId,
-      body.trim(),
-      imageDataUrl ?? null,
-      isImportantFinding ? 1 : 0,
-      createdAt,
-    );
+  const teamId = req.user!.teamId;
+  // Entry + its tags are one atomic write: a tag refusal never leaves an untagged entry behind.
+  const entryId = inTransaction(() => {
+    const result = db
+      .prepare(
+        `INSERT INTO documentation_entries
+           (team_id, cyber_range_id, author_user_id, category_id, body, image_data_url, is_important_finding, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(teamId, cyberRangeId, req.user!.id, resolvedCategoryId, body.trim(), imageDataUrl ?? null, isImportantFinding ? 1 : 0, createdAt);
+    const id = Number(result.lastInsertRowid);
+    if (parsedTtps.ids.length > 0) {
+      const tagged = setEntryTtps(id, teamId, cyberRangeId, req.user!.id, parsedTtps.ids);
+      if (!tagged.ok) throw new Error(tagged.error); // budget was pre-checked; rolls back if it still fails
+    }
+    return id;
+  });
+  if (parsedTtps.ids.length > 0) reconcileAndAnnounce(teamId, cyberRangeId);
 
-  const entryId = Number(result.lastInsertRowid);
-  if (parsedTtps.ids.length > 0) {
-    setEntryTtps(entryId, req.user!.teamId, cyberRangeId, req.user!.id, parsedTtps.ids);
-    reconcileAndAnnounce(req.user!.teamId, cyberRangeId);
-  }
-
-  const entry = entryDTO(entryId, req.user!.teamId, cyberRangeId);
-  emitDocumentationNew(req.user!.teamId, entry);
+  const entry = entryDTO(entryId, teamId, cyberRangeId);
+  emitDocumentationNew(teamId, entry);
 
   res.status(201).json({ entry });
 });

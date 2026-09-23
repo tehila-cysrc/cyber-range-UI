@@ -143,9 +143,10 @@ router.get('/me/scores', (req, res) => {
 
 // The team's own ATT&CK results. While the scenario is running: only what the team already learned
 // live (its credited techniques + points) and its remaining technique budget — no expected list, no
-// "x of y", no points on offer, nothing about misses. Once the instructor marks the scenario
-// completed, the full breakdown (expected / detected / missed / incorrect + MTTD) is revealed, minus
-// the instructor's private notes.
+// "x of y", no points on offer, nothing about misses. Once the instructor has completed the scenario
+// for EVERY team on it, the full breakdown (expected / detected / missed / incorrect + MTTD) is
+// revealed, minus the instructor's private notes. Tags made after a team's first completion never
+// score (see reconcileTeamTtps), so re-opening a revealed scenario can't be farmed.
 router.get('/me/cyber-ranges/:cyberRangeId/ttp-summary', (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
@@ -160,10 +161,15 @@ router.get('/me/cyber-ranges/:cyberRangeId/ttp-summary', (req, res) => {
 
   const report = buildTeamTtpReport(teamId, cyberRangeId, { includeInstructorNotes: false });
   if (!report || report.totals.expectedCount === 0) {
-    res.json({ scored: false, revealed: false });
+    res.json({ scored: false, revealed: false, budget: budgetFor(teamId, cyberRangeId) });
     return;
   }
-  if (progress.status === 'completed') {
+  // Revealed per SCENARIO, not per team: while any other team is still working this range, one
+  // finished team's students could otherwise pass the answer key across the room.
+  const unfinished = db
+    .prepare(`SELECT COUNT(*) AS n FROM team_cyber_range_progress WHERE cyber_range_id = ? AND status != 'completed'`)
+    .get(cyberRangeId) as { n: number };
+  if (progress.status === 'completed' && unfinished.n === 0) {
     res.json({ scored: true, revealed: true, report });
     return;
   }
