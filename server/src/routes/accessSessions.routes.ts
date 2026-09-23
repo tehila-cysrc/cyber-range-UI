@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { endOwnSession, requestAccessSession, revealSessionCredential } from '../services/accessBroker/accessBroker.service.js';
+import { endOwnSession, requestAccessSession, restoreOwnSession, revealSessionCredential } from '../services/accessBroker/accessBroker.service.js';
 
 const router = Router();
 
@@ -34,6 +34,18 @@ router.post('/me/access-sessions', async (req, res) => {
   }
 
   res.status(201).json({ accessSessionId: outcome.accessSessionId, shareableLinkUrl: outcome.shareableLinkUrl, expiresAt: outcome.expiresAt });
+});
+
+// Page refresh: hand the caller back their OWN still-active session, re-authorized from scratch
+// (expiry, active range, node visibility, access target) and with the link re-read live from Bastion —
+// see restoreOwnSession. `{session: null}` whenever there's nothing valid to restore.
+router.get('/me/access-sessions/active', async (req, res) => {
+  if (req.user!.role !== 'student' || !req.user!.teamId) {
+    res.json({ session: null });
+    return;
+  }
+  const session = await restoreOwnSession({ id: req.user!.id, teamId: req.user!.teamId, username: req.user!.username });
+  res.json({ session });
 });
 
 // The side panel's explicit "Show credentials" action — separate from opening the connection, and

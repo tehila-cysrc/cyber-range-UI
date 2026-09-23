@@ -92,6 +92,9 @@ export function migrate() {
   // Additive columns for discovered (vs. manually-drawn) topology — see the live-cloud-environment
   // plan. NULL environment_id/discovery_run_id = today's manually-drawn nodes, untouched by discovery.
   addColumnIfMissing('topology_nodes', 'environment_id', 'INTEGER REFERENCES cloud_environments(id)');
+  // Instructor-issued join code for student self-registration; NULL = registration closed (default,
+  // and again after every event reset since it lives on the run row). See registration.service.ts.
+  addColumnIfMissing('event_runs', 'registration_code', 'TEXT');
   addColumnIfMissing('topology_nodes', 'discovery_run_id', 'INTEGER REFERENCES environment_discovery_runs(id)');
   addColumnIfMissing('topology_edges', 'external_key', 'TEXT');
   addColumnIfMissing('topology_edges', 'relation_type', 'TEXT');

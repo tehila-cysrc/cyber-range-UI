@@ -30,6 +30,11 @@ export function LoginPage() {
   const [displayName, setDisplayName] = useState('');
   const [teamId, setTeamId] = useState<number | ''>('');
   const [teams, setTeams] = useState<Team[]>([]);
+  // Self-registration is instructor-controlled: closed unless the instructor opened it and handed out
+  // a join code. null = still checking.
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [codeAccepted, setCodeAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -37,14 +42,39 @@ export function LoginPage() {
 
   useEffect(() => {
     if (mode !== 'register') return;
-    apiFetch<{ teams: Team[] }>('/auth/teams')
-      .then((res) => setTeams(res.teams))
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load teams'));
+    setRegistrationOpen(null);
+    apiFetch<{ open: boolean }>('/auth/registration')
+      .then((res) => setRegistrationOpen(res.open))
+      .catch(() => setRegistrationOpen(false));
   }, [mode]);
+
+  async function handleJoinCode(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!joinCode.trim()) {
+      setError('Enter the join code your instructor gave you');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await apiFetch<{ teams: Team[] }>('/auth/registration/teams', {
+        method: 'POST',
+        body: JSON.stringify({ joinCode }),
+      });
+      setTeams(res.teams);
+      setCodeAccepted(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not check the join code');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   function switchMode(next: 'signin' | 'register') {
     setMode(next);
     setError(null);
+    setCodeAccepted(false);
+    setTeams([]);
   }
 
   async function handleSignIn(e: FormEvent) {
@@ -80,7 +110,7 @@ export function LoginPage() {
     try {
       const res = await apiFetch<AuthResponse>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ teamId, username, password, displayName }),
+        body: JSON.stringify({ teamId, username, password, displayName, joinCode }),
       });
       setAuth(res.token, res.user);
       navigate('/');
@@ -90,6 +120,8 @@ export function LoginPage() {
       setSubmitting(false);
     }
   }
+
+  const showCredentials = mode === 'signin' || codeAccepted;
 
   return (
     <div
@@ -101,7 +133,7 @@ export function LoginPage() {
       }}
     >
       <form
-        onSubmit={mode === 'signin' ? handleSignIn : handleRegister}
+        onSubmit={mode === 'signin' ? handleSignIn : codeAccepted ? handleRegister : handleJoinCode}
         style={{
           width: 320,
           padding: 'var(--space-xl)',
@@ -164,7 +196,30 @@ export function LoginPage() {
           </button>
         </div>
 
-        {mode === 'register' && (
+        {mode === 'register' && registrationOpen === null && (
+          <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>Checking registration…</div>
+        )}
+        {mode === 'register' && registrationOpen === false && (
+          <div role="status" style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Self-registration is closed for this event. Ask your instructor for an account, or for the
+            join code once they open registration.
+          </div>
+        )}
+        {mode === 'register' && registrationOpen && !codeAccepted && (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Join code (from your instructor)</span>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              style={{ ...inputStyle, letterSpacing: '0.12em' }}
+            />
+          </label>
+        )}
+
+        {mode === 'register' && codeAccepted && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Team</span>
             <select
@@ -182,6 +237,8 @@ export function LoginPage() {
           </label>
         )}
 
+        {showCredentials && (
+        <>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Username</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus style={inputStyle} />
@@ -204,17 +261,27 @@ export function LoginPage() {
           </label>
         )}
 
-        {error && <div style={{ color: 'var(--signal-alert)', fontSize: 15 }}>{error}</div>}
+        </>
+        )}
 
-        <Button type="submit" disabled={submitting}>
-          {submitting
-            ? mode === 'signin'
-              ? 'Signing in…'
-              : 'Creating account…'
-            : mode === 'signin'
-              ? 'Sign in'
-              : 'Create account & join'}
-        </Button>
+        {error && <div role="alert" style={{ color: 'var(--signal-alert)', fontSize: 15 }}>{error}</div>}
+
+        {mode === 'register' && registrationOpen && !codeAccepted && (
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Checking…' : 'Continue'}
+          </Button>
+        )}
+        {showCredentials && (
+          <Button type="submit" disabled={submitting}>
+            {submitting
+              ? mode === 'signin'
+                ? 'Signing in…'
+                : 'Creating account…'
+              : mode === 'signin'
+                ? 'Sign in'
+                : 'Create account & join'}
+          </Button>
+        )}
       </form>
     </div>
   );

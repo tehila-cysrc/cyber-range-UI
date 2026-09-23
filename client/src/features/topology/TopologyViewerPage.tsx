@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
@@ -56,6 +56,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 export function TopologyViewerPage() {
   const [selectedNode, setSelectedNode] = useState<TopologyNodeData | null>(null);
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<ActiveAccessSession | null>(null);
   const [connectingNodeId, setConnectingNodeId] = useState<number | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -89,9 +90,25 @@ export function TopologyViewerPage() {
     onSettled: () => setConnectingNodeId(null),
   });
 
+  // Page refresh / navigating back: the link only ever lived in memory, so ask the server for this
+  // student's own session. The server re-checks authorization (expiry, active scenario, node still
+  // visible) and re-reads the link live from Bastion — anything no longer valid comes back null.
+  const { data: restoreData, isFetching: restoring } = useQuery({
+    queryKey: ['access-session-active', active?.cyberRangeId],
+    queryFn: () => apiFetch<{ session: ActiveAccessSession | null }>('/teams/me/access-sessions/active'),
+    enabled: !!active,
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (restoreData?.session) setSession((current) => current ?? restoreData.session);
+  }, [restoreData]);
+
   const disconnect = useMutation({
     mutationFn: (accessSessionId: number) => apiFetch(`/teams/me/access-sessions/${accessSessionId}/end`, { method: 'POST' }),
-    onSuccess: () => setSession(null),
+    onSuccess: () => {
+      setSession(null);
+      queryClient.invalidateQueries({ queryKey: ['access-session-active'] });
+    },
   });
 
   // The instructor's force-close and the server's expiry sweep both end the session server-side —
@@ -247,6 +264,9 @@ export function TopologyViewerPage() {
       )}
 
       {connectError && <div style={{ marginTop: 8, color: 'var(--signal-alert)', fontSize: 14 }}>{connectError}</div>}
+      {!session && restoring && (
+        <div style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: 14 }}>Checking for your open remote session…</div>
+      )}
       {session && <AccessSessionPanel session={session} onDisconnect={() => disconnect.mutate(session.accessSessionId)} disconnecting={disconnect.isPending} />}
     </div>
   );

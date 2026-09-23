@@ -2,6 +2,14 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { endActiveSessions } from '../services/accessBroker/accessBroker.service.js';
+import {
+  getActiveRunRegistration,
+  isRateLimited,
+  joinCodeMatches,
+  normalizeJoinCode,
+  recordFailure,
+} from '../services/registration.service.js';
 
 const router = Router();
 const TOKEN_TTL_HOURS = Number(process.env.TOKEN_TTL_HOURS ?? 12);
@@ -66,25 +74,49 @@ router.post('/login', (req, res) => {
   });
 });
 
-// Public roster for the registration team picker — names only, no member/account details.
-router.get('/teams', (_req, res) => {
-  const activeRun = db.prepare('SELECT id FROM event_runs WHERE is_active = 1').get() as
-    | { id: number }
-    | undefined;
-  if (!activeRun) {
-    res.status(409).json({ error: 'no active event run — ask an instructor to seed/reset the event' });
-    return;
-  }
+// Public: is self-registration open for this event? Reveals nothing else (no team names, no code).
+router.get('/registration', (_req, res) => {
+  const reg = getActiveRunRegistration();
+  res.json({ open: !!reg?.code });
+});
 
+// Validates a join code and, only if it's right, returns the team names for the picker. POST so the
+// code never lands in a URL / access log. Previously team names were public (GET /auth/teams).
+function checkJoinCode(req: import('express').Request, res: import('express').Response): boolean {
+  const ip = req.ip ?? 'unknown';
+  if (isRateLimited(ip)) {
+    res.status(429).json({ error: 'too many wrong join codes — wait a few minutes and try again' });
+    return false;
+  }
+  const reg = getActiveRunRegistration();
+  if (!reg) {
+    res.status(409).json({ error: 'no active event run — ask an instructor to seed/reset the event' });
+    return false;
+  }
+  if (!reg.code) {
+    res.status(403).json({ error: 'registration is closed — ask your instructor for an account or a join code', reason: 'registration_closed' });
+    return false;
+  }
+  if (!joinCodeMatches(reg.code, normalizeJoinCode(req.body?.joinCode))) {
+    recordFailure(ip);
+    res.status(403).json({ error: 'that join code is not valid for this event', reason: 'invalid_join_code' });
+    return false;
+  }
+  return true;
+}
+
+router.post('/registration/teams', (req, res) => {
+  if (!checkJoinCode(req, res)) return;
   const teams = db
     .prepare('SELECT id, name FROM teams WHERE event_run_id = ? ORDER BY sort_order')
-    .all(activeRun.id) as { id: number; name: string }[];
-
+    .all(getActiveRunRegistration()!.runId) as { id: number; name: string }[];
   res.json({ teams });
 });
 
-// Self-registration: instructors create teams, students pick one and create their own account.
+// Self-registration, gated by the instructor's join code (see registration.service.ts): only when the
+// instructor has opened registration for this event, and only with the code they handed out.
 router.post('/register', (req, res) => {
+  if (!checkJoinCode(req, res)) return;
   const { teamId, username, password, displayName } = req.body ?? {};
 
   if (typeof username !== 'string' || !username.trim()) {
@@ -155,6 +187,9 @@ router.post('/register', (req, res) => {
 
 router.post('/logout', requireAuth, (req, res) => {
   const token = req.headers.authorization!.slice(7);
+  // A signed-out user must not leave a live remote session (and its Bastion link) behind on a shared
+  // lab machine.
+  endActiveSessions({ userId: req.user!.id }, 'completed', req.user!.username, 'logout');
   db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
   res.json({ ok: true });
 });

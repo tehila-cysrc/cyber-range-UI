@@ -2,12 +2,20 @@ import { db } from '../../db/index.js';
 import { readCredentialPlaintext } from '../credential.service.js';
 import { readVmLoginSecret } from '../keyVaultCredential.service.js';
 import { getResolvedCredential } from '../environments.service.js';
-import { createShareableLink, deleteShareableLink } from './bastionConnect.service.js';
+import { createShareableLink, deleteShareableLink, deleteShareableLinks, listShareableLinks } from './bastionConnect.service.js';
 import { classifyAzureError } from '../azureErrors.js';
 import { writeAudit } from '../audit.service.js';
 import { emitAccessSessionEnded, emitAccessSessionStarted } from '../../sockets/emitters.js';
 
 const SESSION_TTL_MINUTES = Number(process.env.ACCESS_SESSION_TTL_MINUTES ?? 15);
+
+// Set for the whole duration of an event-reset job: between its revoke step and its wipe (minutes, when
+// Bastion is busy) a newly created link would survive the reset, so no new session may start meanwhile.
+let remoteAccessFrozen = false;
+export function setRemoteAccessFrozen(frozen: boolean) {
+  remoteAccessFrozen = frozen;
+}
+const FROZEN_MESSAGE = 'remote access is paused while the instructor resets the event';
 
 export type RequestOutcome =
   | { ok: true; accessSessionId: number; shareableLinkUrl: string; expiresAt: string }
@@ -32,6 +40,10 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
   const activeProgress = db
     .prepare(`SELECT cyber_range_id AS cyberRangeId FROM team_cyber_range_progress WHERE team_id = ? AND status = 'active' LIMIT 1`)
     .get(user.teamId) as { cyberRangeId: number } | undefined;
+
+  if (remoteAccessFrozen) {
+    return { ok: false, status: 409, reason: 'reset_in_progress', message: FROZEN_MESSAGE };
+  }
 
   if (!activeProgress) {
     writeAudit(user.username, 'access_session.denied', 'topology_node', topologyNodeId, { reason: 'no_active_range', teamId: user.teamId });
@@ -103,6 +115,7 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
     const link = await createShareableLink(credential, node.bastionHostId, node.externalKey);
     shareableLinkUrl = link.url;
   } catch (err) {
+    console.error('[accessBroker] createShareableLink failed:', (err as Error).message.slice(0, 300));
     const { message } = classifyAzureError(err);
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'bastion_error', 502, message);
   }
@@ -149,6 +162,9 @@ export async function requestInstructorAccessSession(
 
   if (!node) {
     return { ok: false, status: 404, reason: 'node_not_found', message: 'this node does not exist' };
+  }
+  if (remoteAccessFrozen) {
+    return { ok: false, status: 409, reason: 'reset_in_progress', message: FROZEN_MESSAGE };
   }
 
   const target = db
@@ -318,9 +334,14 @@ export function expireSession(accessSessionId: number, teamId: number | null): v
   writeAudit(null, 'access_session.ended', 'access_session', accessSessionId, { outcome: 'expired' });
 }
 
-function finishSession(accessSessionId: number, teamId: number | null, outcome: 'completed' | 'force_closed' | 'expired') {
+function finishSession(
+  accessSessionId: number,
+  teamId: number | null,
+  outcome: 'completed' | 'force_closed' | 'expired',
+  { cleanupLink = true }: { cleanupLink?: boolean } = {},
+) {
   db.prepare(`UPDATE access_sessions SET outcome = ?, ended_at = ? WHERE id = ?`).run(outcome, new Date().toISOString(), accessSessionId);
-  void cleanupShareableLink(accessSessionId);
+  if (cleanupLink) void cleanupShareableLink(accessSessionId);
   emitAccessSessionEnded(teamId, accessSessionId, outcome);
 }
 
@@ -329,6 +350,18 @@ function finishSession(accessSessionId: number, teamId: number | null, outcome: 
 // docs already tell you a link keeps failing quietly once its target is gone, so a failure here is
 // logged, never allowed to block session-end or surface to the caller.
 async function cleanupShareableLink(accessSessionId: number): Promise<void> {
+  // Bastion keeps one link per VM, shared by every session on it — if someone else (a teammate, or
+  // the instructor) still has an active session on this node, deleting the link would cut them off.
+  // The last session to end on a node is the one that revokes it. (Evaluated synchronously, before
+  // the first await, so a caller that deletes rows right after calling this still sees them.)
+  const othersActive = db
+    .prepare(
+      `SELECT 1 FROM access_sessions o JOIN access_sessions s ON s.topology_node_id = o.topology_node_id
+       WHERE s.id = ? AND o.id != s.id AND o.outcome = 'active' LIMIT 1`,
+    )
+    .get(accessSessionId);
+  if (othersActive) return;
+
   const row = db
     .prepare(
       `SELECT tn.external_key AS externalKey, tn.environment_id AS environmentId, ce.bastion_host_id AS bastionHostId
@@ -375,4 +408,193 @@ export function listActiveSessions(): ActiveSessionSummary[] {
        ORDER BY s.started_at DESC`,
     )
     .all() as unknown as ActiveSessionSummary[];
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Session lifecycle hooks (2026-09-23): a remote session must not outlive the authorization it was
+// granted under. Called on logout, scenario switch/completion, team/user removal and event reset.
+// ---------------------------------------------------------------------------------------------------
+
+interface EndFilter {
+  teamId?: number;
+  userId?: number;
+  // Scenario switch: sessions on the (still-)active range stay valid, everything else ends.
+  exceptCyberRangeId?: number;
+  all?: boolean;
+  // Event reset / revoke-all: revokeAllShareableLinks() does the (serialized) link cleanup itself —
+  // a per-session delete racing it would just collide on the Bastion host (409).
+  skipLinkCleanup?: boolean;
+}
+
+export function endActiveSessions(
+  filter: EndFilter,
+  outcome: 'completed' | 'force_closed',
+  actorUsername: string | null,
+  reason: string,
+): number {
+  const where: string[] = ["outcome = 'active'"];
+  const params: (number | string)[] = [];
+  if (filter.teamId != null) {
+    where.push('team_id = ?');
+    params.push(filter.teamId);
+  }
+  if (filter.userId != null) {
+    where.push('user_id = ?');
+    params.push(filter.userId);
+  }
+  if (filter.exceptCyberRangeId != null) {
+    where.push('cyber_range_id != ?');
+    params.push(filter.exceptCyberRangeId);
+  }
+  if (!filter.all && filter.teamId == null && filter.userId == null) return 0;
+
+  const rows = db
+    .prepare(`SELECT id, team_id AS teamId FROM access_sessions WHERE ${where.join(' AND ')}`)
+    .all(...params) as { id: number; teamId: number | null }[];
+  for (const r of rows) {
+    finishSession(r.id, r.teamId, outcome, { cleanupLink: !filter.skipLinkCleanup });
+    writeAudit(actorUsername, 'access_session.ended', 'access_session', r.id, { outcome, reason });
+  }
+  return rows.length;
+}
+
+export interface RestoredSession {
+  accessSessionId: number;
+  shareableLinkUrl: string;
+  expiresAt: string;
+  topologyNodeId: number;
+  nodeLabel: string;
+  protocol: string;
+}
+
+// After a page refresh the client has lost the link (it's only ever held in memory). This hands back
+// the caller's OWN still-active session — but only after re-checking every condition the original
+// request was granted under, since any of them may have changed since: the session hasn't expired,
+// the node is still in the team's currently-active range and still visible to students, and it still
+// has an access target. The link itself is re-read live from Bastion (never stored in our DB); if it's
+// gone (revoked, or deleted by Azure), the session is ended rather than handed back half-alive.
+export async function restoreOwnSession(user: RequestingUser): Promise<RestoredSession | null> {
+  const s = db
+    .prepare(
+      `SELECT s.id AS id, s.cyber_range_id AS cyberRangeId, s.topology_node_id AS topologyNodeId, s.protocol AS protocol,
+              s.expires_at AS expiresAt, tn.label AS nodeLabel, tn.cyber_range_id AS nodeRangeId,
+              tn.is_visible_to_students AS visible, tn.external_key AS externalKey, tn.environment_id AS environmentId,
+              ce.bastion_host_id AS bastionHostId, (at.id IS NOT NULL) AS hasTarget
+       FROM access_sessions s
+       JOIN topology_nodes tn ON tn.id = s.topology_node_id
+       LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       LEFT JOIN access_targets at ON at.topology_node_id = tn.id
+       WHERE s.user_id = ? AND s.team_id = ? AND s.outcome = 'active'
+       ORDER BY s.started_at DESC LIMIT 1`,
+    )
+    .get(user.id, user.teamId) as
+    | {
+        id: number; cyberRangeId: number; topologyNodeId: number; protocol: string; expiresAt: string; nodeLabel: string;
+        nodeRangeId: number; visible: number; externalKey: string; environmentId: number | null; bastionHostId: string | null; hasTarget: number;
+      }
+    | undefined;
+  if (!s) return null;
+
+  if (new Date(s.expiresAt).getTime() <= Date.now()) {
+    expireSession(s.id, user.teamId);
+    return null;
+  }
+
+  const activeRange = db
+    .prepare(`SELECT cyber_range_id AS cyberRangeId FROM team_cyber_range_progress WHERE team_id = ? AND status = 'active' LIMIT 1`)
+    .get(user.teamId) as { cyberRangeId: number } | undefined;
+  const stillAuthorized =
+    !!activeRange &&
+    activeRange.cyberRangeId === s.cyberRangeId &&
+    s.nodeRangeId === s.cyberRangeId &&
+    s.visible === 1 &&
+    s.hasTarget === 1 &&
+    !!s.environmentId &&
+    !!s.bastionHostId;
+  if (!stillAuthorized) {
+    finishSession(s.id, user.teamId, 'force_closed');
+    writeAudit(user.username, 'access_session.ended', 'access_session', s.id, { outcome: 'force_closed', reason: 'no_longer_authorized_on_restore' });
+    return null;
+  }
+
+  const credential = getResolvedCredential(s.environmentId!);
+  if (!credential) return null;
+  let url: string | undefined;
+  try {
+    const links = await listShareableLinks(credential, s.bastionHostId!, [s.externalKey]);
+    url = links.find((l) => l.vmId.toLowerCase() === s.externalKey.toLowerCase())?.url;
+  } catch (err) {
+    // Transient Azure failure: don't end a valid session over it — the client can simply retry.
+    console.error('[accessBroker] restore: could not read shareable link:', (err as Error).message);
+    return null;
+  }
+  if (!url) {
+    finishSession(s.id, user.teamId, 'completed');
+    writeAudit(user.username, 'access_session.ended', 'access_session', s.id, { outcome: 'completed', reason: 'link_gone_on_restore' });
+    return null;
+  }
+
+  writeAudit(user.username, 'access_session.restored', 'access_session', s.id, null);
+  return { accessSessionId: s.id, shareableLinkUrl: url, expiresAt: s.expiresAt, topologyNodeId: s.topologyNodeId, nodeLabel: s.nodeLabel, protocol: s.protocol };
+}
+
+export interface EnvironmentRevocation {
+  environmentId: number;
+  environmentName: string;
+  vmCount: number;
+  remaining: string[]; // VM labels that still had a live link after revocation
+  error: string | null;
+}
+
+// Event reset: revoke EVERY shareable link on every registered environment's VMs — not only the ones
+// with a currently-active session row. A link can outlive its session (a best-effort cleanup that
+// failed, a link made outside this app, a session row already wiped), and a student from the previous
+// event already saw the VM credential via "Show", so a surviving link would be a working way back in.
+// Then re-reads Bastion per VM to VERIFY nothing is left; `ok` is true only if that check passes.
+export async function revokeAllShareableLinks(
+  { busyBudgetMs }: { busyBudgetMs?: number } = {},
+): Promise<{ ok: boolean; environments: EnvironmentRevocation[] }> {
+  const envs = db
+    .prepare('SELECT id, name, bastion_host_id AS bastionHostId FROM cloud_environments WHERE bastion_host_id IS NOT NULL')
+    .all() as { id: number; name: string; bastionHostId: string }[];
+
+  const environments: EnvironmentRevocation[] = [];
+  for (const env of envs) {
+    const vms = db
+      .prepare(`SELECT external_key AS id, label FROM topology_nodes WHERE environment_id = ? AND node_type = 'vm'`)
+      .all(env.id) as { id: string; label: string }[];
+    const result: EnvironmentRevocation = { environmentId: env.id, environmentName: env.name, vmCount: vms.length, remaining: [], error: null };
+    const credential = getResolvedCredential(env.id);
+    if (!credential) {
+      result.error = 'no usable credential for this environment';
+      result.remaining = vms.map((v) => v.label);
+      environments.push(result);
+      continue;
+    }
+    try {
+      // Strictly sequential, one batched call at a time: a Bastion host rejects concurrent link
+      // operations (409 AnotherOperationInProgress — parallel per-VM deletes failed live), and
+      // environments are walked one after another since several can share the same Bastion host.
+      const labelFor = (vmId: string) => vms.find((v) => v.id.toLowerCase() === vmId.toLowerCase())?.label ?? vmId;
+      const vmIds = vms.map((v) => v.id);
+      let live = await listShareableLinks(credential, env.bastionHostId, vmIds, busyBudgetMs);
+      if (live.length > 0) {
+        await deleteShareableLinks(credential, env.bastionHostId, live.map((l) => l.vmId), busyBudgetMs);
+      }
+      // Deletion is asynchronous on Azure's side (202) — poll until Bastion really reports no links
+      // (or ~60s pass) before reporting anything as still live. Each read itself waits out a busy host.
+      for (let attempt = 0; attempt < 12 && live.length > 0; attempt++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        live = await listShareableLinks(credential, env.bastionHostId, vmIds, busyBudgetMs);
+      }
+      result.remaining = live.map((l) => labelFor(l.vmId));
+    } catch (err) {
+      console.error(`[accessBroker] revoke-all failed for environment ${env.id}:`, (err as Error).message.slice(0, 300));
+      result.error = classifyAzureError(err).message;
+    }
+    environments.push(result);
+  }
+
+  const ok = environments.every((e) => e.error === null && e.remaining.length === 0);
+  return { ok, environments };
 }

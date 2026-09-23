@@ -3,13 +3,15 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { getActiveEventRunId } from '../../db/seed.js';
+import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
 // Manual account creation for the current event run — mainly for additional instructor accounts
-// or one-off overrides. Students normally self-register via POST /api/auth/register.
+// or one-off overrides. Students can also self-register via POST /api/auth/register, but only while the
+// instructor has opened registration with a join code (Roster page — see registration.service.ts).
 router.post('/users', (req, res) => {
   const { username, password, role, teamId, displayName } = req.body ?? {};
 
@@ -66,6 +68,8 @@ router.delete('/users/:id', (req, res) => {
     res.status(400).json({ error: "you can't remove your own account while signed in with it" });
     return;
   }
+  // A removed account's live remote session would otherwise keep its Bastion link after the cascade.
+  endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_deleted');
   try {
     const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
     if (result.changes === 0) {

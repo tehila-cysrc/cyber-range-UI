@@ -17,7 +17,7 @@ import adminScoringRoutes from './routes/admin/scoring.routes.js';
 import adminScoringConfigRoutes from './routes/admin/scoringConfig.routes.js';
 import leaderboardRoutes from './routes/leaderboard.routes.js';
 import historyRoutes from './routes/history.routes.js';
-import adminEventRoutes from './routes/admin/event.routes.js';
+import adminEventRoutes, { resetJobsPublicRouter } from './routes/admin/event.routes.js';
 import adminUsersRoutes from './routes/admin/users.routes.js';
 import adminEnvironmentsRoutes from './routes/admin/environments.routes.js';
 import accessSessionsRoutes from './routes/accessSessions.routes.js';
@@ -38,6 +38,8 @@ export function createApp() {
   });
 
   app.use('/api/auth', authRoutes);
+  // Before every router that applies requireAuth globally: the reset job deletes its own caller's token.
+  app.use('/api/event-reset-jobs', resetJobsPublicRouter);
   app.use('/api/teams', teamsRoutes);
   app.use('/api', documentationRoutes);
   app.use('/api', investigationCanvasRoutes);

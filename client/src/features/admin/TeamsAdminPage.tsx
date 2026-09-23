@@ -33,6 +33,17 @@ export function TeamsAdminPage() {
     queryFn: () => apiFetch<{ teams: TeamWithMembers[] }>('/admin/teams'),
   });
 
+  // Student self-registration is closed unless opened here; opening issues a fresh join code.
+  const { data: registration } = useQuery({
+    queryKey: ['admin-registration'],
+    queryFn: () => apiFetch<{ open: boolean; joinCode: string | null }>('/admin/registration'),
+  });
+  const setRegistration = useMutation({
+    mutationFn: (open: boolean) =>
+      apiFetch<{ open: boolean; joinCode: string | null }>('/admin/registration', { method: 'PUT', body: JSON.stringify({ open }) }),
+    onSuccess: (res) => queryClient.setQueryData(['admin-registration'], res),
+  });
+
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
   }
@@ -169,6 +180,57 @@ export function TeamsAdminPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+        <section
+          aria-label="Student self-registration"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-sm)',
+            padding: 'var(--space-md)',
+            border: `1px solid ${registration?.open ? 'var(--signal-primary)' : 'var(--surface-border)'}`,
+            borderRadius: 'var(--radius-container)',
+            background: 'var(--surface-1)',
+          }}
+        >
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Student self-registration</h2>
+          {registration?.open ? (
+            <>
+              <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+                Open — students can create their own account with this code (Register tab on the login page):
+              </div>
+              <div
+                className="tabular"
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 26, letterSpacing: '0.16em', color: 'var(--signal-primary)' }}
+              >
+                {registration.joinCode}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                <Button
+                  variant="ghost"
+                  disabled={setRegistration.isPending}
+                  onClick={() => {
+                    if (window.confirm('Issue a new join code? The current code stops working immediately.')) setRegistration.mutate(true);
+                  }}
+                >
+                  New code
+                </Button>
+                <Button variant="destructive" disabled={setRegistration.isPending} onClick={() => setRegistration.mutate(false)}>
+                  Close registration
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+                Closed — only accounts you create below can sign in. Open it to hand out a join code instead.
+              </div>
+              <Button variant="ghost" disabled={setRegistration.isPending || !registration} onClick={() => setRegistration.mutate(true)}>
+                Open registration
+              </Button>
+            </>
+          )}
+        </section>
+
         <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New team</h2>
           <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" aria-label="Team name" style={inputStyle} />
