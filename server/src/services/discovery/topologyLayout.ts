@@ -105,7 +105,10 @@ interface ZoneOccupancy {
 export class TopologyLayoutPlanner {
   private occupancy = new Map<number | null, ZoneOccupancy>();
 
-  constructor(cyberRangeId: number) {
+  // `fromScratch` ignores every node's current position — used by the instructor's explicit
+  // "Auto-arrange" action, which re-lays-out a whole range rather than slotting in around what's there.
+  constructor(cyberRangeId: number, { fromScratch = false }: { fromScratch?: boolean } = {}) {
+    if (fromScratch) return;
     const rows = db
       .prepare(
         `SELECT zone_id AS zoneId, MIN(pos_x) AS minX, MIN(pos_y) AS minY, COUNT(*) AS count

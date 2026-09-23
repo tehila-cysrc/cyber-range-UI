@@ -117,6 +117,56 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =
   res.json({ ok: true });
 });
 
+// Instructor-triggered "Auto-arrange": re-lays-out every node in the range on the same deterministic
+// grid discovery/manual-add use, discarding manual drag positions (the UI confirms first). Zones are
+// packed in sort order, unzoned nodes last; within a zone, student-visible hosts take the first grid
+// slots and hidden infrastructure (NICs/NSGs/...) follows, so the default logical view stays compact
+// with no gaps when the infrastructure overlay is off.
+router.post('/cyber-ranges/:cyberRangeId/topology/auto-layout', (req, res) => {
+  const cyberRangeId = Number(req.params.cyberRangeId);
+
+  const zones = db
+    .prepare('SELECT id FROM topology_zones WHERE cyber_range_id = ? ORDER BY sort_order, id')
+    .all(cyberRangeId) as { id: number }[];
+  const nodes = db
+    .prepare(
+      `SELECT id, zone_id AS zoneId FROM topology_nodes WHERE cyber_range_id = ?
+       ORDER BY is_visible_to_students DESC, COALESCE(role, '') = '', role, label COLLATE NOCASE, id`,
+    )
+    .all(cyberRangeId) as { id: number; zoneId: number | null }[];
+
+  const groups = new Map<number | null, number[]>();
+  for (const zone of zones) groups.set(zone.id, []);
+  for (const node of nodes) {
+    const key = node.zoneId != null && groups.has(node.zoneId) ? node.zoneId : null;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(node.id);
+  }
+  // Map preserves insertion order, but the unzoned pool may have been inserted mid-way — force it last.
+  const unzoned = groups.get(null);
+  groups.delete(null);
+  if (unzoned) groups.set(null, unzoned);
+
+  const planner = new TopologyLayoutPlanner(cyberRangeId, { fromScratch: true });
+  const update = db.prepare('UPDATE topology_nodes SET pos_x = ?, pos_y = ? WHERE id = ?');
+  db.exec('BEGIN');
+  try {
+    for (const [zoneId, memberIds] of groups) {
+      for (const nodeId of memberIds) {
+        const pos = planner.nextPosition(zoneId, memberIds.length);
+        update.run(pos.x, pos.y, nodeId);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  writeAudit(req.user!.username, 'topology.auto_layout', 'cyber_range', cyberRangeId, { nodeCount: nodes.length });
+  res.json({ ok: true, nodeCount: nodes.length });
+});
+
 // Access target config (Phase 4, now Bastion Shareable Link + Key Vault-backed — Phase 2). Makes a
 // node connectable: stores the VM's login credential in the environment's Key Vault (never locally)
 // and derives protocol/host from the node's own discovered metadata rather than trusting instructor

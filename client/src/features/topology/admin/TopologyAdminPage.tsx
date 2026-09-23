@@ -66,6 +66,8 @@ export function TopologyAdminPage() {
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
+  // Bumped after Auto-arrange so the graph remounts and re-runs fitView on the new positions.
+  const [layoutVersion, setLayoutVersion] = useState(0);
 
   const [newNodeLabel, setNewNodeLabel] = useState('');
   const [newNodeRole, setNewNodeRole] = useState('');
@@ -167,6 +169,15 @@ export function TopologyAdminPage() {
     },
   });
 
+  const autoLayout = useMutation({
+    mutationFn: () => apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/auto-layout`, { method: 'POST' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
+      setLayoutVersion((v) => v + 1);
+    },
+    onError: (err) => window.alert(err instanceof Error ? err.message : 'Could not auto-arrange this topology'),
+  });
+
   const connectMutation = useMutation({
     mutationFn: (params: { fromNodeId?: number; toNodeId?: number; fromZoneId?: number; toZoneId?: number }) =>
       apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/edges`, { method: 'POST', body: JSON.stringify(params) }),
@@ -205,12 +216,29 @@ export function TopologyAdminPage() {
             Show infrastructure resources (diagnostics only)
           </label>
         )}
+
+        {cyberRangeId !== '' && allNodes.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            style={{ marginLeft: 'auto', fontSize: 13, padding: '6px 12px' }}
+            disabled={autoLayout.isPending}
+            onClick={() => {
+              if (window.confirm('Auto-arrange every node into a clean grid by zone? Manually dragged positions will be replaced.')) {
+                autoLayout.mutate();
+              }
+            }}
+          >
+            {autoLayout.isPending ? 'Arranging…' : 'Auto-arrange'}
+          </Button>
+        )}
       </div>
 
       {cyberRangeId !== '' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: selection ? '1fr 300px' : '1fr', gap: 'var(--space-xl)' }}>
             <TopologyGraph
+              key={`${cyberRangeId}:${layoutVersion}`}
               zones={allZones}
               nodes={visibleNodes}
               edges={topologyData?.edges ?? []}
