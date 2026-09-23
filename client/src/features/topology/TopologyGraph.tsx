@@ -244,7 +244,16 @@ export function TopologyGraph({
   }, [edges, renderedIds]);
 
   return (
-    <div style={{ position: 'relative', height: 520, background: 'var(--surface-floor)', borderRadius: 'var(--radius-container)' }}>
+    <div
+      style={{
+        position: 'relative',
+        height: 'clamp(520px, 68vh, 860px)',
+        background: 'var(--surface-floor)',
+        border: '1px solid var(--surface-border)',
+        borderRadius: 'var(--radius-container)',
+        overflow: 'hidden',
+      }}
+    >
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -273,13 +282,18 @@ export function TopologyGraph({
         }}
         onPaneClick={() => onPaneClick?.()}
         fitView
+        // React Flow's default minZoom (0.5) stops fitView short on a spread-out layout, leaving
+        // hosts clipped outside the viewport — allow zooming out far enough to show everything.
+        fitViewOptions={{ padding: 0.12 }}
+        minZoom={0.1}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="var(--surface-border)" gap={24} />
         <Controls showInteractive={false} />
       </ReactFlow>
 
-      <div style={{ position: 'absolute', bottom: 12, left: 12 }}>
+      {/* Bottom-right so it doesn't sit on top of React Flow's bottom-left zoom/fit controls. */}
+      <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 5, display: 'flex', flexDirection: 'column-reverse', alignItems: 'flex-end' }}>
         <button
           onClick={() => setLegendOpen((v) => !v)}
           style={{
@@ -298,7 +312,7 @@ export function TopologyGraph({
         {legendOpen && (
           <div
             style={{
-              marginTop: 6,
+              marginBottom: 6,
               background: 'var(--surface-1)',
               border: '1px solid var(--surface-border)',
               borderRadius: 'var(--radius-container)',

@@ -471,15 +471,20 @@ function Timeline({ entries }: { entries: DocEntry[] | undefined }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: entry.isImportantFinding ? 'var(--signal-primary)' : 'transparent',
-                border: `1.5px solid ${entry.isImportantFinding ? 'var(--signal-primary)' : 'var(--surface-border)'}`,
+                border: `1.5px solid ${entry.isImportantFinding ? 'var(--signal-primary)' : 'var(--surface-border-strong)'}`,
                 color: 'var(--surface-floor)',
                 flexShrink: 0,
+                marginTop: 10,
               }}
             >
-              {entry.isImportantFinding && <FlagIcon width={11} height={11} />}
+              {entry.isImportantFinding ? (
+                <FlagIcon width={11} height={11} />
+              ) : (
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-telemetry)' }} />
+              )}
             </span>
             {i < entries.length - 1 && (
-              <span style={{ width: 1.5, flex: 1, minHeight: 'var(--space-md)', background: 'var(--surface-border)' }} />
+              <span style={{ width: 1.5, flex: 1, minHeight: 'var(--space-md)', background: 'var(--surface-border-strong)' }} />
             )}
           </div>
           <div style={{ flex: 1, paddingBottom: 'var(--space-lg)', minWidth: 0 }}>

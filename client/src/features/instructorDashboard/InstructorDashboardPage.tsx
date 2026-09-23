@@ -47,6 +47,7 @@ interface ActiveAccessSession {
 
 function formatRemaining(seconds: number | null) {
   if (seconds == null) return '—';
+  if (seconds <= 0) return "Time's up";
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
@@ -240,7 +241,14 @@ export function InstructorDashboardPage() {
                 <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
                   {team.active.dayLabel} — {team.active.name} ({team.active.difficulty})
                 </div>
-                <div className="tabular" style={{ fontSize: 18, color: 'var(--signal-primary)' }}>
+                <div
+                  className="tabular"
+                  style={{
+                    fontSize: 18,
+                    // Same expired treatment as the student's own mission-window clock.
+                    color: team.active.remainingSeconds != null && team.active.remainingSeconds <= 0 ? 'var(--signal-alert)' : 'var(--signal-primary)',
+                  }}
+                >
                   {formatRemaining(team.active.remainingSeconds)}
                 </div>
               </>
