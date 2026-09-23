@@ -65,9 +65,12 @@ CREATE TABLE IF NOT EXISTS scores (
   cyber_range_id INTEGER REFERENCES cyber_ranges(id),
   points INTEGER NOT NULL,
   is_gamified INTEGER NOT NULL DEFAULT 0,
-  awarded_by_user_id INTEGER NOT NULL REFERENCES users(id),
+  -- NULL = a system award (source = 'ttp', an auto-credited ATT&CK detection) — see migrate.ts's
+  -- relaxScoresForTtpAwards for why this was originally NOT NULL.
+  awarded_by_user_id INTEGER REFERENCES users(id),
   note TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'ttp'))
 );
 
 CREATE TABLE IF NOT EXISTS help_requests (
@@ -177,3 +180,73 @@ CREATE TABLE IF NOT EXISTS script_executions (
 -- constraint on a VM — same DB-enforced single-flight pattern as idx_one_active_discovery_run.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_running_script_per_node
   ON script_executions (topology_node_id) WHERE status = 'running';
+
+-- MITRE ATT&CK tagging + scoring (see the MITRE TTP plan / CLAUDE/db.md). All three tables are RUN:
+-- they cascade away on event reset while the expected-TTP definitions (CONFIG) survive.
+
+-- A student's optional technique tag on a Timeline entry. Soft-removed (removed_at) rather than
+-- deleted, so the tag history survives un-tagging: incorrect associations can't be hidden, and the
+-- anti-guessing budget counts every distinct technique a team ever tried. team_id/cyber_range_id are
+-- denormalized off the entry, same precedent as investigation_canvas_edges.
+CREATE TABLE IF NOT EXISTS documentation_entry_ttps (
+  id INTEGER PRIMARY KEY,
+  documentation_entry_id INTEGER NOT NULL REFERENCES documentation_entries(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  technique_id TEXT NOT NULL,
+  tagged_by_user_id INTEGER NOT NULL REFERENCES users(id),
+  tagged_at TEXT NOT NULL,
+  removed_at TEXT,
+  removed_by_user_id INTEGER REFERENCES users(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_ttps_one_active_per_technique
+  ON documentation_entry_ttps (documentation_entry_id, technique_id) WHERE removed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_entry_ttps_team_range ON documentation_entry_ttps (team_id, cyber_range_id);
+
+-- When an expected technique actually happened in the range — recorded automatically when its
+-- trigger script succeeds (script_executions) or manually by the instructor ("Mark occurred", e.g. for
+-- the external AI Agent Simulator). Per scenario, not per team: every team on the range shares its
+-- environment. Feeds MTTD ONLY — recording an occurrence never creates, changes or gates a credit.
+-- event_run_id gives manual rows a cascade path on reset (script-backed rows also cascade via
+-- script_executions).
+CREATE TABLE IF NOT EXISTS ttp_occurrences (
+  id INTEGER PRIMARY KEY,
+  event_run_id INTEGER NOT NULL REFERENCES event_runs(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  expected_ttp_id INTEGER NOT NULL REFERENCES cyber_range_expected_ttps(id),
+  occurred_at TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('script_execution', 'manual')),
+  script_execution_id INTEGER REFERENCES script_executions(id) ON DELETE CASCADE,
+  recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ttp_occurrences_expected ON ttp_occurrences (expected_ttp_id);
+
+-- The credit record: a team correctly identified an expected technique. Persisted (not derived from
+-- tags) because a credit is locked once awarded — live feedback already told the team they scored,
+-- and later tag edits must not move points or the detection time. points_awarded is a snapshot, so an
+-- instructor editing the expectation's points later never rewrites history. The paired scores row
+-- (source='ttp') is what the leaderboard/totals actually sum.
+CREATE TABLE IF NOT EXISTS ttp_detections (
+  id INTEGER PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id),
+  expected_ttp_id INTEGER NOT NULL REFERENCES cyber_range_expected_ttps(id),
+  documentation_entry_ttp_id INTEGER REFERENCES documentation_entry_ttps(id) ON DELETE SET NULL,
+  documentation_entry_id INTEGER REFERENCES documentation_entries(id) ON DELETE SET NULL,
+  credited_user_id INTEGER REFERENCES users(id),
+  detected_at TEXT NOT NULL,
+  points_awarded INTEGER NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('auto', 'instructor')),
+  status TEXT NOT NULL CHECK (status IN ('credited', 'voided')) DEFAULT 'credited',
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id),
+  void_reason TEXT,
+  score_id INTEGER REFERENCES scores(id) ON DELETE SET NULL,
+  created_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+-- DB-enforced "a technique awards its points once per team" — replays, races and duplicate tags all
+-- land on this constraint rather than double-awarding.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ttp_detections_one_credit
+  ON ttp_detections (team_id, cyber_range_id, expected_ttp_id) WHERE status = 'credited';

@@ -25,6 +25,7 @@ import adminAccessSessionsRoutes from './routes/admin/accessSessions.routes.js';
 import adminAuditLogRoutes from './routes/admin/auditLog.routes.js';
 import adminCyberRangesRoutes from './routes/admin/cyberRanges.routes.js';
 import adminScriptsRoutes from './routes/admin/scripts.routes.js';
+import mitreRoutes from './routes/mitre.routes.js';
 
 export function createApp() {
   const app = express();
@@ -62,6 +63,7 @@ export function createApp() {
   app.use('/api/admin', adminAuditLogRoutes);
   app.use('/api/admin', adminCyberRangesRoutes);
   app.use('/api/admin', adminScriptsRoutes);
+  app.use('/api', mitreRoutes);
 
   // Express's default handler answers an unhandled throw (e.g. a FOREIGN KEY failure) with an HTML
   // page containing the full stack trace and absolute server paths — never send that to a client.
