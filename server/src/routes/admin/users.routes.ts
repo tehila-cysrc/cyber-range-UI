@@ -62,6 +62,46 @@ router.post('/users', (req, res) => {
   }
 });
 
+// Move a student to another team (UX audit UX-10) — self-registered students pick their own team and
+// a mistake used to be unfixable. Their past timeline entries, canvas items and scores stay with the old
+// team (they're the team's investigation record). Remote sessions end and their tokens are revoked: a
+// socket's team room is fixed at sign-in, so they must sign in again to join the new team's room.
+router.patch('/users/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const teamId = Number(req.body?.teamId);
+  const user = db.prepare('SELECT id, role, team_id AS teamId FROM users WHERE id = ?').get(id) as
+    | { id: number; role: string; teamId: number | null }
+    | undefined;
+  if (!user) {
+    res.status(404).json({ error: 'user not found' });
+    return;
+  }
+  if (user.role !== 'student') {
+    res.status(400).json({ error: 'only student accounts belong to a team' });
+    return;
+  }
+  const team = db.prepare('SELECT id FROM teams WHERE id = ? AND event_run_id = ?').get(teamId, getActiveEventRunId());
+  if (!team) {
+    res.status(400).json({ error: 'teamId must be a team in the current event' });
+    return;
+  }
+  if (user.teamId === teamId) {
+    res.json({ ok: true, unchanged: true });
+    return;
+  }
+  endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_moved');
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE users SET team_id = ? WHERE id = ?').run(teamId, id);
+    db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  res.json({ ok: true });
+});
+
 router.delete('/users/:id', (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user!.id) {

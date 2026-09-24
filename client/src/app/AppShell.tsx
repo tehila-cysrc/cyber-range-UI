@@ -7,10 +7,12 @@ import { disconnectSocket, getSocket } from '../lib/socketClient';
 import { apiFetch } from '../lib/apiClient';
 import { useSocketEvent } from '../hooks/useSocketEvent';
 import { Toaster } from '../components/Toaster';
+import { ConfirmDialogHost } from '../components/ConfirmDialog';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
+import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
 import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
 import logoUrl from '../assets/company-logo.svg';
 import appIconUrl from '../assets/app-icon.svg';
@@ -333,6 +335,7 @@ export function AppShell() {
             ))}
         </div>
 
+        {isStudent && activeRange?.active && <HeaderRemoteSession />}
         {isStudent && <MissionClockBadge />}
         {isStudent && activeRange?.active && <HeaderHelp />}
 
@@ -358,6 +361,7 @@ export function AppShell() {
 
       <GamifiedEffects />
       <Toaster />
+      <ConfirmDialogHost />
     </div>
   );
 }

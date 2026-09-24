@@ -117,8 +117,9 @@ export function InvestigationPage() {
       },
       { replace: true },
     );
-  const [categoryId, setCategoryId] = useState<number | ''>('');
-  const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  // One field for the category: pick a suggestion or type a new one (it used to be a dropdown plus a
+  // separate "…or type a new category" box for the same value).
+  const [categoryText, setCategoryText] = useState('');
   const [isImportant, setIsImportant] = useState(false);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -169,6 +170,9 @@ export function InvestigationPage() {
     queryFn: () => apiFetch<{ categories: Category[] }>('/documentation-categories'),
     enabled: !isInstructor,
   });
+  const matchedCategory = categoriesData?.categories.find(
+    (c) => c.label.toLowerCase() === categoryText.trim().toLowerCase() || c.key.toLowerCase() === categoryText.trim().toLowerCase(),
+  );
 
   const { data: entriesData } = useQuery({
     enabled: !!cyberRangeId && (!isInstructor || !!teamIdParam),
@@ -187,8 +191,8 @@ export function InvestigationPage() {
         method: 'POST',
         body: JSON.stringify({
           body,
-          categoryId: categoryId === '' ? null : categoryId,
-          newCategoryLabel: newCategoryLabel.trim() || undefined,
+          categoryId: matchedCategory?.id ?? null,
+          newCategoryLabel: !matchedCategory && categoryText.trim() ? categoryText.trim() : undefined,
           isImportantFinding: isImportant,
           imageDataUrl: imageDataUrl ?? undefined,
           techniqueIds: techniqueIds.length ? techniqueIds : undefined,
@@ -198,13 +202,12 @@ export function InvestigationPage() {
       if (cyberRangeId) clearDraft(cyberRangeId);
       setTechniqueIds([]);
       setIsImportant(false);
-      setCategoryId('');
-      setNewCategoryLabel('');
+      setCategoryText('');
       setImageDataUrl(null);
       setImageError(null);
       queryClient.invalidateQueries({ queryKey: ['documentation', cyberRangeId, teamIdParam] });
       // A free-text category may have just been created — refresh the dropdown for next time.
-      if (newCategoryLabel.trim()) {
+      if (!matchedCategory && categoryText.trim()) {
         queryClient.invalidateQueries({ queryKey: ['documentation-categories'] });
       }
     },
@@ -393,6 +396,11 @@ export function InvestigationPage() {
           <form
             onSubmit={handleSubmit}
             style={{
+              // Stays in view while scrolling a long timeline (below the sticky nav).
+              position: 'sticky',
+              top: 76,
+              maxHeight: 'calc(100vh - 92px)',
+              overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column',
               gap: 'var(--space-sm)',
@@ -435,11 +443,13 @@ export function InvestigationPage() {
           <TechniquePicker value={techniqueIds} onChange={setTechniqueIds} max={MAX_TTPS_PER_ENTRY} />
           <TtpBudgetHint budget={ttpBudget} />
         </div>
-        <select
+        <input
+          value={categoryText}
+          onChange={(e) => setCategoryText(e.target.value)}
+          list="documentation-category-options"
           aria-label="Category"
-          value={categoryId}
-          disabled={!!newCategoryLabel.trim()}
-          onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}
+          placeholder="Category (optional) — pick one or type a new one"
+          maxLength={60}
           style={{
             background: 'var(--surface-1)',
             border: '1px solid var(--surface-border)',
@@ -447,27 +457,12 @@ export function InvestigationPage() {
             padding: 8,
             color: 'var(--text-primary)',
           }}
-        >
-          <option value="">No category</option>
-          {categoriesData?.categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-        <input
-          value={newCategoryLabel}
-          onChange={(e) => setNewCategoryLabel(e.target.value)}
-          aria-label="New category"
-          placeholder="…or type a new category (e.g. IOC, C2)"
-          style={{
-            background: 'transparent',
-            border: '1px solid var(--surface-border)',
-            borderRadius: 'var(--radius-control)',
-            padding: 8,
-            color: 'var(--text-primary)',
-          }}
         />
+        <datalist id="documentation-category-options">
+          {categoriesData?.categories.map((c) => (
+            <option key={c.id} value={c.label} />
+          ))}
+        </datalist>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 15, color: 'var(--text-muted)' }}>
           Attach a screenshot (optional)
           <input type="file" accept="image/*" onChange={handleImageChange} />
@@ -550,12 +545,54 @@ function Timeline({
   catalog: IndexedCatalog | undefined;
   editing?: TtpEditing;
 }) {
+  const [filter, setFilter] = useState<'all' | 'findings' | 'attack'>('all');
   if (!entries) return null;
   if (entries.length === 0) return <EmptyState message="No entries yet." />;
 
+  const counts = {
+    all: entries.length,
+    findings: entries.filter((e) => e.isImportantFinding).length,
+    attack: entries.filter((e) => (e.ttps ?? []).length > 0).length,
+  };
+  const shown =
+    filter === 'findings'
+      ? entries.filter((e) => e.isImportantFinding)
+      : filter === 'attack'
+        ? entries.filter((e) => (e.ttps ?? []).length > 0)
+        : entries;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {entries.map((entry, i) => (
+      <div role="group" aria-label="Filter entries" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--space-md)' }}>
+        {(
+          [
+            ['all', 'All'],
+            ['findings', 'Findings'],
+            ['attack', 'With ATT&CK'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={filter === key}
+            onClick={() => setFilter(key)}
+            style={{
+              fontFamily: 'inherit',
+              fontSize: 13,
+              padding: '3px 10px',
+              borderRadius: 999,
+              cursor: 'pointer',
+              border: `1px solid ${filter === key ? 'var(--signal-secondary)' : 'var(--surface-border)'}`,
+              background: filter === key ? 'rgba(15, 23, 42, 0.8)' : 'transparent',
+              color: filter === key ? 'var(--text-primary)' : 'var(--text-muted)',
+            }}
+          >
+            {label} ({counts[key]})
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 && <EmptyState message="No entries match this filter." />}
+      {shown.map((entry, i, list) => (
         <div key={entry.id} style={{ display: 'flex', gap: 'var(--space-md)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
             <span
@@ -579,7 +616,7 @@ function Timeline({
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-telemetry)' }} />
               )}
             </span>
-            {i < entries.length - 1 && (
+            {i < list.length - 1 && (
               <span style={{ width: 1.5, flex: 1, minHeight: 'var(--space-md)', background: 'var(--surface-border-strong)' }} />
             )}
           </div>
@@ -608,6 +645,7 @@ function TimelineEntry({
 }) {
   const queryClient = useQueryClient();
   const [editingTtps, setEditingTtps] = useState(false);
+  const [imageExpanded, setImageExpanded] = useState(false);
   const [draftTtps, setDraftTtps] = useState<string[]>([]);
   const ttps = entry.ttps ?? [];
 
@@ -711,16 +749,21 @@ function TimelineEntry({
         )
       )}
       {entry.imageDataUrl && (
+        // Thumbnail by default (full-height screenshots made a long timeline tiring to scroll);
+        // click to enlarge / shrink.
         <img
           src={entry.imageDataUrl}
           alt="Attached evidence"
+          title={imageExpanded ? 'Click to shrink' : 'Click to enlarge'}
+          onClick={() => setImageExpanded((v) => !v)}
           style={{
             marginTop: 'var(--space-sm)',
             maxWidth: '100%',
-            maxHeight: 320,
+            maxHeight: imageExpanded ? 640 : 110,
             borderRadius: 'var(--radius-control)',
             border: '1px solid var(--surface-border)',
             display: 'block',
+            cursor: imageExpanded ? 'zoom-out' : 'zoom-in',
           }}
         />
       )}

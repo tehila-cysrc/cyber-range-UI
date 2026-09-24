@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Button } from '../../components/Button';
+import { confirmAction } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toastStore';
 import { Avatar } from '../../components/Avatar';
 import { LifeBuoyIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
@@ -73,14 +76,50 @@ function formatAgo(iso: string | null) {
 // A team with an active scenario but no timeline entry for this long is flagged as possibly stuck.
 const STALL_THRESHOLD_SECONDS = 20 * 60;
 
+const selectStyle: React.CSSProperties = {
+  marginTop: 4,
+  background: 'var(--surface-1)',
+  border: '1px solid var(--surface-border)',
+  borderRadius: 'var(--radius-control)',
+  padding: '4px 6px',
+  color: 'var(--text-primary)',
+  fontSize: 14,
+};
+
 function formatRemaining(seconds: number | null) {
   if (seconds == null) return '—';
   if (seconds <= 0) return "Time's up";
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
+function isQuiet(team: TeamStatus) {
+  return (
+    !!team.active &&
+    team.memberCount > 0 &&
+    (team.active.lastEntryAt == null || Date.now() - new Date(team.active.lastEntryAt).getTime() > STALL_THRESHOLD_SECONDS * 1000)
+  );
+}
+
+function isOutOfTime(team: TeamStatus) {
+  return !!team.active && team.active.remainingSeconds != null && team.active.remainingSeconds <= 0;
+}
+
+// Higher = needs the instructor sooner: waiting for help, then out of time, then quiet, then running.
+function attentionRank(team: TeamStatus) {
+  if (team.openHelpCount > 0) return 4;
+  if (isOutOfTime(team)) return 3;
+  if (isQuiet(team)) return 2;
+  if (team.active) return 1;
+  return 0;
+}
+
 export function InstructorDashboardPage() {
   const queryClient = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
+  const [sortBy, setSortBy] = useState<'attention' | 'name'>('attention');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkRangeId, setBulkRangeId] = useState<number | ''>('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { data: dashboardData } = useQuery({
     queryKey: ['instructor-dashboard'],
@@ -128,25 +167,106 @@ export function InstructorDashboardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] }),
   });
 
-  function handleAssign(team: TeamStatus, cyberRangeId: number) {
+  function rangeLabel(cyberRangeId: number) {
     const range = catalogData?.cyberRanges.find((r) => r.id === cyberRangeId);
-    const label = range ? `${range.dayLabel} — ${range.name}` : 'this scenario';
-    // Assigning restarts the scenario's clock, and switching pauses the current one mid-exercise —
-    // a mis-click on a live team shouldn't do that silently.
-    const message =
-      team.active?.cyberRangeId === cyberRangeId
-        ? `Restart "${label}" for ${team.teamName}? Its countdown resets to the full time.`
-        : team.active
-          ? `Switch ${team.teamName} from "${team.active.name}" to "${label}"? The current scenario is paused and the new one's clock starts now.`
-          : `Assign "${label}" to ${team.teamName}? Its clock starts now.`;
-    if (!window.confirm(message)) return;
-    assignScenario.mutate({ teamId: team.teamId, cyberRangeId });
+    return range ? `${range.dayLabel} — ${range.name}` : 'this scenario';
   }
 
-  function handleComplete(team: TeamStatus) {
+  async function handleAssign(team: TeamStatus, cyberRangeId: number) {
+    const label = rangeLabel(cyberRangeId);
+    // Switching pauses the current scenario mid-exercise — a mis-click on a live team shouldn't do
+    // that silently.
+    const ok = await confirmAction(
+      team.active
+        ? {
+            title: `Switch ${team.teamName} to "${label}"?`,
+            message: `"${team.active.name}" is paused (its history is kept) and the new scenario's clock starts now.`,
+            confirmLabel: 'Switch scenario',
+          }
+        : { title: `Assign "${label}" to ${team.teamName}?`, message: 'Its clock starts now.', confirmLabel: 'Assign' },
+    );
+    if (ok) assignScenario.mutate({ teamId: team.teamId, cyberRangeId });
+  }
+
+  // Restart used to be a "· current (restart)" option hidden inside the switch dropdown.
+  async function handleRestart(team: TeamStatus) {
     if (!team.active) return;
-    if (!window.confirm(`Mark "${team.active.name}" as completed for ${team.teamName}? The team can no longer add entries to it; it moves to their Debrief.`)) return;
-    completeScenario.mutate({ teamId: team.teamId, cyberRangeId: team.active.cyberRangeId });
+    const ok = await confirmAction({
+      title: `Restart the clock for ${team.teamName}?`,
+      message: `"${team.active.name}" keeps its timeline, but the countdown resets to the full time.`,
+      confirmLabel: 'Restart clock',
+      danger: true,
+    });
+    if (ok) assignScenario.mutate({ teamId: team.teamId, cyberRangeId: team.active.cyberRangeId });
+  }
+
+  async function handleComplete(team: TeamStatus) {
+    if (!team.active) return;
+    const ok = await confirmAction({
+      title: `Mark "${team.active.name}" completed for ${team.teamName}?`,
+      message: 'The team can no longer add entries to it; it moves to their Debrief.',
+      confirmLabel: 'Mark completed',
+    });
+    if (ok) completeScenario.mutate({ teamId: team.teamId, cyberRangeId: team.active.cyberRangeId });
+  }
+
+  // Bulk actions: one confirm for N teams instead of N dropdowns and N confirms (UX-12/13).
+  async function runBulk(teams: TeamStatus[], action: (team: TeamStatus) => Promise<unknown>, doneLabel: string) {
+    setBulkBusy(true);
+    let failed = 0;
+    for (const team of teams) {
+      try {
+        await action(team);
+      } catch {
+        failed += 1;
+      }
+    }
+    setBulkBusy(false);
+    setSelected(new Set());
+    queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
+    pushToast(
+      failed
+        ? `${doneLabel} for ${teams.length - failed} of ${teams.length} teams (${failed} failed).`
+        : `${doneLabel} for ${teams.length} team${teams.length === 1 ? '' : 's'}.`,
+      failed ? 'error' : 'success',
+    );
+  }
+
+  async function handleBulkAssign(teams: TeamStatus[]) {
+    if (!bulkRangeId || teams.length === 0) return;
+    const rangeId = bulkRangeId;
+    const label = rangeLabel(rangeId);
+    const switching = teams.filter((t) => t.active && t.active.cyberRangeId !== rangeId).length;
+    const restarting = teams.filter((t) => t.active?.cyberRangeId === rangeId).length;
+    const ok = await confirmAction({
+      title: `Assign "${label}" to ${teams.length} team${teams.length === 1 ? '' : 's'}?`,
+      message: [
+        'Clocks start now.',
+        switching ? `${switching} team(s) are switched from their current scenario (paused, history kept).` : '',
+        restarting ? `${restarting} team(s) already on it get their clock restarted.` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      confirmLabel: 'Assign to selected',
+    });
+    if (!ok) return;
+    await runBulk(teams, (t) => apiFetch(`/admin/teams/${t.teamId}/cyber-ranges/${rangeId}/start`, { method: 'POST' }), `Assigned "${label}"`);
+  }
+
+  async function handleBulkComplete(teams: TeamStatus[], why: string) {
+    const withActive = teams.filter((t) => t.active);
+    if (withActive.length === 0) return;
+    const ok = await confirmAction({
+      title: `Mark the current scenario completed for ${withActive.length} team${withActive.length === 1 ? '' : 's'}?`,
+      message: `${why}They can no longer add entries; the scenarios move to their Debrief.`,
+      confirmLabel: 'Mark completed',
+    });
+    if (!ok) return;
+    await runBulk(
+      withActive,
+      (t) => apiFetch(`/admin/teams/${t.teamId}/cyber-ranges/${t.active!.cyberRangeId}/complete`, { method: 'POST' }),
+      'Marked completed',
+    );
   }
 
   const resolveMutation = useMutation({
@@ -173,6 +293,10 @@ export function InstructorDashboardPage() {
 
   useSocketEvent('access_session:started', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
   useSocketEvent('access_session:ended', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
+
+  const sortedTeams = [...(dashboardData?.teams ?? [])].sort((a, b) =>
+    sortBy === 'name' ? a.teamName.localeCompare(b.teamName) : attentionRank(b) - attentionRank(a) || a.teamName.localeCompare(b.teamName),
+  );
 
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
@@ -264,8 +388,14 @@ export function InstructorDashboardPage() {
                 </span>
                 <Button
                   variant="destructive"
-                  onClick={() => {
-                    if (window.confirm(`Force-close ${s.username}'s ${s.protocol.toUpperCase()} session to ${s.nodeLabel}?`)) forceCloseSession.mutate(s.id);
+                  onClick={async () => {
+                    const ok = await confirmAction({
+                      title: `Force-close ${s.username}'s ${s.protocol.toUpperCase()} session to ${s.nodeLabel}?`,
+                      message: 'The remote session ends immediately and its access link is revoked.',
+                      confirmLabel: 'Force close',
+                      danger: true,
+                    });
+                    if (ok) forceCloseSession.mutate(s.id);
                   }}
                 >
                   Force close
@@ -276,6 +406,111 @@ export function InstructorDashboardPage() {
         </div>
       )}
 
+      {(() => {
+        const teams = dashboardData?.teams ?? [];
+        const outOfTime = teams.filter(isOutOfTime);
+        const selectedTeams = teams.filter((t) => selected.has(t.teamId));
+        return (
+          <>
+            {outOfTime.length > 0 && (
+              <div
+                role="status"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 'var(--space-sm)',
+                  marginBottom: 'var(--space-md)',
+                  padding: 'var(--space-sm) var(--space-md)',
+                  border: '1px solid var(--signal-tertiary)',
+                  borderRadius: 'var(--radius-control)',
+                  background: 'var(--surface-1)',
+                  fontSize: 14,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <span>
+                  {outOfTime.length} {outOfTime.length === 1 ? 'team is' : 'teams are'} out of time:{' '}
+                  {outOfTime.map((t) => t.teamName).join(', ')}
+                </span>
+                <Button
+                  variant="ghost"
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkComplete(outOfTime, 'Their time is up. ')}
+                  style={{ padding: '4px 12px', fontSize: 14 }}
+                >
+                  Mark all completed
+                </Button>
+              </div>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 'var(--space-sm) var(--space-md)',
+                marginBottom: 'var(--space-md)',
+                fontSize: 14,
+                color: 'var(--text-muted)',
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={teams.length > 0 && selectedTeams.length === teams.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selectedTeams.length > 0 && selectedTeams.length < teams.length;
+                  }}
+                  onChange={(e) => setSelected(e.target.checked ? new Set(teams.map((t) => t.teamId)) : new Set())}
+                />
+                {selectedTeams.length > 0 ? `${selectedTeams.length} selected` : 'Select all'}
+              </label>
+              {selectedTeams.length > 0 && (
+                <>
+                  <select
+                    aria-label="Scenario for selected teams"
+                    value={bulkRangeId}
+                    onChange={(e) => setBulkRangeId(e.target.value ? Number(e.target.value) : '')}
+                    style={{ ...selectStyle, marginTop: 0 }}
+                  >
+                    <option value="">Scenario…</option>
+                    {catalogData?.cyberRanges.map((range) => (
+                      <option key={range.id} value={range.id}>
+                        {range.dayLabel} — {range.name} ({range.difficulty})
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="ghost"
+                    disabled={!bulkRangeId || bulkBusy}
+                    onClick={() => handleBulkAssign(selectedTeams)}
+                    style={{ padding: '4px 12px', fontSize: 14 }}
+                  >
+                    Assign to selected
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    disabled={bulkBusy || !selectedTeams.some((t) => t.active)}
+                    onClick={() => handleBulkComplete(selectedTeams, '')}
+                    style={{ padding: '4px 12px', fontSize: 14 }}
+                  >
+                    Mark selected completed
+                  </Button>
+                </>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                Sort
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'attention' | 'name')} style={{ ...selectStyle, marginTop: 0 }}>
+                  <option value="attention">Needs attention first</option>
+                  <option value="name">Team name</option>
+                </select>
+              </label>
+            </div>
+          </>
+        );
+      })()}
+
       <div
         style={{
           display: 'grid',
@@ -283,7 +518,7 @@ export function InstructorDashboardPage() {
           gap: 'var(--space-md)',
         }}
       >
-        {dashboardData?.teams.map((team) => (
+        {sortedTeams.map((team) => (
           <div
             key={team.teamId}
             style={{
@@ -297,13 +532,25 @@ export function InstructorDashboardPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-              <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.teamName}</strong>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${team.teamName}`}
+                  checked={selected.has(team.teamId)}
+                  onChange={(e) =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(team.teamId);
+                      else next.delete(team.teamId);
+                      return next;
+                    })
+                  }
+                />
+                <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.teamName}</strong>
+              </label>
               <span style={{ display: 'flex', gap: 6 }}>
                 {team.openHelpCount > 0 && <TelemetryBadge tone="alert">{team.openHelpCount} help</TelemetryBadge>}
-                {team.active &&
-                  team.memberCount > 0 &&
-                  (team.active.lastEntryAt == null ||
-                    Date.now() - new Date(team.active.lastEntryAt).getTime() > STALL_THRESHOLD_SECONDS * 1000) && (
+                {isQuiet(team) && (
                     <span title={`No timeline entry in the last ${STALL_THRESHOLD_SECONDS / 60} minutes — the team may be stuck`}>
                       <TelemetryBadge tone="tertiary">quiet</TelemetryBadge>
                     </span>
@@ -381,30 +628,34 @@ export function InstructorDashboardPage() {
                 if (!cyberRangeId) return;
                 handleAssign(team, cyberRangeId);
               }}
-              style={{
-                marginTop: 4,
-                background: 'var(--surface-1)',
-                border: '1px solid var(--surface-border)',
-                borderRadius: 'var(--radius-control)',
-                padding: '4px 6px',
-                color: 'var(--text-primary)',
-                fontSize: 14,
-              }}
+              style={selectStyle}
             >
               <option value="" disabled>
                 {team.active ? 'Switch scenario…' : 'Assign scenario…'}
               </option>
-              {catalogData?.cyberRanges.map((range) => (
-                <option key={range.id} value={range.id}>
-                  {range.dayLabel} — {range.name} ({range.difficulty})
-                  {range.id === team.active?.cyberRangeId ? ' · current (restart)' : ''}
-                </option>
-              ))}
+              {catalogData?.cyberRanges
+                .filter((range) => range.id !== team.active?.cyberRangeId)
+                .map((range) => (
+                  <option key={range.id} value={range.id}>
+                    {range.dayLabel} — {range.name} ({range.difficulty})
+                  </option>
+                ))}
             </select>
             {team.active && (
-              <Button variant="ghost" onClick={() => handleComplete(team)} disabled={completeScenario.isPending}>
-                Mark scenario completed
-              </Button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="ghost" onClick={() => handleComplete(team)} disabled={completeScenario.isPending} style={{ flex: 1 }}>
+                  Mark scenario completed
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => handleRestart(team)}
+                  disabled={assignScenario.isPending}
+                  title="Reset this scenario's countdown to the full time"
+                  style={{ padding: '8px 10px', color: 'var(--text-muted)' }}
+                >
+                  Restart clock
+                </Button>
+              </div>
             )}
           </div>
         ))}

@@ -15,6 +15,7 @@ import 'reactflow/dist/style.css';
 import { canvasNodeTypes, SHAPE_SIZE, type CanvasNodeFlowData } from './CanvasNodeTypes';
 import { CanvasNodePalette, CANVAS_DRAG_MIME } from './CanvasNodePalette';
 import { CanvasNodeInspector } from './CanvasNodeInspector';
+import { confirmAction } from '../../../components/ConfirmDialog';
 import { CANVAS_NODE_SPEC_BY_TYPE, type CanvasNodeTypeKey } from './canvasNodeSpec';
 
 export interface CanvasNodeDataDTO {
@@ -152,10 +153,16 @@ function CanvasInner({
       const node = rfNodes.find((n) => n.selected);
       if (!node) return;
       e.preventDefault();
-      if (window.confirm(`Delete "${node.data.label}" and its connections for the whole team?`)) {
+      void confirmAction({
+        title: `Delete "${node.data.label}"?`,
+        message: 'It and its connections are removed for the whole team.',
+        confirmLabel: 'Delete',
+        danger: true,
+      }).then((ok) => {
+        if (!ok) return;
         onSelectionChange(null);
         onNodeDelete?.(parseFlowNodeId(node.id));
-      }
+      });
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -248,8 +255,14 @@ function CanvasInner({
             onDuplicate={() => onNodeDuplicate?.(selectedNode)}
             onBodyChange={(body) => onBodyChange?.(selectedNode.id, body)}
             onLabelChange={(label) => onLabelChange?.(selectedNode.id, label)}
-            onDelete={() => {
-              if (!window.confirm(`Delete "${selectedNode.label}" and its connections for the whole team?`)) return;
+            onDelete={async () => {
+              const ok = await confirmAction({
+                title: `Delete "${selectedNode.label}"?`,
+                message: 'It and its connections are removed for the whole team.',
+                confirmLabel: 'Delete',
+                danger: true,
+              });
+              if (!ok) return;
               onSelectionChange(null);
               onNodeDelete?.(selectedNode.id);
             }}

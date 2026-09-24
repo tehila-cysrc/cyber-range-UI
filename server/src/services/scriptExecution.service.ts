@@ -19,6 +19,9 @@ export interface ScriptSummary {
   createdAt: string;
   createdByUsername: string | null;
   updatedAt: string | null;
+  // Scenarios whose expected ATT&CK techniques use this script as their trigger — deleting the script
+  // silently clears those triggers (ON DELETE SET NULL), so the library shows it and the delete warns.
+  usedAsTrigger?: { cyberRangeName: string; techniqueId: string }[];
 }
 
 export interface Script extends ScriptSummary {
@@ -63,7 +66,21 @@ export function listScripts(filter: { category?: string; search?: string } = {})
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db.prepare(`${SELECT_SCRIPT} ${where} ORDER BY category, name`).all(...params) as unknown as ScriptRow[];
-  return rows.map(toSummary);
+  const usage = db
+    .prepare(
+      `SELECT et.trigger_script_id AS scriptId, cr.name AS cyberRangeName, et.technique_id AS techniqueId
+       FROM cyber_range_expected_ttps et JOIN cyber_ranges cr ON cr.id = et.cyber_range_id
+       WHERE et.trigger_script_id IS NOT NULL AND et.is_active = 1
+       ORDER BY cr.name, et.technique_id`,
+    )
+    .all() as { scriptId: number; cyberRangeName: string; techniqueId: string }[];
+  const byScript = new Map<number, { cyberRangeName: string; techniqueId: string }[]>();
+  for (const u of usage) {
+    const list = byScript.get(u.scriptId) ?? [];
+    list.push({ cyberRangeName: u.cyberRangeName, techniqueId: u.techniqueId });
+    byScript.set(u.scriptId, list);
+  }
+  return rows.map((row) => ({ ...toSummary(row), usedAsTrigger: byScript.get(row.id) ?? [] }));
 }
 
 export function getScript(id: number): Script | null {
