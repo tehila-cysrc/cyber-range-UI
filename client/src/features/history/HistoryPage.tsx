@@ -14,7 +14,7 @@ interface CompletedRange {
 }
 
 export function HistoryPage() {
-  const { query, ready, picker, isInstructor } = useDebriefTeam();
+  const { query, ready, picker, isInstructor, locked, links } = useDebriefTeam();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['history', query],
     queryFn: () => apiFetch<{ completed: CompletedRange[] }>(`/history${query}`),
@@ -24,13 +24,13 @@ export function HistoryPage() {
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-          Debrief — completed scenarios
+        <h1 style={{ fontSize: locked ? 17 : 22, color: 'var(--text-primary)', margin: 0 }}>
+          {locked ? 'Completed scenarios' : 'Debrief — completed scenarios'}
         </h1>
         <span style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
           {picker}
           {ready && (
-            <Link to={`/debrief/event-summary${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+            <Link to={links.event} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
               Event summary →
             </Link>
           )}
@@ -54,7 +54,7 @@ export function HistoryPage() {
         {data?.completed.map((cr) => (
           <Link
             key={cr.cyberRangeId}
-            to={`/debrief/${cr.cyberRangeId}${query}`}
+            to={links.summary(cr.cyberRangeId)}
             style={{
               display: 'flex',
               flexWrap: 'wrap',

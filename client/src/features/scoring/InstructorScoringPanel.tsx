@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useInstructorTeam } from '../../hooks/useInstructorTeam';
+import { useLockedTeam } from '../team/LockedTeamContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -197,6 +198,7 @@ function ScoreForm({
 export function InstructorScoringPanel() {
   const queryClient = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
+  const lockedTeam = useLockedTeam();
   const [quickAwardStudentId, setQuickAwardStudentId] = useState<number | ''>('');
   const [docFilter, setDocFilter] = useState<'all' | 'unscored' | 'findings'>('all');
   const { data: catalog } = useMitreCatalog();
@@ -259,30 +261,35 @@ export function InstructorScoringPanel() {
 
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Progress — Scoring</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: '0 0 var(--space-lg)' }}>
-        Award points to a team or an individual student — it updates live on their Progress page and
-        the leaderboard.
-      </p>
+      {/* Inside the Team Workspace the header and team picker come from the workspace. */}
+      {!lockedTeam && (
+        <>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Progress — Scoring</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: '0 0 var(--space-lg)' }}>
+          Award points to a team or an individual student — it updates live on their Progress page and
+          the leaderboard.
+        </p>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 'var(--space-xl)', maxWidth: 280 }}>
-        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Team</span>
-        <select
-          value={selectedTeamId}
-          onChange={(e) => {
-            setSelectedTeamId(e.target.value ? Number(e.target.value) : '');
-            setQuickAwardStudentId('');
-          }}
-          style={selectStyle}
-        >
-          <option value="">Select a team…</option>
-          {dashboardData?.teams.map((t) => (
-            <option key={t.teamId} value={t.teamId}>
-              {t.teamName}
-            </option>
-          ))}
-        </select>
-      </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 'var(--space-xl)', maxWidth: 280 }}>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Team</span>
+          <select
+            value={selectedTeamId}
+            onChange={(e) => {
+              setSelectedTeamId(e.target.value ? Number(e.target.value) : '');
+              setQuickAwardStudentId('');
+            }}
+            style={selectStyle}
+          >
+            <option value="">Select a team…</option>
+            {dashboardData?.teams.map((t) => (
+              <option key={t.teamId} value={t.teamId}>
+                {t.teamName}
+              </option>
+            ))}
+          </select>
+        </label>
+        </>
+      )}
 
       {!selectedTeamId && (
         <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>Pick a team above to start scoring.</div>

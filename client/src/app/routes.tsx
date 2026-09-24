@@ -6,6 +6,7 @@ import { LoginPage } from '../features/auth/LoginPage';
 import { TeamWorkspacePage } from '../features/team/TeamWorkspacePage';
 import { InvestigationPage } from '../features/documentation/InvestigationPage';
 import { InstructorDashboardPage } from '../features/instructorDashboard/InstructorDashboardPage';
+import { InstructorTeamWorkspacePage } from '../features/instructorDashboard/InstructorTeamWorkspacePage';
 import { HomeRoute } from './HomeRoute';
 import { ProgressPage } from '../features/scoring/ProgressPage';
 import { LeaderboardPage } from '../features/leaderboard/LeaderboardPage';
@@ -66,6 +67,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requireRole="instructor">
             <InstructorDashboardPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/instructor/teams/:teamId',
+        element: (
+          <ProtectedRoute requireRole="instructor">
+            <InstructorTeamWorkspacePage />
           </ProtectedRoute>
         ),
       },

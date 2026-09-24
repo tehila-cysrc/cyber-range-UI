@@ -46,6 +46,7 @@ interface HelpRequest {
   cyberRangeName: string;
   requestedByName: string;
   message: string | null;
+  teamId: number;
 }
 
 interface CatalogCyberRange {
@@ -354,9 +355,14 @@ export function InstructorDashboardPage() {
                   </span>
                   {hr.message && <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>“{hr.message}”</span>}
                 </span>
-                <Button variant="ghost" onClick={() => resolveMutation.mutate(hr.id)} disabled={resolveMutation.isPending}>
-                  Resolve
-                </Button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', flexShrink: 0 }}>
+                  <Link to={`/instructor/teams/${hr.teamId}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+                    Open team
+                  </Link>
+                  <Button variant="ghost" onClick={() => resolveMutation.mutate(hr.id)} disabled={resolveMutation.isPending}>
+                    Resolve
+                  </Button>
+                </span>
               </div>
             ))}
           </div>
@@ -625,6 +631,9 @@ export function InstructorDashboardPage() {
             </div>
             {/* Jump straight into this team — the other pages open with it already selected. */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 14 }}>
+              <Link to={`/instructor/teams/${team.teamId}`} style={{ color: 'var(--signal-primary)', fontWeight: 600 }}>
+                Open workspace →
+              </Link>
               <Link to={`/investigation?teamId=${team.teamId}`} style={{ color: 'var(--signal-secondary)' }}>
                 Timeline
               </Link>

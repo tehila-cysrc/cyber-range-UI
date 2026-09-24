@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useInstructorTeam } from '../../hooks/useInstructorTeam';
+import { useLockedTeam } from '../team/LockedTeamContext';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
@@ -140,6 +141,7 @@ export function InvestigationPage() {
   const studentActive = activeData?.active;
 
   const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
+  const lockedTeam = useLockedTeam();
   const { data: teamsData } = useQuery({
     queryKey: ['admin-teams-list'],
     queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
@@ -275,44 +277,47 @@ export function InvestigationPage() {
   if (isInstructor) {
     return (
       <div className="page" style={{ padding: 'var(--space-xl)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
-          <div>
-            <div
+        {/* Inside the Team Workspace the page header and team picker come from the workspace. */}
+        {!lockedTeam && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-lg)' }}>
+            <div>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-telemetry)',
+                  marginBottom: 4,
+                }}
+              >
+                Team investigation
+              </div>
+              <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+                {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
+              </h1>
+            </div>
+            <select
+              aria-label="Team"
+              value={selectedTeamId}
+              onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
               style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--text-telemetry)',
-                marginBottom: 4,
+                background: 'var(--surface-1)',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 'var(--radius-control)',
+                padding: 8,
+                color: 'var(--text-primary)',
               }}
             >
-              Team investigation
-            </div>
-            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-              {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
-            </h1>
+              <option value="">Select a team…</option>
+              {teamsData?.teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <select
-            aria-label="Team"
-            value={selectedTeamId}
-            onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
-            style={{
-              background: 'var(--surface-1)',
-              border: '1px solid var(--surface-border)',
-              borderRadius: 'var(--radius-control)',
-              padding: 8,
-              color: 'var(--text-primary)',
-            }}
-          >
-            <option value="">Select a team…</option>
-            {teamsData?.teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        )}
 
         {!selectedTeamId ? (
           <EmptyState message="Pick a team above to view its timeline." />

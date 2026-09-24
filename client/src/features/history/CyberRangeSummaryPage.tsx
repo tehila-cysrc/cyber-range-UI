@@ -24,10 +24,12 @@ interface SummaryResponse {
   scoreTotal: number;
 }
 
-export function CyberRangeSummaryPage() {
-  const { cyberRangeId } = useParams();
+// `cyberRangeIdOverride`: the Team Workspace's Debrief tab renders this page without a route param.
+export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOverride?: number } = {}) {
+  const params = useParams();
+  const cyberRangeId = cyberRangeIdOverride ?? params.cyberRangeId;
 
-  const { query, ready } = useDebriefTeam();
+  const { query, ready, links } = useDebriefTeam();
   const { data, isError } = useQuery({
     queryKey: ['history', cyberRangeId, query],
     queryFn: () => apiFetch<SummaryResponse>(`/history/${cyberRangeId}${query}`),
@@ -36,7 +38,7 @@ export function CyberRangeSummaryPage() {
 
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
-      <Link to={`/debrief${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+      <Link to={links.home} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
         ← Back to debrief
       </Link>
       {isError && <div style={{ marginTop: 'var(--space-md)', color: 'var(--text-muted)' }}>Couldn't load this debrief — try refreshing.</div>}
