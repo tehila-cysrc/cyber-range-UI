@@ -14,7 +14,8 @@ router.get('/audit-log', (req, res) => {
   const before = req.query.before ? Number(req.query.before) : undefined;
   const limit = req.query.limit ? Number(req.query.limit) : undefined;
 
-  res.json({ entries: listAuditLog({ entityType, before, limit }) });
+  const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 100) : undefined;
+  res.json({ entries: listAuditLog({ entityType, before, limit, search }) });
 });
 
 export default router;

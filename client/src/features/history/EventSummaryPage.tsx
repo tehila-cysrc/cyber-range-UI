@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ExportResultsButtons } from '../admin/ExportResultsButtons';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
@@ -12,7 +13,7 @@ interface DaySummary {
 }
 
 export function EventSummaryPage() {
-  const { query, ready, picker } = useDebriefTeam();
+  const { query, ready, picker, isInstructor } = useDebriefTeam();
   const { data, isError } = useQuery({
     queryKey: ['event-summary', query],
     queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
@@ -31,6 +32,11 @@ export function EventSummaryPage() {
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
         Event Summary
       </h1>
+      {isInstructor && (
+        <div style={{ marginBottom: 'var(--space-md)' }}>
+          <ExportResultsButtons />
+        </div>
+      )}
 
       {!ready && <EmptyState message="Pick a team above to see its event summary." />}
       {isError && <EmptyState message="Couldn't load the event summary — try refreshing." />}

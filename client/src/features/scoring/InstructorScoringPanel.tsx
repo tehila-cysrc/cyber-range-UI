@@ -55,6 +55,30 @@ const selectStyle: React.CSSProperties = {
   fontSize: 15,
 };
 
+// The award form stays collapsed per entry — a full form under every entry made a long, noisy page.
+function EntryAward(props: { teamId: number; studentUserId?: number; documentationEntryId: number; cyberRangeId: number; onDone: () => void; alreadyAwarded: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button variant="ghost" onClick={() => setOpen(true)} style={{ alignSelf: 'flex-start', padding: '4px 12px', fontSize: 14 }}>
+        {props.alreadyAwarded ? 'Award more points' : 'Award points'}
+      </Button>
+    );
+  }
+  return (
+    <ScoreForm
+      teamId={props.teamId}
+      studentUserId={props.studentUserId}
+      documentationEntryId={props.documentationEntryId}
+      cyberRangeId={props.cyberRangeId}
+      onDone={() => {
+        setOpen(false);
+        props.onDone();
+      }}
+    />
+  );
+}
+
 function ScoreForm({
   teamId,
   studentUserId,
@@ -173,6 +197,7 @@ export function InstructorScoringPanel() {
   const queryClient = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
   const [quickAwardStudentId, setQuickAwardStudentId] = useState<number | ''>('');
+  const [docFilter, setDocFilter] = useState<'all' | 'unscored' | 'findings'>('all');
   const { data: catalog } = useMitreCatalog();
 
   const { data: dashboardData } = useQuery({
@@ -232,7 +257,7 @@ export function InstructorScoringPanel() {
   }
 
   return (
-    <div className="page" style={{ padding: 'var(--space-xl)', maxWidth: 860 }}>
+    <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Progress — Scoring</h1>
       <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: '0 0 var(--space-lg)' }}>
         Award points to a team or an individual student — it updates live on their Progress page and
@@ -290,51 +315,8 @@ export function InstructorScoringPanel() {
             <span style={{ fontSize: 15, color: 'var(--text-primary)' }}>{selectedTeam.active.name}</span>
           </div>
 
-          <div
-            style={{
-              padding: 'var(--space-lg)',
-              border: '1px solid var(--surface-border)',
-              borderRadius: 'var(--radius-container)',
-              background: 'var(--surface-1)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 'var(--space-md)',
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 4px' }}>Quick award</h2>
-              <p style={{ fontSize: 13, color: 'var(--text-telemetry)', margin: 0 }}>
-                No documentation entry needed — pick a student, or leave it as a whole-team award.
-              </p>
-            </div>
-            <select
-              value={quickAwardStudentId}
-              onChange={(e) => setQuickAwardStudentId(e.target.value ? Number(e.target.value) : '')}
-              style={{ ...selectStyle, maxWidth: 220 }}
-            >
-              <option value="">Whole team</option>
-              {selectedTeamMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName}
-                </option>
-              ))}
-            </select>
-            <ScoreForm
-              key={quickAwardStudentId}
-              teamId={selectedTeam.teamId}
-              studentUserId={quickAwardStudentId || undefined}
-              cyberRangeId={selectedTeam.active.cyberRangeId}
-              onDone={refresh}
-            />
-          </div>
 
-          <TtpDetectionsPanel
-            teamId={selectedTeam.teamId}
-            cyberRangeId={selectedTeam.active.cyberRangeId}
-            entries={entriesData?.entries ?? []}
-            onChanged={refresh}
-          />
-
+          <div className="split-main-side">
           <div>
             <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
               Documentation — {selectedTeam.active.name}
@@ -342,8 +324,40 @@ export function InstructorScoringPanel() {
             {entriesData?.entries.length === 0 && (
               <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No documentation was recorded yet.</div>
             )}
+            {!!entriesData?.entries.length && (
+              <div role="group" aria-label="Filter entries" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--space-md)' }}>
+                {(
+                  [
+                    ['all', 'All', entriesData.entries.length],
+                    ['unscored', 'Not scored yet', entriesData.entries.filter((e) => !awardedByEntry.has(e.id)).length],
+                    ['findings', 'Findings', entriesData.entries.filter((e) => e.isImportantFinding).length],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={docFilter === key}
+                    onClick={() => setDocFilter(key)}
+                    style={{
+                      fontFamily: 'inherit',
+                      fontSize: 13,
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      cursor: 'pointer',
+                      border: `1px solid ${docFilter === key ? 'var(--signal-secondary)' : 'var(--surface-border)'}`,
+                      background: docFilter === key ? 'rgba(15, 23, 42, 0.8)' : 'transparent',
+                      color: docFilter === key ? 'var(--text-primary)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {label} ({count})
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-              {entriesData?.entries.map((entry) => (
+              {(entriesData?.entries ?? [])
+                .filter((e) => (docFilter === 'unscored' ? !awardedByEntry.has(e.id) : docFilter === 'findings' ? !!e.isImportantFinding : true))
+                .map((entry) => (
                 <div
                   key={entry.id}
                   style={{
@@ -393,17 +407,65 @@ export function InstructorScoringPanel() {
                         .join(', ')}
                     </div>
                   )}
-                  <div style={{ borderTop: '1px solid rgba(51, 65, 85, 0.3)', paddingTop: 'var(--space-sm)' }}>
-                    <ScoreForm
+                  <div style={{ borderTop: '1px solid rgba(51, 65, 85, 0.3)', paddingTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column' }}>
+                    <EntryAward
                       teamId={selectedTeam.teamId}
                       studentUserId={entry.authorUserId}
                       documentationEntryId={entry.id}
                       cyberRangeId={selectedTeam.active!.cyberRangeId}
                       onDone={refresh}
+                      alreadyAwarded={awardedByEntry.has(entry.id)}
                     />
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+            <div style={{ position: 'sticky', top: 76, display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', maxHeight: 'calc(100vh - 92px)', overflowY: 'auto' }}>
+          <div
+            style={{
+              padding: 'var(--space-lg)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 'var(--radius-container)',
+              background: 'var(--surface-1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-md)',
+            }}
+          >
+            <div>
+              <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 4px' }}>Quick award</h2>
+              <p style={{ fontSize: 13, color: 'var(--text-telemetry)', margin: 0 }}>
+                No documentation entry needed — pick a student, or leave it as a whole-team award.
+              </p>
+            </div>
+            <select
+              value={quickAwardStudentId}
+              onChange={(e) => setQuickAwardStudentId(e.target.value ? Number(e.target.value) : '')}
+              style={{ ...selectStyle, maxWidth: 220 }}
+            >
+              <option value="">Whole team</option>
+              {selectedTeamMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))}
+            </select>
+            <ScoreForm
+              key={quickAwardStudentId}
+              teamId={selectedTeam.teamId}
+              studentUserId={quickAwardStudentId || undefined}
+              cyberRangeId={selectedTeam.active.cyberRangeId}
+              onDone={refresh}
+            />
+          </div>
+
+          <TtpDetectionsPanel
+            teamId={selectedTeam.teamId}
+            cyberRangeId={selectedTeam.active.cyberRangeId}
+            entries={entriesData?.entries ?? []}
+            onChanged={refresh}
+          />
             </div>
           </div>
         </div>

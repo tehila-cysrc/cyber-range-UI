@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
+import { confirmAction } from '../../components/ConfirmDialog';
 
 export interface ScriptSummary {
   id: number;
@@ -12,6 +13,7 @@ export interface ScriptSummary {
   createdAt: string;
   createdByUsername: string | null;
   updatedAt: string | null;
+  usedAsTrigger?: { cyberRangeName: string; techniqueId: string }[];
 }
 
 export interface Script extends ScriptSummary {
@@ -140,6 +142,11 @@ export function ScriptLibraryPage() {
                   )}
                 </div>
                 {s.description && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{s.description}</div>}
+                {!!s.usedAsTrigger?.length && (
+                  <div style={{ fontSize: 12, color: 'var(--signal-secondary)', marginTop: 4 }}>
+                    ATT&amp;CK trigger in: {s.usedAsTrigger.map((u) => `${u.cyberRangeName} (${u.techniqueId})`).join(', ')}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <Button variant="ghost" onClick={() => openForEdit(s.id)}>
@@ -147,7 +154,18 @@ export function ScriptLibraryPage() {
                 </Button>
                 <Button
                   variant="destructive"
-                  onClick={() => window.confirm(`Delete script "${s.name}"?`) && deleteMutation.mutate(s.id)}
+                  onClick={async () => {
+                    const uses = s.usedAsTrigger ?? [];
+                    const ok = await confirmAction({
+                      title: `Delete script "${s.name}"?`,
+                      message: uses.length
+                        ? `It is the ATT&CK trigger for ${uses.map((u) => `${u.techniqueId} in ${u.cyberRangeName}`).join(', ')}. Those techniques will lose their trigger, so MTTD falls back to "Mark occurred".`
+                        : 'It is removed from the library. Past run records are kept.',
+                      confirmLabel: 'Delete script',
+                      danger: true,
+                    });
+                    if (ok) deleteMutation.mutate(s.id);
+                  }}
                 >
                   Delete
                 </Button>

@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { confirmAction } from '../../components/ConfirmDialog';
 import { ScriptPicker } from './ScriptPicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
@@ -244,7 +245,14 @@ function ExpectedRow({
     onSuccess: onChanged,
     onError: (err) => {
       // 409 = teams were already credited; removing must explicitly void their points.
-      if (err instanceof ApiError && err.status === 409 && window.confirm(err.message)) remove.mutate(true);
+      if (err instanceof ApiError && err.status === 409) {
+        void confirmAction({
+          title: `Remove ${row.techniqueId} and void its credits?`,
+          message: err.message,
+          confirmLabel: 'Remove and void',
+          danger: true,
+        }).then((ok) => ok && remove.mutate(true));
+      }
     },
   });
   const markOccurred = useMutation({
@@ -311,7 +319,15 @@ function ExpectedRow({
           variant="ghost"
           style={{ fontSize: 13, padding: '4px 10px' }}
           disabled={remove.isPending}
-          onClick={() => window.confirm(`Remove ${row.techniqueId} from this scenario?`) && remove.mutate(false)}
+          onClick={async () => {
+            const ok = await confirmAction({
+              title: `Remove ${row.techniqueId} from this scenario?`,
+              message: 'Students tagging it will no longer earn points for it.',
+              confirmLabel: 'Remove',
+              danger: true,
+            });
+            if (ok) remove.mutate(false);
+          }}
         >
           Remove
         </Button>
@@ -327,11 +343,12 @@ function ExpectedRow({
         />
         <select
           aria-label="Expected host"
+          title="Optional: the machine where this technique happens. Limits which trigger-script runs count as an occurrence."
           value={row.topologyNodeId ?? ''}
           onChange={(e) => patch.mutate({ topologyNodeId: e.target.value ? Number(e.target.value) : null })}
           style={{ ...fieldStyle, flex: '1 1 10rem', fontSize: 13 }}
         >
-          <option value="">No specific host</option>
+          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Admin'}</option>
           {nodes.map((n) => (
             <option key={n.id} value={n.id}>
               Host: {n.label}
@@ -374,7 +391,15 @@ function ExpectedRow({
               <button
                 type="button"
                 aria-label="Delete occurrence"
-                onClick={() => window.confirm('Delete this occurrence? MTTD values based on it will change.') && deleteOccurrence.mutate(o.id)}
+                onClick={async () => {
+                  const ok = await confirmAction({
+                    title: 'Delete this occurrence?',
+                    message: 'MTTD values based on it will change.',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                  });
+                  if (ok) deleteOccurrence.mutate(o.id);
+                }}
                 style={{ background: 'none', border: 'none', color: 'var(--text-telemetry)', cursor: 'pointer', padding: 0 }}
               >
                 ×
@@ -520,11 +545,12 @@ function AddExpectedForm({
         />
         <select
           aria-label="Expected host"
+          title="Optional: the machine where this technique happens. Limits which trigger-script runs count as an occurrence."
           value={topologyNodeId}
           onChange={(e) => setTopologyNodeId(e.target.value ? Number(e.target.value) : '')}
           style={{ ...fieldStyle, flex: '1 1 10rem', fontSize: 13 }}
         >
-          <option value="">No specific host</option>
+          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Admin'}</option>
           {nodes.map((n) => (
             <option key={n.id} value={n.id}>
               Host: {n.label}

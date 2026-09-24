@@ -263,6 +263,8 @@ export function TopologyGraph({
 
   return (
     <div
+      // Read-only (student) view hides the connection handles — they suggested an edit students can't make.
+      className={editable ? undefined : 'topology-readonly'}
       style={{
         position: 'relative',
         height: 'clamp(520px, 68vh, 860px)',

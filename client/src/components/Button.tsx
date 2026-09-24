@@ -4,6 +4,7 @@ type Variant = 'primary' | 'ghost' | 'destructive';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
 const base: React.CSSProperties = {

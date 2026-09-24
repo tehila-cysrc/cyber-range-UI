@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
+import { confirmAction } from '../../components/ConfirmDialog';
+import { useToastStore } from '../../stores/toastStore';
 import { Avatar } from '../../components/Avatar';
 
 interface Member {
@@ -48,6 +50,31 @@ export function TeamsAdminPage() {
     queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
   }
 
+  const [search, setSearch] = useState('');
+  const pushToast = useToastStore((s) => s.push);
+
+  // Self-registered students pick their own team; a wrong pick used to be unfixable (UX-10).
+  const moveUser = useMutation({
+    mutationFn: ({ userId, teamId }: { userId: number; teamId: number }) =>
+      apiFetch(`/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ teamId }) }),
+    onSuccess: () => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
+    },
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not move the student'),
+  });
+
+  async function handleMove(m: Member, from: TeamWithMembers, toTeamId: number) {
+    const to = data?.teams.find((t) => t.id === toTeamId);
+    if (!to) return;
+    const ok = await confirmAction({
+      title: `Move ${m.displayName} to ${to.name}?`,
+      message: `Their past timeline entries and scores stay with ${from.name}. They are signed out and join ${to.name} when they sign in again.`,
+      confirmLabel: 'Move student',
+    });
+    if (ok) moveUser.mutate({ userId: m.id, teamId: toTeamId });
+  }
+
   const createTeam = useMutation({
     mutationFn: () => apiFetch('/admin/teams', { method: 'POST', body: JSON.stringify({ name: teamName }) }),
     onSuccess: () => {
@@ -63,21 +90,25 @@ export function TeamsAdminPage() {
     onSuccess: refresh,
   });
 
-  function handleDeleteTeam(team: TeamWithMembers) {
-    const typed = window.prompt(
-      `Delete "${team.name}" permanently?\n\nThis removes its ${team.members.length} account(s) and ALL of its timeline entries, canvas, scores and help requests. This cannot be undone.\n\nType the team name to confirm:`,
-    );
-    if (typed == null) return;
-    if (typed.trim() !== team.name) {
-      window.alert('Team name did not match — nothing was deleted.');
-      return;
-    }
-    deleteTeam.mutate(team.id);
+  async function handleDeleteTeam(team: TeamWithMembers) {
+    const ok = await confirmAction({
+      title: `Delete "${team.name}" permanently?`,
+      message: `This removes its ${team.members.length} account(s) and ALL of its timeline entries, canvas, scores and help requests. This cannot be undone.`,
+      requireText: team.name,
+      confirmLabel: 'Delete team',
+      danger: true,
+    });
+    if (ok) deleteTeam.mutate(team.id);
   }
 
-  function handleRemoveMember(m: Member, team: TeamWithMembers) {
-    if (!window.confirm(`Delete the account ${m.displayName} (@${m.username}) from ${team.name}? They will no longer be able to sign in. (An account that already recorded timeline entries or scores can't be deleted.)`)) return;
-    deleteUser.mutate(m.id);
+  async function handleRemoveMember(m: Member, team: TeamWithMembers) {
+    const ok = await confirmAction({
+      title: `Delete the account ${m.displayName} (@${m.username})?`,
+      message: `They are removed from ${team.name} and can no longer sign in. An account that already recorded timeline entries or scores can't be deleted — move it to another team instead.`,
+      confirmLabel: 'Delete account',
+      danger: true,
+    });
+    if (ok) deleteUser.mutate(m.id);
   }
 
   const createUser = useMutation({
@@ -131,15 +162,48 @@ export function TeamsAdminPage() {
     color: 'var(--text-primary)',
   };
 
+  // Search matches a team name (show the whole team) or a student's name/username (show just them).
+  const q = search.trim().toLowerCase();
+  const visibleTeams = (data?.teams ?? [])
+    .map((team) => {
+      if (!q || team.name.toLowerCase().includes(q)) return { team, members: team.members };
+      return {
+        team,
+        members: team.members.filter((m) => m.displayName.toLowerCase().includes(q) || m.username.toLowerCase().includes(q)),
+      };
+    })
+    .filter(({ team, members }) => !q || members.length > 0 || team.name.toLowerCase().includes(q));
+
   return (
     <div className="page split-main-side" style={{ padding: 'var(--space-xl)' }}>
       <div>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Teams & Accounts</h1>
+        {data && data.teams.length > 0 && (
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search students or teams…"
+            aria-label="Search students or teams"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              marginBottom: 'var(--space-md)',
+              background: 'var(--surface-1)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 'var(--radius-control)',
+              padding: 8,
+              color: 'var(--text-primary)',
+            }}
+          />
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
           {data && data.teams.length === 0 && (
             <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No teams yet — create one on the right.</div>
           )}
-          {data?.teams.map((team) => (
+          {visibleTeams.length === 0 && search.trim() && (
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No student or team matches “{search.trim()}”.</div>
+          )}
+          {visibleTeams.map(({ team, members }) => (
             <div
               key={team.id}
               style={{
@@ -155,12 +219,41 @@ export function TeamsAdminPage() {
                   Delete team
                 </Button>
               </div>
-              {team.members.map((m) => (
-                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
+              {members.map((m) => (
+                <div key={m.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Avatar name={m.displayName} size={22} />
                     {m.displayName} <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
                   </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {(data?.teams.length ?? 0) > 1 && (
+                    <select
+                      value=""
+                      aria-label={`Move ${m.displayName} to another team`}
+                      disabled={moveUser.isPending}
+                      onChange={(e) => {
+                        const toTeamId = Number(e.target.value);
+                        if (toTeamId) void handleMove(m, team, toTeamId);
+                      }}
+                      style={{
+                        background: 'var(--surface-1)',
+                        border: '1px solid var(--surface-border)',
+                        borderRadius: 'var(--radius-control)',
+                        padding: '2px 4px',
+                        color: 'var(--text-muted)',
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="">move to…</option>
+                      {data?.teams
+                        .filter((t) => t.id !== team.id)
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   <button
                     onClick={() => handleRemoveMember(m, team)}
                     aria-label={`Delete account ${m.displayName}`}
@@ -169,9 +262,10 @@ export function TeamsAdminPage() {
                   >
                     delete account
                   </button>
+                  </span>
                 </div>
               ))}
-              {team.members.length === 0 && (
+              {team.members.length === 0 && !search.trim() && (
                 <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No members yet.</div>
               )}
             </div>
@@ -208,8 +302,13 @@ export function TeamsAdminPage() {
                 <Button
                   variant="ghost"
                   disabled={setRegistration.isPending}
-                  onClick={() => {
-                    if (window.confirm('Issue a new join code? The current code stops working immediately.')) setRegistration.mutate(true);
+                  onClick={async () => {
+                    const ok = await confirmAction({
+                      title: 'Issue a new join code?',
+                      message: 'The current code stops working immediately. Students who already registered are not affected.',
+                      confirmLabel: 'Issue new code',
+                    });
+                    if (ok) setRegistration.mutate(true);
                   }}
                 >
                   New code

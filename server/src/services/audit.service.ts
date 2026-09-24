@@ -38,7 +38,7 @@ interface AuditLogRow {
 
 // Instructor-facing read of the compliance trail (Phase 5). CONFIG data — deliberately readable
 // across event resets, since that's the whole point of it surviving them (see CLAUDE/invariants.md).
-export function listAuditLog(options: { entityType?: string; limit?: number; before?: number } = {}): AuditLogEntry[] {
+export function listAuditLog(options: { entityType?: string; limit?: number; before?: number; search?: string } = {}): AuditLogEntry[] {
   const limit = Math.min(options.limit ?? 100, 500);
   const clauses: string[] = [];
   const params: (string | number)[] = [];
@@ -46,6 +46,12 @@ export function listAuditLog(options: { entityType?: string; limit?: number; bef
   if (options.entityType) {
     clauses.push('entity_type = ?');
     params.push(options.entityType);
+  }
+  // Free-text search over who / what / details (e.g. a username, "T1003", "discovery").
+  if (options.search?.trim()) {
+    clauses.push("(action LIKE ? OR actor_username LIKE ? OR metadata_json LIKE ? OR entity_type LIKE ?)");
+    const like = `%${options.search.trim()}%`;
+    params.push(like, like, like, like);
   }
   if (options.before) {
     clauses.push('id < ?');

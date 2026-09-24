@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { promptAction } from '../../components/ConfirmDialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -195,8 +196,14 @@ function ExpectedResultRow({
               variant="ghost"
               style={{ fontSize: 12, padding: '2px 8px', marginLeft: 'auto' }}
               disabled={voidCredit.isPending}
-              onClick={() => {
-                const reason = window.prompt(`Void the ${result.techniqueId} credit (+${d.pointsAwarded})? Optional reason:`, '');
+              onClick={async () => {
+                const reason = await promptAction({
+                  title: `Void the ${result.techniqueId} credit (+${d.pointsAwarded})?`,
+                  message: 'The points are removed from the team. The technique stays blocked for this team even if it is tagged again.',
+                  input: { label: 'Reason (optional)', placeholder: 'e.g. tagged without supporting evidence' },
+                  confirmLabel: 'Void credit',
+                  danger: true,
+                });
                 if (reason !== null) voidCredit.mutate(reason);
               }}
             >

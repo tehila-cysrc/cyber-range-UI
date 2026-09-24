@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../../lib/apiClient';
 import { Button } from '../../../components/Button';
+import { confirmAction } from '../../../components/ConfirmDialog';
+import { useToastStore } from '../../../stores/toastStore';
 import {
   TopologyGraph,
   formatMetadataValue,
@@ -64,6 +66,7 @@ type Selection = { type: 'node'; id: number } | { type: 'zone'; id: number } | n
 
 export function TopologyAdminPage() {
   const queryClient = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
@@ -156,7 +159,7 @@ export function TopologyAdminPage() {
       setSelection(null);
       invalidate();
     },
-    onError: (err) => window.alert(err instanceof Error ? err.message : 'Could not delete this node'),
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not delete this node'),
   });
 
   const patchZone = useMutation({
@@ -179,7 +182,7 @@ export function TopologyAdminPage() {
       await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
       setLayoutVersion((v) => v + 1);
     },
-    onError: (err) => window.alert(err instanceof Error ? err.message : 'Could not auto-arrange this topology'),
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not auto-arrange this topology'),
   });
 
   const connectMutation = useMutation({
@@ -227,10 +230,13 @@ export function TopologyAdminPage() {
             variant="ghost"
             style={{ marginLeft: 'auto', fontSize: 13, padding: '6px 12px' }}
             disabled={autoLayout.isPending}
-            onClick={() => {
-              if (window.confirm('Auto-arrange every node into a clean grid by zone? Manually dragged positions will be replaced.')) {
-                autoLayout.mutate();
-              }
+            onClick={async () => {
+              const ok = await confirmAction({
+                title: 'Auto-arrange every node?',
+                message: 'Nodes are laid out in a clean grid by zone. Positions you dragged by hand are replaced.',
+                confirmLabel: 'Auto-arrange',
+              });
+              if (ok) autoLayout.mutate();
             }}
           >
             {autoLayout.isPending ? 'Arranging…' : 'Auto-arrange'}
@@ -322,8 +328,14 @@ export function TopologyAdminPage() {
                 zones={allZones}
                 onClose={() => setSelection(null)}
                 onSave={(patch) => patchNode.mutate({ nodeId: selectedNode.id, ...patch })}
-                onDelete={() => {
-                  if (window.confirm(`Delete "${selectedNode.label}"?`)) deleteNode.mutate(selectedNode.id);
+                onDelete={async () => {
+                  const ok = await confirmAction({
+                    title: `Delete "${selectedNode.label}"?`,
+                    message: 'It disappears from this topology for students too.',
+                    confirmLabel: 'Delete node',
+                    danger: true,
+                  });
+                  if (ok) deleteNode.mutate(selectedNode.id);
                 }}
                 onAccessTargetChanged={invalidate}
               />
@@ -336,10 +348,14 @@ export function TopologyAdminPage() {
                 memberCount={allNodes.filter((n) => n.zoneId === selectedZone.id).length}
                 onClose={() => setSelection(null)}
                 onSave={(patch) => patchZone.mutate({ zoneId: selectedZone.id, ...patch })}
-                onDelete={() => {
-                  if (window.confirm(`Delete zone "${selectedZone.name}"? Nodes inside it will be un-assigned, not deleted.`)) {
-                    deleteZone.mutate(selectedZone.id);
-                  }
+                onDelete={async () => {
+                  const ok = await confirmAction({
+                    title: `Delete zone "${selectedZone.name}"?`,
+                    message: 'Nodes inside it are un-assigned, not deleted.',
+                    confirmLabel: 'Delete zone',
+                    danger: true,
+                  });
+                  if (ok) deleteZone.mutate(selectedZone.id);
                 }}
               />
             )}
@@ -459,6 +475,9 @@ function NodePanel({
         <input type="checkbox" checked={!!node.isVisibleToStudents} onChange={(e) => onSave({ isVisibleToStudents: e.target.checked })} />
         Visible to students
       </label>
+      <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 10 }}>
+        Name, role, zone, status and visibility save as soon as you change them.
+      </div>
 
       {/* Admin-only diagnostics — the raw discovered metadata, never shown on the canvas itself. */}
       {metadata && (
@@ -488,6 +507,7 @@ function NodePanel({
             the VM; leave username/password blank to keep the current credential (re-entering rotates it in Key Vault).
           </div>
         )}
+        {!!node.environmentId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={fieldStyle} />
           <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password" type="password" style={fieldStyle} />
@@ -497,7 +517,7 @@ function NodePanel({
               disabled={saveAccessTarget.isPending || !node.environmentId || !accessUsername.trim() || !accessPassword.trim()}
               onClick={() => saveAccessTarget.mutate()}
             >
-              Save
+              Save credential
             </Button>
             {accessTargetData?.accessTarget && (
               <Button variant="destructive" onClick={() => removeAccessTarget.mutate()}>
@@ -506,6 +526,7 @@ function NodePanel({
             )}
           </div>
         </div>
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>

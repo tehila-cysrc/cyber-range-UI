@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ExportResultsButtons } from './ExportResultsButtons';
+import { confirmAction } from '../../components/ConfirmDialog';
 import { useMutation } from '@tanstack/react-query';
 import { API_ORIGIN, ApiError } from '../../lib/apiClient';
 import { useAuthStore } from '../../stores/authStore';
@@ -169,6 +171,20 @@ export function EventResetPage() {
         into the range. If students were connecting recently, Azure can need several minutes before it
         accepts the revoke — the page shows progress.
       </p>
+      <div
+        style={{
+          margin: 'var(--space-md) 0',
+          padding: 'var(--space-md)',
+          border: '1px solid var(--signal-tertiary)',
+          borderRadius: 'var(--radius-container)',
+          background: 'var(--surface-1)',
+        }}
+      >
+        <div style={{ color: 'var(--text-primary)', fontSize: 15, marginBottom: 'var(--space-sm)' }}>
+          First, keep the results — nothing can be recovered after the reset.
+        </div>
+        <ExportResultsButtons />
+      </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
         Type <strong style={{ color: 'var(--text-primary)' }}>{CONFIRMATION_PHRASE}</strong> to
         confirm.
@@ -213,14 +229,15 @@ export function EventResetPage() {
           <Button
             variant="ghost"
             disabled={!phraseOk || mutation.isPending}
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Reset anyway? Some Bastion links may still be live — revoke them in the Azure portal (Bastion → Shareable links) right after. This override is recorded in the audit log.',
-                )
-              ) {
-                mutation.mutate(true);
-              }
+            onClick={async () => {
+              const ok = await confirmAction({
+                title: 'Reset anyway?',
+                message:
+                  'Some Bastion links may still be live — revoke them in the Azure portal (Bastion → Shareable links) right after. This override is recorded in the audit log.',
+                confirmLabel: 'Reset anyway',
+                danger: true,
+              });
+              if (ok) mutation.mutate(true);
             }}
           >
             Reset anyway (links unverified)
