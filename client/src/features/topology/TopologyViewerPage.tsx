@@ -142,9 +142,9 @@ export function TopologyViewerPage() {
   const os = metadata && typeof metadata.osType === 'string' ? metadata.osType : null;
 
   const nodes = topologyData?.nodes ?? [];
+  // Only statuses the instructor actually set — an "UNKNOWN (3)" badge told students nothing.
   const statusCounts = nodes.reduce<Record<string, number>>((acc, n) => {
-    const key = n.status ?? 'unknown';
-    acc[key] = (acc[key] ?? 0) + 1;
+    if (n.status) acc[n.status] = (acc[n.status] ?? 0) + 1;
     return acc;
   }, {});
 
@@ -164,7 +164,9 @@ export function TopologyViewerPage() {
 
       {nodes.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 'var(--space-lg)' }}>
-          <TelemetryBadge tone="muted">{nodes.length} nodes detected</TelemetryBadge>
+          <TelemetryBadge tone="muted">
+            {nodes.length} {nodes.length === 1 ? 'machine' : 'machines'}
+          </TelemetryBadge>
           {Object.entries(statusCounts).map(([status, count]) => (
             <TelemetryBadge key={status} tone={STATUS_TONE[status] ?? 'muted'}>
               {status} ({count})
@@ -208,7 +210,9 @@ export function TopologyViewerPage() {
                 <span style={{ fontSize: 12, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {selectedNode.role ? ROLE_LABEL[selectedNode.role] ?? selectedNode.role : selectedNode.nodeType}
                 </span>
-                <TelemetryBadge tone={STATUS_TONE[selectedNode.status ?? ''] ?? 'muted'}>{selectedNode.status ?? 'unknown'}</TelemetryBadge>
+                {selectedNode.status && (
+                  <TelemetryBadge tone={STATUS_TONE[selectedNode.status] ?? 'muted'}>{selectedNode.status}</TelemetryBadge>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
@@ -230,6 +234,11 @@ export function TopologyViewerPage() {
                 )}
               </div>
 
+              {!selectedNode.hasAccessTarget && (
+                <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-telemetry)' }}>
+                  Remote access isn't available for this machine.
+                </div>
+              )}
               {!!selectedNode.hasAccessTarget && (
                 <button
                   onClick={() => {

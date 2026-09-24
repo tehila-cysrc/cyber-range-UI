@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Button } from '../../components/Button';
@@ -41,6 +42,7 @@ interface HelpRequest {
   teamName: string;
   cyberRangeName: string;
   requestedByName: string;
+  message: string | null;
 }
 
 interface CatalogCyberRange {
@@ -155,14 +157,7 @@ export function InstructorDashboardPage() {
     },
   });
 
-  useSocketEvent('help_request:new', () => {
-    queryClient.invalidateQueries({ queryKey: ['help-requests', 'open'] });
-    queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
-  });
-  useSocketEvent('help_request:resolved', () => {
-    queryClient.invalidateQueries({ queryKey: ['help-requests', 'open'] });
-    queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
-  });
+  // help_request:new / :resolved are handled once, globally, by useOpenHelpRequestCount (AppShell).
   useSocketEvent('documentation:new', () => queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] }));
   useSocketEvent('score:awarded', () => queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] }));
 
@@ -224,13 +219,16 @@ export function InstructorDashboardPage() {
                   background: 'var(--surface-1)',
                 }}
               >
-                <span style={{ fontSize: 15, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>
-                  <Avatar name={hr.requestedByName} size={22} />
-                  {hr.requestedByName} needs help on {hr.cyberRangeName}
-                  <span className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
-                    · waiting {formatAgo(hr.createdAt).replace(' ago', '')}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                  <span style={{ fontSize: 15, color: 'var(--text-primary)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                    <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>
+                    <Avatar name={hr.requestedByName} size={22} />
+                    {hr.requestedByName} needs help on {hr.cyberRangeName}
+                    <span className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
+                      · waiting {formatAgo(hr.createdAt).replace(' ago', '')}
+                    </span>
                   </span>
+                  {hr.message && <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>“{hr.message}”</span>}
                 </span>
                 <Button variant="ghost" onClick={() => resolveMutation.mutate(hr.id)} disabled={resolveMutation.isPending}>
                   Resolve
@@ -303,9 +301,12 @@ export function InstructorDashboardPage() {
               <span style={{ display: 'flex', gap: 6 }}>
                 {team.openHelpCount > 0 && <TelemetryBadge tone="alert">{team.openHelpCount} help</TelemetryBadge>}
                 {team.active &&
+                  team.memberCount > 0 &&
                   (team.active.lastEntryAt == null ||
                     Date.now() - new Date(team.active.lastEntryAt).getTime() > STALL_THRESHOLD_SECONDS * 1000) && (
-                    <TelemetryBadge tone="tertiary">quiet</TelemetryBadge>
+                    <span title={`No timeline entry in the last ${STALL_THRESHOLD_SECONDS / 60} minutes — the team may be stuck`}>
+                      <TelemetryBadge tone="tertiary">quiet</TelemetryBadge>
+                    </span>
                   )}
               </span>
             </div>
@@ -330,26 +331,44 @@ export function InstructorDashboardPage() {
             )}
             {team.active && (
               <div className="tabular" style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
-                <span>{team.active.entryCount} entries</span>
-                <span>{team.active.findingCount} findings</span>
+                <span>{team.active.entryCount} {team.active.entryCount === 1 ? 'entry' : 'entries'}</span>
+                <span>{team.active.findingCount} {team.active.findingCount === 1 ? 'finding' : 'findings'}</span>
                 <span>last entry {formatAgo(team.active.lastEntryAt)}</span>
               </div>
             )}
             {team.active?.ttp && (
               <div className="tabular" style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
-                <span style={{ color: 'var(--signal-secondary)' }}>
+                <span style={{ color: 'var(--signal-secondary)' }} title="Expected ATT&CK techniques this team has identified">
                   ATT&amp;CK {team.active.ttp.detectedCount}/{team.active.ttp.expectedCount}
                 </span>
-                <span>
-                  {team.active.ttp.earnedPoints}/{team.active.ttp.availablePoints} pts
+                <span title="ATT&CK points earned / available in this scenario">
+                  {team.active.ttp.earnedPoints}/{team.active.ttp.availablePoints} ATT&amp;CK pts
                 </span>
                 <span>{mttdSummaryLabel(team.active.ttp.mttd)}</span>
               </div>
             )}
             <div className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
-              <span style={{ color: 'var(--signal-primary)' }}>{team.totalPoints} pts</span>
+              <span style={{ color: 'var(--signal-primary)' }} title="All points this event, every scenario">
+                {team.totalPoints} pts total
+              </span>
               <span>{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</span>
-              <span>Completed: {team.completedCount}</span>
+              <span title="Scenarios this team has completed">
+                {team.completedCount} {team.completedCount === 1 ? 'scenario' : 'scenarios'} done
+              </span>
+            </div>
+            {/* Jump straight into this team — the other pages open with it already selected. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 14 }}>
+              <Link to={`/investigation?teamId=${team.teamId}`} style={{ color: 'var(--signal-secondary)' }}>
+                Timeline
+              </Link>
+              <Link to={`/progress?teamId=${team.teamId}`} style={{ color: 'var(--signal-secondary)' }}>
+                Scoring
+              </Link>
+              {team.completedCount > 0 && (
+                <Link to={`/debrief?teamId=${team.teamId}`} style={{ color: 'var(--signal-secondary)' }}>
+                  Debrief
+                </Link>
+              )}
             </div>
             <select
               key={team.active?.cyberRangeId ?? 'none'}

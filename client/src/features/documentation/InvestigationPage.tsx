@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useInstructorTeam } from '../../hooks/useInstructorTeam';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
@@ -123,7 +124,7 @@ export function InvestigationPage() {
   });
   const studentActive = activeData?.active;
 
-  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
+  const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
   const { data: teamsData } = useQuery({
     queryKey: ['admin-teams-list'],
     queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
@@ -520,8 +521,8 @@ function TtpBudgetHint({ budget }: { budget: TtpBudget | null }) {
   return (
     <span style={{ fontSize: 13, color: left === 0 ? 'var(--signal-tertiary)' : 'var(--text-telemetry)' }}>
       {left === 0
-        ? 'Technique budget used up — you can still re-use techniques your team already tried.'
-        : `Your team can try ${left} more distinct technique${left === 1 ? '' : 's'} in this scenario — tag from evidence, not guesses.`}
+        ? 'Your team has used all its technique tags for this scenario — you can still re-use techniques already tagged.'
+        : `Your team can tag ${left} more different technique${left === 1 ? '' : 's'} in this scenario. Tag only what your evidence shows.`}
     </span>
   );
 }

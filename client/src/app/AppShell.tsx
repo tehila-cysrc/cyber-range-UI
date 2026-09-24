@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useClockStore } from '../stores/clockStore';
 import { disconnectSocket, getSocket } from '../lib/socketClient';
@@ -9,6 +9,9 @@ import { useSocketEvent } from '../hooks/useSocketEvent';
 import { Toaster } from '../components/Toaster';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
+import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
+import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
+import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
 import logoUrl from '../assets/company-logo.svg';
 import appIconUrl from '../assets/app-icon.svg';
 
@@ -41,7 +44,19 @@ const INSTRUCTOR_NAV_ITEMS = [
   { to: '/admin/event-reset', label: 'Reset', alert: true },
 ];
 
-function NavItem({ to, label, end, alert }: { to: string; label: string; end?: boolean; alert?: boolean }) {
+function NavItem({
+  to,
+  label,
+  end,
+  alert,
+  badge,
+}: {
+  to: string;
+  label: string;
+  end?: boolean;
+  alert?: boolean;
+  badge?: number;
+}) {
   const activeColor = alert ? 'var(--signal-alert)' : 'var(--signal-primary)';
   return (
     <NavLink
@@ -55,9 +70,32 @@ function NavItem({ to, label, end, alert }: { to: string; label: string; end?: b
         borderBottom: isActive ? `2px solid ${activeColor}` : '2px solid transparent',
         padding: '4px 0',
         whiteSpace: 'nowrap',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
       })}
     >
       {label}
+      {!!badge && (
+        <span
+          aria-label={`${badge} open help ${badge === 1 ? 'request' : 'requests'}`}
+          style={{
+            minWidth: 18,
+            height: 18,
+            padding: '0 5px',
+            borderRadius: 9,
+            background: 'var(--signal-alert)',
+            color: 'var(--surface-floor)',
+            fontSize: 12,
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {badge}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -172,11 +210,77 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
   );
 }
 
+// Students' help request used to live only on Home; this puts it one click away on every page.
+function HeaderHelp() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          background: 'transparent',
+          border: '1px solid var(--surface-border)',
+          borderRadius: 'var(--radius-control)',
+          color: 'var(--text-muted)',
+          padding: '2px 10px',
+          fontFamily: 'inherit',
+          fontSize: 14,
+          cursor: 'pointer',
+        }}
+      >
+        Help
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 36,
+            right: 0,
+            padding: 'var(--space-md)',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-container)',
+            background: 'var(--surface-1)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+            zIndex: 20,
+          }}
+        >
+          <HelpRequestButton compact onDone={() => setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell() {
   const { user, clear } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const resetClock = useClockStore((s) => s.reset);
+  const isStudent = user?.role === 'student';
+  const isInstructor = user?.role === 'instructor';
+  useMissionClockSync(isStudent);
+  useOwnHelpRequestSync(isStudent);
+  const openHelpCount = useOpenHelpRequestCount(isInstructor);
+  const { data: activeRange } = useActiveCyberRange(isStudent);
+  // Students don't need a Leaderboard tab that only says "not enabled"; the instructor keeps it
+  // (they switch it on from the Dashboard and may want to preview it).
+  const { data: leaderboard } = useQuery({
+    queryKey: ['leaderboard'],
+    queryFn: () => apiFetch<{ enabled: boolean; teams: unknown[] }>('/leaderboard'),
+    enabled: isStudent,
+  });
+  useSocketEvent<{ teams: unknown[]; enabled?: boolean }>('leaderboard:update', ({ teams, enabled }) => {
+    queryClient.setQueryData(['leaderboard'], { enabled: enabled ?? true, teams });
+  });
 
   // Mounted once for every page: when the instructor assigns/switches/completes this team's
   // scenario, every open view (Home clock, Investigation, Topology, Debrief) must follow — without it
@@ -218,12 +322,19 @@ export function AppShell() {
         </div>
 
         <div className="app-nav-links">
-          {NAV_ITEMS.filter((item) => user?.role !== 'instructor' || !HIDDEN_FOR_INSTRUCTOR.has(item.to)).map((item) => (
-            <NavItem key={item.to} {...item} />
-          ))}
-          {user?.role === 'instructor' &&
-            INSTRUCTOR_NAV_ITEMS.map((item) => <NavItem key={item.to} {...item} />)}
+          {NAV_ITEMS.filter((item) => !isInstructor || !HIDDEN_FOR_INSTRUCTOR.has(item.to))
+            .filter((item) => !(isStudent && item.to === '/leaderboard' && leaderboard && !leaderboard.enabled))
+            .map((item) => (
+              <NavItem key={item.to} {...item} />
+            ))}
+          {isInstructor &&
+            INSTRUCTOR_NAV_ITEMS.map((item) => (
+              <NavItem key={item.to} {...item} badge={item.to === '/instructor' ? openHelpCount : undefined} />
+            ))}
         </div>
+
+        {isStudent && <MissionClockBadge />}
+        {isStudent && activeRange?.active && <HeaderHelp />}
 
         {user && <LiveStatusBadge />}
         {user && <UserMenu displayName={user.displayName} role={user.role} onLogout={handleLogout} />}

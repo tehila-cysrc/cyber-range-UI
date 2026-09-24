@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch, ApiError } from '../../lib/apiClient';
+import { apiFetch, ApiError, SIGNED_OUT_NOTE_KEY } from '../../lib/apiClient';
 import { useAuthStore, type AuthUser } from '../../stores/authStore';
 import { Button } from '../../components/Button';
 
@@ -38,6 +38,16 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  // Read-and-clear once: set by apiClient when a signed-in session got a 401.
+  const [signedOutNote] = useState(() => {
+    try {
+      const had = sessionStorage.getItem(SIGNED_OUT_NOTE_KEY) === '1';
+      sessionStorage.removeItem(SIGNED_OUT_NOTE_KEY);
+      return had;
+    } catch {
+      return false;
+    }
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -161,6 +171,13 @@ export function LoginPage() {
             {mode === 'signin' ? 'Sign in' : 'Join a team'}
           </h1>
         </div>
+
+        {signedOutNote && mode === 'signin' && (
+          <div role="status" style={{ fontSize: 14, color: 'var(--signal-tertiary)', lineHeight: 1.5 }}>
+            Your session ended — your account may have been removed or the event reset. Sign in again, or
+            ask your instructor.
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: 14 }}>
           <button

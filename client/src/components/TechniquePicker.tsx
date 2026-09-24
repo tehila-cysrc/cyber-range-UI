@@ -99,10 +99,13 @@ export function TechniquePicker({
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
-      if (open && results[highlight]) {
-        e.preventDefault();
-        pick(results[highlight].id);
-      }
+      // With a search typed, Enter belongs to the picker — never to the surrounding form. Letting it
+      // through submitted the whole timeline entry without the technique and threw the search away.
+      if (!query.trim()) return;
+      e.preventDefault();
+      const match = results[highlight] ?? results[0];
+      if (match) pick(match.id);
+      else setOpen(true);
     } else if (e.key === 'Escape') {
       setOpen(false);
     }

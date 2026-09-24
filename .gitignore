@@ -16,7 +16,7 @@ BACKLOG.md
 FOLLOWUPS.md
 PROGRESS.txt
 PROGRESS_OLD_*.txt
-hooks/
+/hooks/
 
 .vercel
 .env*

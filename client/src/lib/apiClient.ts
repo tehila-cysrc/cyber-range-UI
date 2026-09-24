@@ -8,6 +8,8 @@ import { useAuthStore } from '../stores/authStore';
 export const API_ORIGIN = import.meta.env.DEV ? '' : 'https://cyber-range-ui.onrender.com';
 const API_BASE_URL = `${API_ORIGIN}/api`;
 
+export const SIGNED_OUT_NOTE_KEY = 'cyber-range-signed-out';
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -27,6 +29,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
+    // A signed-in user losing their session (account deleted, event reset, token expired) used to be
+    // bounced to the login page with no explanation — the login page shows this note once.
+    if (token) {
+      try {
+        sessionStorage.setItem(SIGNED_OUT_NOTE_KEY, '1');
+      } catch {
+        // storage blocked — the redirect still happens, just without the note
+      }
+    }
     useAuthStore.getState().clear();
   }
 

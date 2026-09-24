@@ -6,19 +6,8 @@ import { Button } from '../../components/Button';
 import { HelpRequestButton } from '../helpRequests/HelpRequestButton';
 import { useAuthStore } from '../../stores/authStore';
 import { useClockStore } from '../../stores/clockStore';
-import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { PressureStageBanner } from '../clock/PressureStageBanner';
-
-interface ActiveCyberRange {
-  progressId: number;
-  cyberRangeId: number;
-  name: string;
-  difficulty: 'intermediate' | 'advanced';
-  day: { key: string; label: string };
-  expectedDurationMinutes: number | null;
-  status: string;
-  remainingSeconds: number | null;
-}
+import { formatRemaining, useActiveCyberRange } from '../clock/MissionClock';
 
 function formatMinutes(minutes: number | null) {
   if (minutes == null) return 'Not yet configured';
@@ -31,31 +20,22 @@ function formatMinutes(minutes: number | null) {
 
 // Read-only for students by design: the instructor assigns/switches each team's current scenario
 // (see InstructorDashboardPage) — a student only ever sees whatever was assigned to their team.
+// The clock itself is kept in sync globally (useMissionClockSync in AppShell); this page only reads it.
 export function ActiveCyberRangePage() {
   const role = useAuthStore((s) => s.user?.role);
-  const { data, isLoading } = useQuery({
-    queryKey: ['active-cyber-range'],
-    queryFn: () => apiFetch<{ active: ActiveCyberRange | null }>('/teams/me/active-cyber-range'),
-  });
+  const { data, isLoading } = useActiveCyberRange();
 
   const liveRemaining = useClockStore((s) => s.remainingSeconds);
   const stageLabel = useClockStore((s) => s.stageLabel);
   const stageVisualStyle = useClockStore((s) => s.stageVisualStyle);
   const timeUp = useClockStore((s) => s.timeUp);
-  const setTick = useClockStore((s) => s.setTick);
-  const setStage = useClockStore((s) => s.setStage);
-  const setTimeUp = useClockStore((s) => s.setTimeUp);
 
-  // Server-authoritative countdown: the REST fetch above is only the initial snapshot; once
-  // connected, clock:tick (emitted once/second by clock.service.ts) is the source of truth.
-  useSocketEvent<{ remainingSeconds: number }>('clock:tick', ({ remainingSeconds }) => {
-    setTick(remainingSeconds);
-  });
-  useSocketEvent<{ stageLabel: string; visualStyle: string }>('clock:pressure_stage', (payload) => {
-    setStage(payload.stageLabel, payload.visualStyle);
-  });
-  useSocketEvent('clock:time_up', () => {
-    setTimeUp();
+  // With nothing active, a finished scenario is the likely reason — point at its Debrief instead of
+  // an unexplained "nothing is active".
+  const { data: history } = useQuery({
+    queryKey: ['history', ''],
+    queryFn: () => apiFetch<{ completed: { cyberRangeId: number; name: string; completedAt: string }[] }>('/history'),
+    enabled: !isLoading && !data?.active && role === 'student',
   });
 
   if (isLoading) {
@@ -90,7 +70,20 @@ export function ActiveCyberRangePage() {
             color: 'var(--text-muted)',
           }}
         >
-          No Cyber Range is active for your team right now.
+          {history && history.completed.length > 0 ? (
+            <>
+              <div style={{ color: 'var(--text-primary)', fontSize: 16, marginBottom: 6 }}>
+                “{[...history.completed].sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0].name}” is complete.
+              </div>
+              Review your team's timeline and results in the{' '}
+              <Link to="/debrief" style={{ color: 'var(--signal-secondary)' }}>
+                Debrief
+              </Link>
+              . Your instructor will start the next scenario when it's time.
+            </>
+          ) : (
+            <>No scenario is running for your team yet — your instructor will start one. This page updates automatically.</>
+          )}
         </div>
       ) : (
         <div
@@ -154,9 +147,7 @@ export function ActiveCyberRangePage() {
                     color: timeUp ? 'var(--signal-alert)' : 'var(--text-primary)',
                   }}
                 >
-                  {timeUp
-                    ? "Time's up"
-                    : `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s`}
+                  {timeUp || remainingSeconds <= 0 ? "Time's up" : formatRemaining(remainingSeconds)}
                 </span>
                 {!timeUp && (
                   <span
