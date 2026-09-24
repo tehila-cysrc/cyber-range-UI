@@ -10,7 +10,7 @@ export interface CanvasNodeFlowData {
   onLabelChange: (flowNodeId: string, nextLabel: string) => void;
 }
 
-const SHAPE_SIZE = {
+export const SHAPE_SIZE = {
   rect: { width: 150, height: 56 },
   circle: { width: 84, height: 84 },
   diamond: { width: 100, height: 100 },

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useInstructorTeam } from '../../hooks/useInstructorTeam';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -104,7 +104,19 @@ export function InvestigationPage() {
   const isInstructor = role === 'instructor';
   const ownTeamId = useAuthStore((s) => s.user?.teamId);
 
-  const [view, setView] = useState<InvestigationView>('timeline');
+  // Kept in the URL so a refresh or a link returns to the same tab (it always reset to Timeline).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: InvestigationView = searchParams.get('view') === 'canvas' ? 'canvas' : 'timeline';
+  const setView = (next: InvestigationView) =>
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next === 'canvas') p.set('view', 'canvas');
+        else p.delete('view');
+        return p;
+      },
+      { replace: true },
+    );
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [isImportant, setIsImportant] = useState(false);
@@ -270,10 +282,10 @@ export function InvestigationPage() {
                 marginBottom: 4,
               }}
             >
-              Shared Timeline
+              Team investigation
             </div>
             <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-              Timeline{active ? ` — ${active.name}` : ''}
+              {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
             </h1>
           </div>
           <select
@@ -344,10 +356,12 @@ export function InvestigationPage() {
               marginBottom: 4,
             }}
           >
-            Incident Timeline
+            Investigation
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
-            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Timeline — {active.name}</h1>
+            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+              {view === 'canvas' ? 'Canvas' : 'Timeline'} — {active.name}
+            </h1>
             {entriesData && (
               <TelemetryBadge tone="secondary">
                 {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}

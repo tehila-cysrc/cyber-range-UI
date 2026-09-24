@@ -12,10 +12,10 @@ import ReactFlow, {
   type NodeMouseHandler,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { canvasNodeTypes, type CanvasNodeFlowData } from './CanvasNodeTypes';
+import { canvasNodeTypes, SHAPE_SIZE, type CanvasNodeFlowData } from './CanvasNodeTypes';
 import { CanvasNodePalette, CANVAS_DRAG_MIME } from './CanvasNodePalette';
 import { CanvasNodeInspector } from './CanvasNodeInspector';
-import type { CanvasNodeTypeKey } from './canvasNodeSpec';
+import { CANVAS_NODE_SPEC_BY_TYPE, type CanvasNodeTypeKey } from './canvasNodeSpec';
 
 export interface CanvasNodeDataDTO {
   id: number;
@@ -173,7 +173,10 @@ function CanvasInner({
     const type = e.dataTransfer.getData(CANVAS_DRAG_MIME) as CanvasNodeTypeKey | '';
     if (!type) return;
     const position = reactFlowInstance.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    onNodeCreate?.(type, position.x, position.y);
+    // Center the new shape on the cursor — placing its top-left corner there made every drop land
+    // visibly down-and-right of where it was released.
+    const size = SHAPE_SIZE[CANVAS_NODE_SPEC_BY_TYPE[type].shape];
+    onNodeCreate?.(type, position.x - size.width / 2, position.y - size.height / 2);
   }
 
   const handleNodeClick: NodeMouseHandler = (_, node) => onSelectionChange(parseFlowNodeId(node.id));
@@ -244,6 +247,7 @@ function CanvasInner({
             onClose={() => onSelectionChange(null)}
             onDuplicate={() => onNodeDuplicate?.(selectedNode)}
             onBodyChange={(body) => onBodyChange?.(selectedNode.id, body)}
+            onLabelChange={(label) => onLabelChange?.(selectedNode.id, label)}
             onDelete={() => {
               if (!window.confirm(`Delete "${selectedNode.label}" and its connections for the whole team?`)) return;
               onSelectionChange(null);

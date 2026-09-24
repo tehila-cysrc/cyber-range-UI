@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../../lib/apiClient';
 import { Button } from '../../../components/Button';
@@ -66,7 +67,8 @@ export function TopologyAdminPage() {
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
-  // Bumped after Auto-arrange so the graph remounts and re-runs fitView on the new positions.
+  // Bumped after Auto-arrange and after adding a node/zone so the graph remounts and re-runs fitView
+  // on the new positions — a newly added card used to land off-screen or clipped.
   const [layoutVersion, setLayoutVersion] = useState(0);
 
   const [newNodeLabel, setNewNodeLabel] = useState('');
@@ -110,11 +112,12 @@ export function TopologyAdminPage() {
           zoneId: newNodeZoneId === '' ? null : newNodeZoneId,
         }),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setNewNodeLabel('');
       setNewNodeRole('');
       setNewNodeZoneId('');
-      invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
+      setLayoutVersion((v) => v + 1);
     },
   });
 
@@ -124,10 +127,11 @@ export function TopologyAdminPage() {
         method: 'POST',
         body: JSON.stringify({ name: newZoneName, cidr: newZoneCidr || null }),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setNewZoneName('');
       setNewZoneCidr('');
-      invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
+      setLayoutVersion((v) => v + 1);
     },
   });
 
@@ -236,6 +240,60 @@ export function TopologyAdminPage() {
 
       {cyberRangeId !== '' && (
         <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm) var(--space-xl)' }}>
+            <form onSubmit={handleAddNode} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+              <input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Label (e.g. DC01)" style={fieldStyle} />
+              <select value={newNodeRole} onChange={(e) => setNewNodeRole(e.target.value)} style={fieldStyle}>
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <select value={newNodeZoneId} onChange={(e) => setNewNodeZoneId(e.target.value ? Number(e.target.value) : '')} style={fieldStyle}>
+                <option value="">No zone</option>
+                {allZones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+              <Button type="submit" variant="ghost">
+                Add node
+              </Button>
+            </form>
+
+            <form onSubmit={handleAddZone} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
+              <input value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="Zone name (e.g. DMZ)" style={fieldStyle} />
+              <input value={newZoneCidr} onChange={(e) => setNewZoneCidr(e.target.value)} placeholder="CIDR (optional)" style={fieldStyle} />
+              <Button type="submit" variant="ghost">
+                Add zone
+              </Button>
+            </form>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-telemetry)', margin: '6px 0 var(--space-md)' }}>
+            Drag between two cards (or a card and a zone) on the canvas to connect them — e.g. Internet → Firewall → Zone.
+          </p>
+          {topologyData && allNodes.length === 0 && allZones.length === 0 && (
+            <div
+              role="status"
+              style={{
+                marginBottom: 'var(--space-md)',
+                padding: 'var(--space-md)',
+                border: '1px dashed var(--surface-border-strong)',
+                borderRadius: 'var(--radius-container)',
+                color: 'var(--text-muted)',
+                fontSize: 14,
+              }}
+            >
+              This Cyber Range has no machines yet. If it's linked to an Azure environment, run{' '}
+              <strong>Discover now</strong> on the{' '}
+              <Link to="/admin/environments" style={{ color: 'var(--signal-secondary)' }}>
+                Environments
+              </Link>{' '}
+              page; otherwise add zones and nodes by hand above.
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: selection ? '1fr 300px' : '1fr', gap: 'var(--space-xl)' }}>
             <TopologyGraph
               key={`${cyberRangeId}:${layoutVersion}`}
@@ -287,40 +345,6 @@ export function TopologyAdminPage() {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-xl)', marginTop: 'var(--space-lg)' }}>
-            <form onSubmit={handleAddNode} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
-              <input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Label (e.g. DC01)" style={fieldStyle} />
-              <select value={newNodeRole} onChange={(e) => setNewNodeRole(e.target.value)} style={fieldStyle}>
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <select value={newNodeZoneId} onChange={(e) => setNewNodeZoneId(e.target.value ? Number(e.target.value) : '')} style={fieldStyle}>
-                <option value="">No zone</option>
-                {allZones.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.name}
-                  </option>
-                ))}
-              </select>
-              <Button type="submit" variant="ghost">
-                Add node
-              </Button>
-            </form>
-
-            <form onSubmit={handleAddZone} style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
-              <input value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} placeholder="Zone name (e.g. DMZ)" style={fieldStyle} />
-              <input value={newZoneCidr} onChange={(e) => setNewZoneCidr(e.target.value)} placeholder="CIDR (optional)" style={fieldStyle} />
-              <Button type="submit" variant="ghost">
-                Add zone
-              </Button>
-            </form>
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text-telemetry)', marginTop: 6 }}>
-            Drag between two cards (or a card and a zone) on the canvas to connect them — e.g. Internet → Firewall → Zone.
-          </p>
         </>
       )}
     </div>

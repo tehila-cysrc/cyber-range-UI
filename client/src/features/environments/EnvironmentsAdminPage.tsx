@@ -160,6 +160,9 @@ function EnvironmentCard({
     queryKey: ['discovery-runs', env.id],
     queryFn: () => apiFetch<{ runs: DiscoveryRun[] }>(`/admin/environments/${env.id}/discovery-runs`),
     refetchInterval: (query) => (query.state.data?.runs[0]?.status === 'running' || query.state.data?.runs[0]?.status === 'queued' ? 1500 : false),
+    // Keep polling while the instructor is in another tab — otherwise the card sat on "running…"
+    // after the run had already finished (or failed) until a manual reload.
+    refetchIntervalInBackground: true,
   });
   const latestRun = runsData?.runs[0];
 
@@ -296,6 +299,7 @@ export function EnvironmentsAdminPage() {
   const [clientSecret, setClientSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [checkResults, setCheckResults] = useState<Record<number, ConnectivityResult>>({});
+  const [notice, setNotice] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
 
   const { data } = useQuery({
     queryKey: ['admin-environments'],
@@ -344,8 +348,23 @@ export function EnvironmentsAdminPage() {
         method: 'POST',
         body: JSON.stringify({ environmentId: environment.id }),
       });
+      return { environmentId: environment.id, name };
     },
-    onSuccess: () => {
+    onSuccess: ({ environmentId, name: registeredName }) => {
+      // Registering used to give no feedback at all and never tested the credential — confirm what
+      // was created and run the connectivity check right away, so a bad secret shows up now.
+      setNotice({ text: `Registered "${registeredName}" and created its Cyber Range. Checking the connection…`, tone: 'ok' });
+      checkConnectivity.mutate(environmentId, {
+        onSuccess: (result) =>
+          setNotice(
+            result.ok
+              ? { text: `Registered "${registeredName}" — connection OK. Next: Discover now, then review its topology.`, tone: 'ok' }
+              : {
+                  text: `Registered "${registeredName}", but the connection check failed — see the card on the left and fix the credential with Edit.`,
+                  tone: 'warn',
+                },
+          ),
+      });
       setName('');
       setDayId('');
       setDifficulty('');
@@ -358,7 +377,10 @@ export function EnvironmentsAdminPage() {
       setError(null);
       refresh();
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to register environment'),
+    onError: (err) => {
+      setNotice(null);
+      setError(err instanceof ApiError ? err.message : 'Failed to register environment');
+    },
   });
 
   const deleteEnvironment = useMutation({
@@ -462,6 +484,11 @@ export function EnvironmentsAdminPage() {
           type="password"
           style={inputStyle}
         />
+        {notice && (
+          <div role="status" style={{ color: notice.tone === 'ok' ? 'var(--signal-primary)' : 'var(--signal-tertiary)', fontSize: 14 }}>
+            {notice.text}
+          </div>
+        )}
         {error && <div style={{ color: 'var(--signal-alert)', fontSize: 14 }}>{error}</div>}
         <Button type="submit" variant="ghost" disabled={createEnvironment.isPending}>
           Register environment
