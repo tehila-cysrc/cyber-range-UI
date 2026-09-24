@@ -48,8 +48,18 @@ Run from the repo root (npm workspaces):
 
 ## Deployment
 
-On Vercel, set the Root Directory to `client` and use the Vite preset.
-`client/vercel.json` serves `index.html` for application routes such as `/login`.
+On Vercel, set the Root Directory to `client`, use the Vite preset, and set
+`VITE_API_ORIGIN` to the API origin (for the Render API,
+`https://cyber-range-ui.onrender.com`). `client/vercel.json` serves `index.html`
+for application routes such as `/login`.
+
+### Coolify
+
+Coolify detects the root `Dockerfile` and runs one container that serves the UI
+and the API on the same origin. Set `CREDENTIAL_MASTER_KEY` (base64, decodes to
+32 bytes) so cloud credentials can be stored. Add persistent storage mounted at
+`/data`; the database file is `DB_PATH=/data/cyber-range.db`. The process listens
+on `PORT` (default 4000). Health check: `GET /api/health`.
 
 For Render, build with `npm ci && npm run build -w server` from the repository
 root, then start with `npm run start -w server`. Use Node.js 24 and set

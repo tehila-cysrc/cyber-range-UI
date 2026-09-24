@@ -2,10 +2,10 @@ import { useAuthStore } from '../stores/authStore';
 
 // In `vite dev` (local dev server), stay same-origin so vite.config.ts's own proxy
 // (/api, /socket.io -> http://localhost:4000) handles routing to the local backend — an absolute
-// URL here would bypass that proxy entirely and always hit the deployed backend, even locally.
-// The built production bundle (Vercel, a static site with no backend of its own) has no such proxy,
-// so it needs the real deployed origin.
-export const API_ORIGIN = import.meta.env.DEV ? '' : 'https://cyber-range-ui.onrender.com';
+// URL here would bypass that proxy entirely and always hit a remote backend, even locally.
+// A production bundle served by this API (Coolify / Docker) is also same-origin, so the origin
+// stays empty. A split static host sets VITE_API_ORIGIN to the API origin at build time.
+export const API_ORIGIN = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_ORIGIN ?? '');
 const API_BASE_URL = `${API_ORIGIN}/api`;
 
 export const SIGNED_OUT_NOTE_KEY = 'cyber-range-signed-out';
