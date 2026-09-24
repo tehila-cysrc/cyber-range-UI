@@ -11,6 +11,7 @@ export interface ActiveCyberRange {
   difficulty: 'intermediate' | 'advanced';
   day: { key: string; label: string };
   expectedDurationMinutes: number | null;
+  studentBriefing: string | null;
   status: string;
   remainingSeconds: number | null;
 }
@@ -53,7 +54,7 @@ export function useMissionClockSync(enabled: boolean) {
   useSocketEvent('clock:time_up', () => {
     if (!enabled) return;
     setTimeUp();
-    push("Time's up for this scenario — wrap up your findings.", 'error');
+    push("Time's up for this scenario. You can still add entries — they'll be marked as after the time limit.", 'error');
   });
 }
 

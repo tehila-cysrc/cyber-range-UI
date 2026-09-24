@@ -147,6 +147,10 @@ export function TeamsAdminPage() {
   function handleCreateUser(e: FormEvent) {
     e.preventDefault();
     if (!username.trim() || !password) return;
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     if (role === 'student' && !teamId) {
       setError('Pick a team for a student account');
       return;
@@ -339,7 +343,7 @@ export function TeamsAdminPage() {
         <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New account</h2>
           <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" aria-label="Password" autoComplete="new-password" style={inputStyle} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8 characters)" aria-label="Password" minLength={8} autoComplete="new-password" style={inputStyle} />
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
           <select value={role} onChange={(e) => setRole(e.target.value as 'student' | 'instructor')} style={{ ...inputStyle, background: 'var(--surface-1)' }}>
             <option value="student">Student</option>

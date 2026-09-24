@@ -123,6 +123,18 @@ export function ActiveCyberRangePage() {
             </div>
           </div>
 
+          {/* Instructor-written mission briefing (UX-08). */}
+          {active.studentBriefing && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>
+                Mission briefing
+              </span>
+              <div className="prose-pre" style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                {active.studentBriefing}
+              </div>
+            </div>
+          )}
+
           {remainingSeconds != null && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
               <span
@@ -164,6 +176,12 @@ export function ActiveCyberRangePage() {
                   </span>
                 )}
               </div>
+            </div>
+          )}
+
+          {remainingSeconds != null && (timeUp || remainingSeconds <= 0) && (
+            <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+              You can still add entries — they're marked as added after the time limit.
             </div>
           )}
 

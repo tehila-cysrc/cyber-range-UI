@@ -40,6 +40,7 @@ interface ActiveProgressRow {
   name: string;
   difficulty: string;
   expectedDurationMinutes: number | null;
+  studentBriefing: string | null;
   dayKey: string;
   dayLabel: string;
   status: string;
@@ -60,6 +61,7 @@ router.get('/me/active-cyber-range', (req, res) => {
          cr.name AS name,
          cr.difficulty AS difficulty,
          cr.expected_duration_minutes AS expectedDurationMinutes,
+         cr.student_briefing AS studentBriefing,
          d.key AS dayKey,
          d.label AS dayLabel,
          p.status AS status,
@@ -94,6 +96,7 @@ router.get('/me/active-cyber-range', (req, res) => {
       difficulty: row.difficulty,
       day: { key: row.dayKey, label: row.dayLabel },
       expectedDurationMinutes: row.expectedDurationMinutes,
+      studentBriefing: row.studentBriefing,
       status: row.status,
       startedAt: row.startedAt,
       remainingSeconds,

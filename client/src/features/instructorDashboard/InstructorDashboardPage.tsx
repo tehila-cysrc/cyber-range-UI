@@ -406,6 +406,26 @@ export function InstructorDashboardPage() {
         </div>
       )}
 
+      {catalogData && catalogData.cyberRanges.length === 0 && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 'var(--space-md)',
+            padding: 'var(--space-sm) var(--space-md)',
+            border: '1px dashed var(--surface-border-strong)',
+            borderRadius: 'var(--radius-control)',
+            color: 'var(--text-muted)',
+            fontSize: 14,
+          }}
+        >
+          No scenarios yet — create one on the{' '}
+          <Link to="/admin/scenarios" style={{ color: 'var(--signal-secondary)' }}>
+            Scenarios
+          </Link>{' '}
+          page before assigning teams.
+        </div>
+      )}
+
       {(() => {
         const teams = dashboardData?.teams ?? [];
         const outOfTime = teams.filter(isOutOfTime);

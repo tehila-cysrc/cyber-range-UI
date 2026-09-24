@@ -42,6 +42,7 @@ interface DocEntry {
   authorUserId: number;
   authorName: string;
   isImportantFinding: number;
+  afterTimeLimit?: number;
   createdAt: string;
   ttps?: EntryTtp[];
 }
@@ -383,7 +384,12 @@ export function InstructorScoringPanel() {
                     <Avatar name={entry.authorName} size={20} />
                     {entry.authorName} ·{' '}
                     {new Date(entry.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {entry.isImportantFinding ? (
+                    {entry.afterTimeLimit ? (
+            <span title="Added after the scenario's time limit ran out">
+              <TelemetryBadge tone="tertiary">After time</TelemetryBadge>
+            </span>
+          ) : null}
+          {entry.isImportantFinding ? (
                       <TelemetryBadge tone="primary">
                         <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
                         Finding

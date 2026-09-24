@@ -23,7 +23,11 @@ let instructorId;
 
 before(() => {
   seed();
-  rangeId = db.prepare('SELECT id FROM cyber_ranges ORDER BY id LIMIT 1').get().id;
+  // The seed no longer creates sample scenarios — make one for these tests.
+  const dayId = db.prepare("SELECT id FROM days WHERE key = 'azure'").get().id;
+  rangeId = Number(
+    db.prepare("INSERT INTO cyber_ranges (day_id, name, difficulty, expected_duration_minutes, sort_order) VALUES (?, 'Test Range', 'intermediate', 60, 1)").run(dayId).lastInsertRowid,
+  );
   alpha = db.prepare("SELECT id FROM teams WHERE name = 'Team Alpha'").get().id;
   bravo = db.prepare("SELECT id FROM teams WHERE name = 'Team Bravo'").get().id;
   aliceId = db.prepare("SELECT id FROM users WHERE username = 'alice'").get().id;
@@ -316,7 +320,10 @@ test('a succeeded trigger-script run records an occurrence for its expected tech
 
 test('first_started_at survives a pause/restart of the scenario', () => {
   const first = db.prepare('SELECT first_started_at AS f FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?').get(alpha, rangeId).f;
-  const otherRange = db.prepare('SELECT id FROM cyber_ranges WHERE id != ? ORDER BY id LIMIT 1').get(rangeId).id;
+  const dayId = db.prepare("SELECT id FROM days WHERE key = 'azure'").get().id;
+  const otherRange = Number(
+    db.prepare("INSERT INTO cyber_ranges (day_id, name, difficulty, sort_order) VALUES (?, 'Other Test Range', 'intermediate', 2)").run(dayId).lastInsertRowid,
+  );
   startCyberRangeForTeam(alpha, otherRange);
   startCyberRangeForTeam(alpha, rangeId);
   const row = db.prepare('SELECT first_started_at AS f, started_at AS s FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?').get(alpha, rangeId);

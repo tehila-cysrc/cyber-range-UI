@@ -217,3 +217,13 @@ CREATE TABLE IF NOT EXISTS cyber_range_expected_ttps (
 -- ttp_occurrences rows, not duplicate expectations.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_expected_ttps_one_active_per_technique
   ON cyber_range_expected_ttps (cyber_range_id, technique_id) WHERE is_active = 1;
+
+-- The topology students see (UX-38): a snapshot of the student-visible view, frozen when the
+-- instructor clicks "Publish to students". CONFIG — survives an event reset, like the topology itself.
+-- One row per cyber range; no row = never published (students see an empty topology).
+CREATE TABLE IF NOT EXISTS cyber_range_topology_publications (
+  cyber_range_id INTEGER PRIMARY KEY REFERENCES cyber_ranges(id),
+  snapshot_json TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  published_by TEXT
+);

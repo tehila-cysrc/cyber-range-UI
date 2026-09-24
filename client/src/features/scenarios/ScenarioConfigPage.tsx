@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { ScenarioDetailsForm } from './ScenarioDetailsForm';
 import { confirmAction } from '../../components/ConfirmDialog';
 import { ScriptPicker } from './ScriptPicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -88,6 +89,8 @@ export function ScenarioConfigPage() {
   const queryClient = useQueryClient();
   const { data: catalog } = useMitreCatalog();
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
+  const [creating, setCreating] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
 
   const { data: rangesData } = useQuery({
     queryKey: ['cyber-ranges'],
@@ -132,22 +135,64 @@ export function ScenarioConfigPage() {
       <div style={{ ...monoLabel, marginBottom: 4 }}>Scenario configuration</div>
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Scenarios</h1>
 
-      <select
-        aria-label="Scenario"
-        value={cyberRangeId}
-        onChange={(e) => setCyberRangeId(e.target.value ? Number(e.target.value) : '')}
-        style={{ ...fieldStyle, marginBottom: 'var(--space-lg)', maxWidth: '100%' }}
-      >
-        <option value="">Select a Cyber Range…</option>
-        {rangesData?.cyberRanges.map((cr) => (
-          <option key={cr.id} value={cr.id}>
-            {cr.dayLabel} — {cr.name}
-          </option>
-        ))}
-      </select>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+        <select
+          aria-label="Scenario"
+          value={cyberRangeId}
+          onChange={(e) => {
+            setCyberRangeId(e.target.value ? Number(e.target.value) : '');
+            setCreating(false);
+            setEditingDetails(false);
+          }}
+          style={{ ...fieldStyle, maxWidth: '100%' }}
+        >
+          <option value="">Select a scenario…</option>
+          {rangesData?.cyberRanges.map((cr) => (
+            <option key={cr.id} value={cr.id}>
+              {cr.dayLabel} — {cr.name}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setCreating(true);
+            setCyberRangeId('');
+          }}
+          style={{ padding: '6px 14px', fontSize: 14 }}
+        >
+          + New scenario
+        </Button>
+        {cyberRangeId !== '' && !creating && (
+          <Button type="button" variant="ghost" onClick={() => setEditingDetails((v) => !v)} style={{ padding: '6px 14px', fontSize: 14 }}>
+            {editingDetails ? 'Hide details' : 'Edit details & student briefing'}
+          </Button>
+        )}
+      </div>
 
-      {cyberRangeId === '' ? (
-        <EmptyState message="Pick a scenario to define the MITRE ATT&CK techniques students should identify." />
+      {creating && (
+        <ScenarioDetailsForm
+          cyberRangeId="new"
+          onCancel={() => setCreating(false)}
+          onSaved={(id) => {
+            setCreating(false);
+            setCyberRangeId(id);
+          }}
+        />
+      )}
+      {cyberRangeId !== '' && editingDetails && (
+        <ScenarioDetailsForm cyberRangeId={cyberRangeId} onSaved={() => setEditingDetails(false)} onCancel={() => setEditingDetails(false)} />
+      )}
+
+      {creating ? null : cyberRangeId === '' ? (
+        <EmptyState
+          message={
+            rangesData && rangesData.cyberRanges.length === 0
+              ? 'No scenarios yet — click "+ New scenario" to create the first one (or register an Azure environment, which creates one).'
+              : 'Pick a scenario to edit its details, student briefing and the MITRE ATT&CK techniques students should identify.'
+          }
+        />
       ) : error ? (
         <EmptyState message={error instanceof ApiError ? error.message : 'Could not load this scenario.'} />
       ) : (

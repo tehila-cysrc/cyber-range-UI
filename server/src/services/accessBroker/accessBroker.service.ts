@@ -6,6 +6,7 @@ import { createShareableLink, deleteShareableLink, deleteShareableLinks, listSha
 import { classifyAzureError } from '../azureErrors.js';
 import { writeAudit } from '../audit.service.js';
 import { emitAccessSessionEnded, emitAccessSessionStarted } from '../../sockets/emitters.js';
+import { isNodePublished } from '../topologyPublication.service.js';
 
 const SESSION_TTL_MINUTES = Number(process.env.ACCESS_SESSION_TTL_MINUTES ?? 15);
 
@@ -70,7 +71,8 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
 
   // A node the instructor hid from students is treated exactly like one outside the range — the
   // student UI never shows it, so reaching it would mean a hand-crafted request by id.
-  if (node.cyberRangeId !== activeProgress.cyberRangeId || node.isVisibleToStudents !== 1) {
+  // ...and so is a node that isn't in the topology the instructor published (UX-38).
+  if (node.cyberRangeId !== activeProgress.cyberRangeId || node.isVisibleToStudents !== 1 || !isNodePublished(node.cyberRangeId, node.id)) {
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'node_not_in_active_range', 403, "this node is not part of your team's active cyber range");
   }
 
@@ -508,6 +510,7 @@ export async function restoreOwnSession(user: RequestingUser): Promise<RestoredS
     activeRange.cyberRangeId === s.cyberRangeId &&
     s.nodeRangeId === s.cyberRangeId &&
     s.visible === 1 &&
+    isNodePublished(s.cyberRangeId, s.topologyNodeId) &&
     s.hasTarget === 1 &&
     !!s.environmentId &&
     !!s.bastionHostId;

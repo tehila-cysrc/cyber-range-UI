@@ -14,6 +14,7 @@ import {
   type TopologyZoneData,
 } from '../TopologyGraph';
 import { RunScriptDrawer } from './RunScriptDrawer';
+import { PublicationBar } from './PublicationBar';
 
 interface CyberRange {
   id: number;
@@ -85,7 +86,7 @@ export function TopologyAdminPage() {
     queryFn: () => apiFetch<{ cyberRanges: CyberRange[] }>('/cyber-ranges'),
   });
 
-  const { data: topologyData } = useQuery({
+  const { data: topologyData, dataUpdatedAt: topologyVersion } = useQuery({
     enabled: cyberRangeId !== '',
     queryKey: ['topology', cyberRangeId],
     queryFn: () => apiFetch<TopologyResponse>(`/cyber-ranges/${cyberRangeId}/topology`),
@@ -300,6 +301,11 @@ export function TopologyAdminPage() {
               page; otherwise add zones and nodes by hand above.
             </div>
           )}
+          <PublicationBar
+            cyberRangeId={cyberRangeId}
+            draftVersion={topologyVersion}
+            visibleNodeCount={allNodes.filter((n) => !!n.isVisibleToStudents).length}
+          />
           <div style={{ display: 'grid', gridTemplateColumns: selection ? '1fr 300px' : '1fr', gap: 'var(--space-xl)' }}>
             <TopologyGraph
               key={`${cyberRangeId}:${layoutVersion}`}
@@ -473,7 +479,7 @@ function NodePanel({
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)', margin: '10px 0' }}>
         <input type="checkbox" checked={!!node.isVisibleToStudents} onChange={(e) => onSave({ isVisibleToStudents: e.target.checked })} />
-        Visible to students
+        Include for students when publishing
       </label>
       <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 10 }}>
         Name, role, zone, status and visibility save as soon as you change them.
