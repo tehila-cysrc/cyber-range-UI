@@ -196,7 +196,14 @@ export function InvestigationCanvasContainer({ cyberRangeId, teamId, teamIdParam
     patchCache((current) => ({ ...current, edges: current.edges.filter((e) => e.id !== payload.edgeId) }));
   });
 
-  if (!data) return null;
+  if (!data) {
+    // Was `return null` — a blank area for a few seconds that looked broken.
+    return (
+      <div style={{ height: 560, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-container)' }}>
+        Loading canvas…
+      </div>
+    );
+  }
 
   // Self-healing: if the selected node was just deleted (by this client, a teammate, or a realtime
   // event), it simply stops being in `data.nodes` and the inspector disappears on its own — no

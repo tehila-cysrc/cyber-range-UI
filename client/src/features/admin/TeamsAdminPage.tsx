@@ -76,7 +76,7 @@ export function TeamsAdminPage() {
   }
 
   function handleRemoveMember(m: Member, team: TeamWithMembers) {
-    if (!window.confirm(`Remove ${m.displayName} (@${m.username}) from ${team.name}? They will no longer be able to sign in.`)) return;
+    if (!window.confirm(`Delete the account ${m.displayName} (@${m.username}) from ${team.name}? They will no longer be able to sign in. (An account that already recorded timeline entries or scores can't be deleted.)`)) return;
     deleteUser.mutate(m.id);
   }
 
@@ -163,11 +163,11 @@ export function TeamsAdminPage() {
                   </span>
                   <button
                     onClick={() => handleRemoveMember(m, team)}
-                    aria-label={`Remove ${m.displayName}`}
+                    aria-label={`Delete account ${m.displayName}`}
                     disabled={deleteUser.isPending}
                     style={{ background: 'none', border: 'none', color: 'var(--signal-alert)', cursor: 'pointer', fontSize: 13 }}
                   >
-                    remove
+                    delete account
                   </button>
                 </div>
               ))}

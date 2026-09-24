@@ -1,5 +1,11 @@
 import { useToastStore } from '../stores/toastStore';
 
+const TONE_BORDER = {
+  error: 'var(--signal-alert)',
+  info: 'var(--signal-secondary)',
+  success: 'var(--signal-primary)',
+} as const;
+
 // Mounted once in AppShell. Surfaces failures that would otherwise be silent — see
 // lib/queryClient.ts's MutationCache fallback for any mutation without its own onError.
 export function Toaster() {
@@ -36,7 +42,7 @@ export function Toaster() {
             alignItems: 'flex-start',
             padding: '10px 14px',
             background: 'var(--surface-2)',
-            border: `1px solid ${t.tone === 'error' ? 'var(--signal-alert)' : 'var(--signal-secondary)'}`,
+            border: `1px solid ${TONE_BORDER[t.tone]}`,
             borderRadius: 'var(--radius-control)',
             boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
             color: 'var(--text-primary)',

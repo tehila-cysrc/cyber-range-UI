@@ -51,7 +51,7 @@ function RemoteAccessSummary({ result, endedSessions }: { result: RemoteAccessRe
       <div style={{ color: 'var(--text-muted)', marginBottom: 6 }}>
         {endedSessions} active remote session{endedSessions === 1 ? '' : 's'} ended.
       </div>
-      {result.environments.length === 0 && <div style={{ color: 'var(--text-muted)' }}>No cloud environments are registered.</div>}
+      {result.environments.length === 0 && <div style={{ color: 'var(--text-muted)' }}>No Bastion-enabled environments — no remote-access links to revoke.</div>}
       {result.environments.map((e) => (
         <div key={e.environmentId} style={{ color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
           {e.environmentName}: {e.vmCount} VM{e.vmCount === 1 ? '' : 's'} checked —{' '}

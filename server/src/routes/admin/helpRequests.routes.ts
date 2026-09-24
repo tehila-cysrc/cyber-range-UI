@@ -14,6 +14,7 @@ router.get('/help-requests', (req, res) => {
   const query = `
     SELECT
       hr.id AS id, hr.status AS status, hr.created_at AS createdAt, hr.resolved_at AS resolvedAt,
+      hr.message AS message,
       t.id AS teamId, t.name AS teamName,
       cr.name AS cyberRangeName,
       u.display_name AS requestedByName
@@ -47,7 +48,7 @@ router.post('/help-requests/:id/resolve', (req, res) => {
      WHERE id = ?`,
   ).run(resolvedAt, req.user!.id, id);
 
-  emitHelpRequestResolved(existing.teamId, id);
+  emitHelpRequestResolved(existing.teamId, id, 'instructor');
 
   res.json({ ok: true });
 });

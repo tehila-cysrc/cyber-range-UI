@@ -9,6 +9,7 @@ interface CanvasNodeInspectorProps {
   onDelete: () => void;
   onClose: () => void;
   onBodyChange: (body: string) => void;
+  onLabelChange: (label: string) => void;
 }
 
 // A small floating panel that opens the moment a shape is placed or clicked — duplicate/delete/type
@@ -16,7 +17,7 @@ interface CanvasNodeInspectorProps {
 // keeping the canvas itself uncluttered. No confirm dialog on delete (unlike Topology admin's
 // destructive-action convention): Canvas nodes are cheap, frequent narrative scratch objects, not
 // infrastructure state, so a confirm would be friction.
-export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBodyChange }: CanvasNodeInspectorProps) {
+export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBodyChange, onLabelChange }: CanvasNodeInspectorProps) {
   const spec = CANVAS_NODE_SPEC_BY_TYPE[node.nodeType];
   const [bodyDraft, setBodyDraft] = useState(node.body ?? '');
   // Only a draft the user actually typed into is ever written back — otherwise focusing and leaving
@@ -34,6 +35,25 @@ export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBo
     if (!dirty) setBodyDraft(node.body ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.body]);
+
+  // The title used to be editable only by double-clicking the shape itself — here it's a plain field.
+  const [labelDraft, setLabelDraft] = useState(node.label);
+  const [labelDirty, setLabelDirty] = useState(false);
+  useEffect(() => {
+    setLabelDraft(node.label);
+    setLabelDirty(false);
+  }, [node.id]);
+  useEffect(() => {
+    if (!labelDirty) setLabelDraft(node.label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.label]);
+
+  function commitLabel() {
+    const next = labelDraft.trim();
+    if (labelDirty && next && next !== node.label) onLabelChange(next);
+    else if (!next) setLabelDraft(node.label);
+    setLabelDirty(false);
+  }
 
   function commitBody() {
     if (dirty && bodyDraft !== (node.body ?? '')) onBodyChange(bodyDraft);
@@ -72,7 +92,32 @@ export function CanvasNodeInspector({ node, onDuplicate, onDelete, onClose, onBo
           ×
         </button>
       </div>
-      <div style={{ fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{node.label}</div>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Title
+        </span>
+        <input
+          value={labelDraft}
+          onChange={(e) => {
+            setLabelDraft(e.target.value);
+            setLabelDirty(true);
+          }}
+          onBlur={commitLabel}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          maxLength={120}
+          style={{
+            background: 'var(--surface-floor)',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-control)',
+            padding: '6px 8px',
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 13,
+          }}
+        />
+      </label>
 
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ fontSize: 11, color: 'var(--text-telemetry)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>

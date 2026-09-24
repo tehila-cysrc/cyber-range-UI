@@ -14,14 +14,21 @@ export function emitDocumentationUpdated(teamId: number, entry: unknown) {
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('documentation:updated', { entry, teamId });
 }
 
-export function emitHelpRequestNew(helpRequest: unknown) {
-  getIo().to(INSTRUCTOR_ROOM).emit('help_request:new', { helpRequest });
+// Also to the team's room, so every teammate's page shows the request as pending (not just the
+// student who clicked) — the payload is the team's own request, nothing instructor-only.
+export function emitHelpRequestNew(teamId: number, helpRequest: unknown) {
+  getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('help_request:new', { helpRequest });
 }
 
-export function emitHelpRequestResolved(teamId: number, helpRequestId: number) {
+// reason lets the team's page say what happened: the instructor handled it, or the scenario ended.
+export function emitHelpRequestResolved(
+  teamId: number,
+  helpRequestId: number,
+  reason: 'instructor' | 'scenario_ended' = 'instructor',
+) {
   getIo()
     .to([teamRoom(teamId), INSTRUCTOR_ROOM])
-    .emit('help_request:resolved', { helpRequestId });
+    .emit('help_request:resolved', { helpRequestId, reason });
 }
 
 export function emitClockTick(teamId: number, progressId: number, remainingSeconds: number) {

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useInstructorTeam } from '../../hooks/useInstructorTeam';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -103,7 +104,19 @@ export function InvestigationPage() {
   const isInstructor = role === 'instructor';
   const ownTeamId = useAuthStore((s) => s.user?.teamId);
 
-  const [view, setView] = useState<InvestigationView>('timeline');
+  // Kept in the URL so a refresh or a link returns to the same tab (it always reset to Timeline).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: InvestigationView = searchParams.get('view') === 'canvas' ? 'canvas' : 'timeline';
+  const setView = (next: InvestigationView) =>
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next === 'canvas') p.set('view', 'canvas');
+        else p.delete('view');
+        return p;
+      },
+      { replace: true },
+    );
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [isImportant, setIsImportant] = useState(false);
@@ -123,7 +136,7 @@ export function InvestigationPage() {
   });
   const studentActive = activeData?.active;
 
-  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
+  const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
   const { data: teamsData } = useQuery({
     queryKey: ['admin-teams-list'],
     queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
@@ -269,10 +282,10 @@ export function InvestigationPage() {
                 marginBottom: 4,
               }}
             >
-              Shared Timeline
+              Team investigation
             </div>
             <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-              Timeline{active ? ` — ${active.name}` : ''}
+              {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
             </h1>
           </div>
           <select
@@ -343,10 +356,12 @@ export function InvestigationPage() {
               marginBottom: 4,
             }}
           >
-            Incident Timeline
+            Investigation
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
-            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Timeline — {active.name}</h1>
+            <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+              {view === 'canvas' ? 'Canvas' : 'Timeline'} — {active.name}
+            </h1>
             {entriesData && (
               <TelemetryBadge tone="secondary">
                 {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}
@@ -520,8 +535,8 @@ function TtpBudgetHint({ budget }: { budget: TtpBudget | null }) {
   return (
     <span style={{ fontSize: 13, color: left === 0 ? 'var(--signal-tertiary)' : 'var(--text-telemetry)' }}>
       {left === 0
-        ? 'Technique budget used up — you can still re-use techniques your team already tried.'
-        : `Your team can try ${left} more distinct technique${left === 1 ? '' : 's'} in this scenario — tag from evidence, not guesses.`}
+        ? 'Your team has used all its technique tags for this scenario — you can still re-use techniques already tagged.'
+        : `Your team can tag ${left} more different technique${left === 1 ? '' : 's'} in this scenario. Tag only what your evidence shows.`}
     </span>
   );
 }

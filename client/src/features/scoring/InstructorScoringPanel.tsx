@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useInstructorTeam } from '../../hooks/useInstructorTeam';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -125,9 +126,12 @@ function ScoreForm({
             }}
           />
         </label>
-        <label style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <label
+          title="Plays confetti and a chime on the students' screens when the points arrive"
+          style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}
+        >
           <input type="checkbox" checked={isGamified} onChange={(e) => setIsGamified(e.target.checked)} />
-          Gamified
+          Celebrate
         </label>
         <input
           value={note}
@@ -167,7 +171,7 @@ function ScoreForm({
 
 export function InstructorScoringPanel() {
   const queryClient = useQueryClient();
-  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('');
+  const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
   const [quickAwardStudentId, setQuickAwardStudentId] = useState<number | ''>('');
   const { data: catalog } = useMitreCatalog();
 

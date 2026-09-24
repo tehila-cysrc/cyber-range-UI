@@ -164,6 +164,10 @@ export function migrate() {
   // rather than on disk/blob storage, matching this app's low-scale internal-tool scope.
   addColumnIfMissing('documentation_entries', 'image_data_url', 'TEXT');
 
+  // Optional free-text "what do you need?" from the student on a help request — student→instructor
+  // only; the system still never attaches a hint (see CLAUDE/invariants.md).
+  addColumnIfMissing('help_requests', 'message', 'TEXT');
+
   // Soft-hide, never hard-delete: a Cyber Range can carry real history (team_cyber_range_progress/
   // documentation_entries/scores all FK to it, enforced — see PRAGMA foreign_keys in db/index.ts), so
   // a range with any history can't be deleted without destroying that history. is_active=0 removes it

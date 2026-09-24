@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { ScriptPicker } from './ScriptPicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
@@ -49,6 +50,7 @@ interface ExpectedResponse {
 interface Script {
   id: number;
   name: string;
+  category?: string | null;
 }
 
 interface TopologyNode {
@@ -316,19 +318,13 @@ function ExpectedRow({
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
-        <select
-          aria-label="Trigger script"
-          value={row.triggerScriptId ?? ''}
-          onChange={(e) => patch.mutate({ triggerScriptId: e.target.value ? Number(e.target.value) : null })}
-          style={{ ...fieldStyle, flex: '1 1 12rem', fontSize: 13 }}
-        >
-          <option value="">No trigger script (MTTD via Mark occurred only)</option>
-          {scripts.map((s) => (
-            <option key={s.id} value={s.id}>
-              Trigger: {s.name}
-            </option>
-          ))}
-        </select>
+        <ScriptPicker
+          scripts={scripts}
+          value={row.triggerScriptId}
+          onChange={(id) => patch.mutate({ triggerScriptId: id })}
+          noneLabel="No trigger script (MTTD via Mark occurred only)"
+          style={{ flex: '1 1 12rem' }}
+        />
         <select
           aria-label="Expected host"
           value={row.topologyNodeId ?? ''}
@@ -515,19 +511,13 @@ function AddExpectedForm({
             style={{ ...fieldStyle, width: 80, padding: 6 }}
           />
         </label>
-        <select
-          aria-label="Trigger script"
-          value={triggerScriptId}
-          onChange={(e) => setTriggerScriptId(e.target.value ? Number(e.target.value) : '')}
-          style={{ ...fieldStyle, flex: '1 1 12rem', fontSize: 13 }}
-        >
-          <option value="">No trigger script</option>
-          {scripts.map((s) => (
-            <option key={s.id} value={s.id}>
-              Trigger: {s.name}
-            </option>
-          ))}
-        </select>
+        <ScriptPicker
+          scripts={scripts}
+          value={triggerScriptId === '' ? null : triggerScriptId}
+          onChange={(id) => setTriggerScriptId(id ?? '')}
+          noneLabel="No trigger script"
+          style={{ flex: '1 1 12rem' }}
+        />
         <select
           aria-label="Expected host"
           value={topologyNodeId}

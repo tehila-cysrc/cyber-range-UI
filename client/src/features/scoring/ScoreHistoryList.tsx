@@ -103,7 +103,7 @@ export function ScoreHistoryList() {
               <span style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {entry.studentName && <Avatar name={entry.studentName} size={20} />}
                 {entry.studentName ?? 'Whole team'}
-                {entry.isGamified ? <TelemetryBadge tone="tertiary">Gamified</TelemetryBadge> : null}
+                {entry.isGamified ? <TelemetryBadge tone="tertiary">Celebrated</TelemetryBadge> : null}
                 {entry.source === 'ttp' ? <TelemetryBadge tone="secondary">ATT&amp;CK</TelemetryBadge> : null}
                 <span className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
                   {new Date(entry.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
