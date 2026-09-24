@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
+import { getPublishedTopology } from '../services/topologyPublication.service.js';
 
 const router = Router();
 
@@ -22,6 +23,13 @@ router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
     return;
   }
 
+  // Students get the PUBLISHED topology (UX-38) — the live draft is instructor-only.
+  if (!isInstructor) {
+    const published = getPublishedTopology(cyberRangeId);
+    res.json(published ?? { zones: [], nodes: [], edges: [], publishedAt: null });
+    return;
+  }
+
   const zones = db
     .prepare(
       `SELECT id, external_key AS externalKey, name, cidr, sort_order AS sortOrder
@@ -36,7 +44,7 @@ router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
               tn.environment_id AS environmentId, tn.is_visible_to_students AS isVisibleToStudents,
               (at.id IS NOT NULL) AS hasAccessTarget
        FROM topology_nodes tn LEFT JOIN access_targets at ON at.topology_node_id = tn.id
-       WHERE tn.cyber_range_id = ?${isInstructor ? '' : ' AND tn.is_visible_to_students = 1'}`,
+       WHERE tn.cyber_range_id = ?`,
     )
     .all(cyberRangeId);
 
@@ -50,11 +58,7 @@ router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
        FROM topology_edges te
        LEFT JOIN topology_nodes fn ON fn.id = te.from_node_id
        LEFT JOIN topology_nodes tn ON tn.id = te.to_node_id
-       WHERE te.cyber_range_id = ?${
-         isInstructor
-           ? ''
-           : ' AND (fn.id IS NULL OR fn.is_visible_to_students = 1) AND (tn.id IS NULL OR tn.is_visible_to_students = 1)'
-       }`,
+       WHERE te.cyber_range_id = ?`,
     )
     .all(cyberRangeId);
 

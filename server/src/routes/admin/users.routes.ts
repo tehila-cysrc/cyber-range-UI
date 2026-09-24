@@ -4,6 +4,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
+import { MIN_PASSWORD_LENGTH } from '../auth.routes.js';
 
 const router = Router();
 
@@ -19,8 +20,8 @@ router.post('/users', (req, res) => {
     res.status(400).json({ error: 'username is required' });
     return;
   }
-  if (typeof password !== 'string' || !password) {
-    res.status(400).json({ error: 'password is required' });
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    res.status(400).json({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     return;
   }
   if (role !== 'student' && role !== 'instructor') {

@@ -25,6 +25,7 @@ const ENTRY_COLUMNS = `
   e.body AS body,
   e.image_data_url AS imageDataUrl,
   e.is_important_finding AS isImportantFinding,
+  e.after_time_limit AS afterTimeLimit,
   e.created_at AS createdAt,
   u.id AS authorUserId,
   u.display_name AS authorName,
@@ -194,15 +195,24 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
 
   const createdAt = new Date().toISOString();
   const teamId = req.user!.teamId;
+  // Past the scenario's time limit the entry is still saved, just flagged (UX-04).
+  const clock = db
+    .prepare(
+      `SELECT started_at AS startedAt, time_limit_seconds AS timeLimitSeconds FROM team_cyber_range_progress
+       WHERE team_id = ? AND cyber_range_id = ? AND status = 'active'`,
+    )
+    .get(teamId, cyberRangeId) as { startedAt: string | null; timeLimitSeconds: number | null } | undefined;
+  const afterTimeLimit =
+    !!clock?.startedAt && clock.timeLimitSeconds != null && Date.now() >= new Date(clock.startedAt).getTime() + clock.timeLimitSeconds * 1000;
   // Entry + its tags are one atomic write: a tag refusal never leaves an untagged entry behind.
   const entryId = inTransaction(() => {
     const result = db
       .prepare(
         `INSERT INTO documentation_entries
-           (team_id, cyber_range_id, author_user_id, category_id, body, image_data_url, is_important_finding, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (team_id, cyber_range_id, author_user_id, category_id, body, image_data_url, is_important_finding, created_at, after_time_limit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(teamId, cyberRangeId, req.user!.id, resolvedCategoryId, body.trim(), imageDataUrl ?? null, isImportantFinding ? 1 : 0, createdAt);
+      .run(teamId, cyberRangeId, req.user!.id, resolvedCategoryId, body.trim(), imageDataUrl ?? null, isImportantFinding ? 1 : 0, createdAt, afterTimeLimit ? 1 : 0);
     const id = Number(result.lastInsertRowid);
     if (parsedTtps.ids.length > 0) {
       const tagged = setEntryTtps(id, teamId, cyberRangeId, req.user!.id, parsedTtps.ids);

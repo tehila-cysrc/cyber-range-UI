@@ -42,7 +42,7 @@ export function buildEventExport() {
   );
   const entriesStmt = db.prepare(
     `SELECT e.id AS id, e.created_at AS createdAt, u.display_name AS author, c.label AS category, e.body AS body,
-            e.is_important_finding AS isImportantFinding, (e.image_data_url IS NOT NULL) AS hasImage
+            e.is_important_finding AS isImportantFinding, e.after_time_limit AS afterTimeLimit, (e.image_data_url IS NOT NULL) AS hasImage
      FROM documentation_entries e
      JOIN users u ON u.id = e.author_user_id
      LEFT JOIN documentation_categories c ON c.id = e.category_id
@@ -77,6 +77,7 @@ export function buildEventExport() {
           category: e.category ?? null,
           body: e.body,
           isImportantFinding: !!e.isImportantFinding,
+          afterTimeLimit: !!e.afterTimeLimit,
           hasImage: !!e.hasImage,
           techniques: (entryTtpsStmt.all(e.id as number) as { techniqueId: string }[]).map((t) => t.techniqueId),
         }));
@@ -114,12 +115,12 @@ function csvCell(value: unknown): string {
 // One row per team × scenario — opens directly in Excel for a quick results summary.
 export function buildEventExportCsv(): string {
   const data = buildEventExport();
-  const header = ['Team', 'Members', 'Scenario', 'Day', 'Status', 'Started', 'Completed', 'Entries', 'Findings', 'Scenario points', 'Team total points'];
+  const header = ['Team', 'Members', 'Scenario', 'Day', 'Status', 'Started', 'Completed', 'Entries', 'Findings', 'Entries after time limit', 'Scenario points', 'Team total points'];
   const rows: unknown[][] = [];
   for (const team of data.teams) {
     const members = (team.members as { displayName: string }[]).map((m) => m.displayName).join('; ');
     if (team.scenarios.length === 0) {
-      rows.push([team.name, members, '', '', '', '', '', 0, 0, 0, team.totalPoints]);
+      rows.push([team.name, members, '', '', '', '', '', 0, 0, 0, 0, team.totalPoints]);
     }
     for (const s of team.scenarios) {
       rows.push([
@@ -132,6 +133,7 @@ export function buildEventExportCsv(): string {
         s.completedAt,
         s.entries.length,
         s.entries.filter((e) => e.isImportantFinding).length,
+        s.entries.filter((e) => e.afterTimeLimit).length,
         s.points,
         team.totalPoints,
       ]);

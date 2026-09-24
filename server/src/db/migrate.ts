@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { db } from './index.js';
+import { publishTopology } from '../services/topologyPublication.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -118,6 +119,11 @@ function relaxScoresForTtpAwards() {
 }
 
 export function migrate() {
+  // Must be read before config.sql creates the table — the one-time backfill below depends on it.
+  const hadTopologyPublications = !!db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cyber_range_topology_publications'")
+    .get();
+
   // Order matters: run.sql's foreign keys reference config.sql's tables.
   runSchemaFile('schema/config.sql');
   runSchemaFile('schema/run.sql');
@@ -168,6 +174,13 @@ export function migrate() {
   // only; the system still never attaches a hint (see CLAUDE/invariants.md).
   addColumnIfMissing('help_requests', 'message', 'TEXT');
 
+  // Instructor-written mission briefing shown to students on Home (UX-08). Plain instructor text — the
+  // system never generates it, so the "no automatic hints" rule still holds.
+  addColumnIfMissing('cyber_ranges', 'student_briefing', 'TEXT');
+  // Entries written after the team's time ran out are still accepted but flagged (UX-04, decided
+  // 2026-09-24). Set once, server-side, at insert time.
+  addColumnIfMissing('documentation_entries', 'after_time_limit', 'INTEGER NOT NULL DEFAULT 0');
+
   // Soft-hide, never hard-delete: a Cyber Range can carry real history (team_cyber_range_progress/
   // documentation_entries/scores all FK to it, enforced — see PRAGMA foreign_keys in db/index.ts), so
   // a range with any history can't be deleted without destroying that history. is_active=0 removes it
@@ -190,6 +203,16 @@ export function migrate() {
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,
   );
   relaxScoresForTtpAwards();
+
+  // Topology publishing (UX-38) arrived after ranges already had student-visible topology. Publish
+  // each such range's current student view exactly once, when the table is first created, so nothing
+  // disappears from students' screens on upgrade. Never re-run: after this, only the instructor publishes.
+  if (!hadTopologyPublications) {
+    const ranges = db
+      .prepare('SELECT DISTINCT cyber_range_id AS id FROM topology_nodes WHERE is_visible_to_students = 1')
+      .all() as { id: number }[];
+    for (const { id } of ranges) publishTopology(id, 'migration');
+  }
 
   // external_key is the Azure ARM resource id for discovered nodes/edges — globally unique per
   // cyber range, so a safe upsert target for re-running discovery (INSERT ... ON CONFLICT DO UPDATE)

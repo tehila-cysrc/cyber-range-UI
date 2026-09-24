@@ -26,20 +26,9 @@ function dayId(key: string): number {
   return row.id;
 }
 
-function seedCyberRanges() {
-  const existing = db.prepare('SELECT COUNT(*) AS n FROM cyber_ranges').get() as { n: number };
-  if (existing.n > 0) return;
-
-  const insert = db.prepare(
-    `INSERT INTO cyber_ranges (day_id, name, difficulty, expected_duration_minutes, sort_order)
-     VALUES (?, ?, ?, ?, ?)`,
-  );
-  insert.run(dayId('ai'), 'TJS', 'advanced', 180, 1);
-  insert.run(dayId('azure'), 'Azure Range - Intermediate', 'intermediate', 60, 1);
-  insert.run(dayId('azure'), 'Azure Range - Advanced', 'advanced', 180, 2);
-  insert.run(dayId('aws'), 'AWS Range - Intermediate', 'intermediate', null, 1);
-  insert.run(dayId('aws'), 'AWS Range - Advanced', 'advanced', null, 2);
-}
+// No sample scenarios (UX-37, decided 2026-09-24): the old placeholders (TJS, "Azure Range - …")
+// confused new instructors. Scenarios are created on the Scenarios page ("New scenario") or together
+// with an environment on the Environments page.
 
 function seedDocumentationCategories() {
   const insert = db.prepare(
@@ -124,7 +113,6 @@ function seedDemoRunData() {
 export function seed() {
   migrate();
   seedDays();
-  seedCyberRanges();
   seedDocumentationCategories();
   seedScoringConfig();
   seedDemoRunData();

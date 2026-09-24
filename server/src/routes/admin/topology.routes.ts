@@ -8,10 +8,29 @@ import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../.
 import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
 import { requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
 import { TopologyLayoutPlanner } from '../../services/discovery/topologyLayout.js';
+import { publicationStatus, publishTopology } from '../../services/topologyPublication.service.js';
+import { emitTopologyPublished } from '../../sockets/emitters.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
+
+// Publishing (UX-38): students see only what was last published.
+router.get('/cyber-ranges/:cyberRangeId/topology/publication', (req, res) => {
+  res.json(publicationStatus(Number(req.params.cyberRangeId)));
+});
+
+router.post('/cyber-ranges/:cyberRangeId/topology/publish', (req, res) => {
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  if (!db.prepare('SELECT 1 FROM cyber_ranges WHERE id = ?').get(cyberRangeId)) {
+    res.status(404).json({ error: 'cyber range not found' });
+    return;
+  }
+  const result = publishTopology(cyberRangeId, req.user!.username);
+  writeAudit(req.user!.username, 'topology.published', 'cyber_range', cyberRangeId, { nodeCount: result.nodeCount });
+  emitTopologyPublished(cyberRangeId);
+  res.json({ ok: true, ...result, ...publicationStatus(cyberRangeId) });
+});
 
 router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);

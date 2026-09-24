@@ -12,6 +12,8 @@ import {
 } from '../services/registration.service.js';
 
 const router = Router();
+
+export const MIN_PASSWORD_LENGTH = 8;
 const TOKEN_TTL_HOURS = Number(process.env.TOKEN_TTL_HOURS ?? 12);
 
 interface UserRow {
@@ -123,8 +125,8 @@ router.post('/register', (req, res) => {
     res.status(400).json({ error: 'username is required' });
     return;
   }
-  if (typeof password !== 'string' || !password) {
-    res.status(400).json({ error: 'password is required' });
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    res.status(400).json({ error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     return;
   }
   if (typeof teamId !== 'number') {

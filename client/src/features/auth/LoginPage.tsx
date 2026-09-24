@@ -116,6 +116,10 @@ export function LoginPage() {
       setError('Username and password are required');
       return;
     }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await apiFetch<AuthResponse>('/auth/register', {
@@ -262,7 +266,9 @@ export function LoginPage() {
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Password</span>
+          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+            Password{mode === 'register' ? ' (at least 8 characters)' : ''}
+          </span>
           <input
             type="password"
             value={password}

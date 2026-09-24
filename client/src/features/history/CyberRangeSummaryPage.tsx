@@ -12,6 +12,7 @@ interface DocEntry {
   body: string;
   imageDataUrl: string | null;
   isImportantFinding: number;
+  afterTimeLimit?: number;
   createdAt: string;
   authorName: string;
   categoryLabel: string | null;
@@ -129,7 +130,12 @@ export function CyberRangeSummaryPage() {
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {entry.isImportantFinding ? (
+                      {entry.afterTimeLimit ? (
+            <span title="Added after the scenario's time limit ran out">
+              <TelemetryBadge tone="tertiary">After time</TelemetryBadge>
+            </span>
+          ) : null}
+          {entry.isImportantFinding ? (
                         <TelemetryBadge tone="primary">
                           <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
                           Finding

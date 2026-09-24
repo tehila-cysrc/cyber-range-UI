@@ -113,6 +113,11 @@ export function TopologyViewerPage() {
 
   // The instructor's force-close and the server's expiry sweep both end the session server-side —
   // without this the panel kept offering a dead "Open" link.
+  // The instructor (re)published the topology — show the new version without a refresh (UX-38).
+  useSocketEvent<{ cyberRangeId: number }>('topology:published', ({ cyberRangeId }) => {
+    if (cyberRangeId === active?.cyberRangeId) queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
+  });
+
   useSocketEvent<{ accessSessionId: number; outcome: string }>('access_session:ended', ({ accessSessionId, outcome }) => {
     if (session?.accessSessionId !== accessSessionId) return;
     setSession(null);
@@ -176,7 +181,7 @@ export function TopologyViewerPage() {
       )}
 
       {topologyData && topologyData.nodes.length === 0 ? (
-        <EmptyState message="No topology has been configured for this Cyber Range yet." />
+        <EmptyState message="Your instructor hasn't published the network map for this scenario yet. It appears here automatically once they do." />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 280px' : '1fr', gap: 'var(--space-lg)' }}>
           <TopologyGraph

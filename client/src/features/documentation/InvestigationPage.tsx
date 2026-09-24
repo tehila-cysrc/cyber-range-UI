@@ -59,6 +59,7 @@ function InvestigationTabs({ view, onChange }: { view: InvestigationView; onChan
 interface ActiveCyberRange {
   cyberRangeId: number;
   name: string;
+  studentBriefing?: string | null;
 }
 
 interface Team {
@@ -82,6 +83,7 @@ interface DocEntry {
   body: string;
   imageDataUrl: string | null;
   isImportantFinding: number;
+  afterTimeLimit?: number;
   createdAt: string;
   authorName: string;
   categoryKey: string | null;
@@ -376,6 +378,16 @@ export function InvestigationPage() {
           View topology →
         </Link>
       </div>
+
+      {studentActive?.studentBriefing && (
+        // Collapsible so it's one click away mid-investigation without taking space (UX-08).
+        <details style={{ marginBottom: 'var(--space-md)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', background: 'var(--surface-1)', padding: '8px 12px' }}>
+          <summary style={{ cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)' }}>Mission briefing</summary>
+          <div className="prose-pre" style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, color: 'var(--text-primary)' }}>
+            {studentActive.studentBriefing}
+          </div>
+        </details>
+      )}
 
       <InvestigationTabs view={view} onChange={setView} />
 
@@ -688,6 +700,11 @@ function TimelineEntry({
           {entry.authorName} · {formatEntryTime(entry.createdAt)}
         </span>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {entry.afterTimeLimit ? (
+            <span title="Added after the scenario's time limit ran out">
+              <TelemetryBadge tone="tertiary">After time</TelemetryBadge>
+            </span>
+          ) : null}
           {entry.isImportantFinding ? (
             <TelemetryBadge tone="primary">
               <FlagIcon style={{ marginRight: 3, verticalAlign: '-2px' }} />
