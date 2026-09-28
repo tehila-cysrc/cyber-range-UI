@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.github
+.claude
+server/data
+docs
+script-library
+*.md
+.env
+.env.*
+*.db
+*.log
+.DS_Store
+*.tsbuildinfo

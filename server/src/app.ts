@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
@@ -27,6 +30,13 @@ import adminCyberRangesRoutes from './routes/admin/cyberRanges.routes.js';
 import adminScriptsRoutes from './routes/admin/scripts.routes.js';
 import mitreRoutes from './routes/mitre.routes.js';
 import adminTtpRoutes from './routes/admin/ttp.routes.js';
+
+// Same path from `server/src` (tsx) and `server/dist` (compiled): the built SPA sits at repo `client/dist`.
+function resolveClientDist(): string | null {
+  const dir = process.env.CLIENT_DIST
+    ?? join(dirname(fileURLToPath(import.meta.url)), '../../client/dist');
+  return existsSync(join(dir, 'index.html')) ? dir : null;
+}
 
 export function createApp() {
   const app = express();
@@ -68,6 +78,25 @@ export function createApp() {
   app.use('/api/admin', adminScriptsRoutes);
   app.use('/api', mitreRoutes);
   app.use('/api/admin', adminTtpRoutes);
+
+  const clientDist = resolveClientDist();
+  if (clientDist) {
+    app.use(express.static(clientDist));
+    // Client routes such as /login have no file of their own. Leave /api and /socket.io to their handlers.
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
+      if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+        next();
+        return;
+      }
+      res.sendFile(join(clientDist, 'index.html'), (err) => {
+        if (err) next(err);
+      });
+    });
+  }
 
   // Express's default handler answers an unhandled throw (e.g. a FOREIGN KEY failure) with an HTML
   // page containing the full stack trace and absolute server paths — never send that to a client.

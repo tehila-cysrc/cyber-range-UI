@@ -48,28 +48,26 @@ Run from the repo root (npm workspaces):
 
 ## Deployment
 
-The client is a static site and the API is a separate Node.js 24 process; the server does not serve the client.
+Production runs as one Docker container (root `Dockerfile`, deployed with Coolify) that serves the built
+client and the API on the same origin. Coolify detects the `Dockerfile` automatically.
 
-**Client:** `npm run build -w client`, then host `client/dist`. Set `VITE_API_ORIGIN` at build time to the
-API's public origin (e.g. `https://api.example.com`); leave it unset only when the API is reachable on the same
-origin as the page (a reverse proxy routing `/api` and `/socket.io`). Configure the host to serve `index.html`
-for application routes such as `/login` (SPA fallback).
+Required configuration:
 
-**Server:** `npm ci && npm run build -w server`, then `npm run start -w server`. Required environment:
+- `CREDENTIAL_MASTER_KEY` — base64, decodes to 32 bytes. Without it, registering a cloud environment fails
+  with a 500. To bring over environments from an existing database, use the same key that encrypted them.
+  Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+- Persistent storage mounted at `/data` — the database file is `DB_PATH=/data/cyber-range.db`. Without it,
+  every redeploy starts from an empty database.
 
-- `CLIENT_ORIGIN` — the client's public origin (CORS and Socket.IO).
-- `DB_PATH` — a file on persistent storage, or event data is lost when the process/container restarts.
-- `CREDENTIAL_MASTER_KEY` — base64 32-byte key. Without it, registering a cloud environment fails with a 500.
-  To bring over environments from an existing database, use the same key that encrypted them.
+The process listens on `PORT` (default 4000). Health check: `GET /api/health`.
 
-The server applies migrations and seeds missing defaults before accepting requests.
-If no active event exists, it creates the default event, instructor, and demo teams
-listed above. Existing active events, users, and teams are preserved on restart.
-The server build copies the SQL schema into `dist/db/schema` for this startup step.
+On startup the server applies migrations and seeds missing defaults. If no active event exists, it creates
+the default event, instructor, and demo teams listed above; existing events, users, and teams are preserved.
+If the Script Library is empty, it imports the curated `script-library/` catalog (bundled into the image);
+scripts an instructor later deletes are not re-imported while at least one script remains.
 
-The Script Library catalog is **not** loaded at startup. After the first deploy, run it once from the
-server directory (idempotent; needs the repo's `script-library/` folder next to `server/`):
-`node dist/db/importScriptLibrary.js`.
+A client hosted separately from the API can set `VITE_API_ORIGIN` to the API origin at build time; the
+Docker image leaves it unset (same origin).
 
 ## Project layout
 
