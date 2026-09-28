@@ -13,7 +13,7 @@ interface DaySummary {
 }
 
 export function EventSummaryPage() {
-  const { query, ready, picker, isInstructor } = useDebriefTeam();
+  const { query, ready, picker, isInstructor, links } = useDebriefTeam();
   const { data, isError } = useQuery({
     queryKey: ['event-summary', query],
     queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
@@ -23,7 +23,7 @@ export function EventSummaryPage() {
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link to={`/debrief${query}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+        <Link to={links.home} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
           ← Back to debrief
         </Link>
         {picker}

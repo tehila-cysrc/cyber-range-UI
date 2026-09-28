@@ -210,6 +210,11 @@ input[type='file']::file-selector-button:hover {
   }
 }
 
+/* Pages embedded in the instructor Team Workspace tabs: the workspace already pads the page. */
+.team-workspace-embed .page {
+  padding: 0 !important;
+}
+
 :focus-visible {
   outline: 2px solid var(--signal-secondary);
   outline-offset: 2px;

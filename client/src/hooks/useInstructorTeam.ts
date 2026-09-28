@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useLockedTeam } from '../features/team/LockedTeamContext';
 
 const STORAGE_KEY = 'cyber-range-instructor-team';
 
@@ -25,16 +26,21 @@ function writeStored(teamId: number | '') {
 // picked in this tab — re-picking the same team on every page was the most repeated action in a
 // live session (UX audit UX-11).
 export function useInstructorTeam(): [number | '', (teamId: number | '') => void] {
+  const locked = useLockedTeam();
   const [params, setParams] = useSearchParams();
   const fromUrl = Number(params.get('teamId')) || '';
-  const teamId = fromUrl || readStored();
+  // Inside the Team Workspace the team is fixed by the page; it is also remembered so the standalone
+  // pages open on the same team afterwards.
+  const teamId = locked ?? (fromUrl || readStored());
 
   useEffect(() => {
-    if (fromUrl) writeStored(fromUrl);
-  }, [fromUrl]);
+    if (locked) writeStored(locked);
+    else if (fromUrl) writeStored(fromUrl);
+  }, [fromUrl, locked]);
 
   const setTeamId = useCallback(
     (next: number | '') => {
+      if (locked) return;
       writeStored(next);
       setParams(
         (prev) => {
@@ -46,7 +52,7 @@ export function useInstructorTeam(): [number | '', (teamId: number | '') => void
         { replace: true },
       );
     },
-    [setParams],
+    [setParams, locked],
   );
 
   return [teamId, setTeamId];
