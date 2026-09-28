@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import {
+  azureRegistrationDefaults,
   checkConnectivity,
   createEnvironment,
+  defaultAzureClientSecret,
   deleteEnvironment,
   getEnvironment,
   linkEnvironmentToCyberRange,
@@ -25,11 +27,29 @@ router.get('/environments', (_req, res) => {
   res.json({ environments: listEnvironments() });
 });
 
+router.get('/environments/defaults', (_req, res) => {
+  res.json({ defaults: azureRegistrationDefaults() });
+});
+
 // Optional `cyberRange` {dayId, name, difficulty, expectedDurationMinutes?}: creates that Cyber Range
 // and links it in the same transaction (the Environments page always sends it).
+// The secret comes from exactly one of: `clientSecret`, `copySecretFromEnvironmentId` (reuse another
+// environment's stored secret) or `useServerDefaultSecret` (DEFAULT_AZURE_CLIENT_SECRET).
 router.post('/environments', (req, res) => {
-  const { provider, name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes, cyberRange } =
-    req.body ?? {};
+  const {
+    provider,
+    name,
+    externalAccountId,
+    externalScope,
+    tenantId,
+    clientId,
+    clientSecret,
+    copySecretFromEnvironmentId,
+    useServerDefaultSecret,
+    discoveryMode,
+    discoveryIntervalMinutes,
+    cyberRange,
+  } = req.body ?? {};
 
   if (
     (provider !== 'azure' && provider !== 'aws') ||
@@ -37,9 +57,27 @@ router.post('/environments', (req, res) => {
     typeof externalAccountId !== 'string' ||
     typeof tenantId !== 'string' ||
     typeof clientId !== 'string' ||
-    typeof clientSecret !== 'string'
+    (clientSecret !== undefined && typeof clientSecret !== 'string')
   ) {
-    res.status(400).json({ error: "provider must be 'azure' or 'aws'; name, externalAccountId, tenantId, clientId and clientSecret are required" });
+    res.status(400).json({ error: "provider must be 'azure' or 'aws'; name, externalAccountId, tenantId and clientId are required" });
+    return;
+  }
+  const secretSources = [
+    typeof clientSecret === 'string' && clientSecret.trim() !== '',
+    copySecretFromEnvironmentId !== undefined,
+    useServerDefaultSecret === true,
+  ].filter(Boolean).length;
+  if (secretSources !== 1) {
+    res.status(400).json({ error: 'provide exactly one of clientSecret, copySecretFromEnvironmentId or useServerDefaultSecret' });
+    return;
+  }
+  if (copySecretFromEnvironmentId !== undefined && (typeof copySecretFromEnvironmentId !== 'number' || !getEnvironment(copySecretFromEnvironmentId))) {
+    res.status(400).json({ error: 'copySecretFromEnvironmentId must be an existing environment' });
+    return;
+  }
+  const serverSecret = useServerDefaultSecret === true ? defaultAzureClientSecret() : null;
+  if (useServerDefaultSecret === true && !serverSecret) {
+    res.status(400).json({ error: 'the server has no DEFAULT_AZURE_CLIENT_SECRET configured — enter the client secret instead' });
     return;
   }
   if (cyberRange !== undefined) {
@@ -62,7 +100,8 @@ router.post('/environments', (req, res) => {
     externalScope: externalScope ?? null,
     tenantId,
     clientId,
-    clientSecret,
+    clientSecret: serverSecret ?? clientSecret ?? '',
+    copySecretFromEnvironmentId,
     discoveryMode,
     discoveryIntervalMinutes: discoveryIntervalMinutes ?? null,
   } as const;

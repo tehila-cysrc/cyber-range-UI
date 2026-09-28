@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { confirmAction } from '../../components/ConfirmDialog';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
@@ -18,6 +18,19 @@ interface CloudEnvironment {
   createdAt: string;
   createdByUsername: string | null;
 }
+
+// Server-side DEFAULT_AZURE_* values that pre-fill the form; the secret itself is never sent.
+interface AzureRegistrationDefaults {
+  subscriptionId: string | null;
+  resourceGroup: string | null;
+  tenantId: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+}
+
+// Where the new environment's client secret comes from: typed in, the server's default, or a copy of
+// an existing environment's stored secret.
+type SecretSource = 'typed' | 'default' | 'copy';
 
 interface ConnectivityResult {
   ok: boolean;
@@ -54,6 +67,25 @@ const inputStyle = {
   borderRadius: 'var(--radius-control)',
   padding: 8,
   color: 'var(--text-primary)',
+};
+
+const fieldLabelStyle = {
+  display: 'flex',
+  flexDirection: 'column' as const,
+  gap: 4,
+  fontSize: 12,
+  color: 'var(--text-muted)',
+};
+
+// Inline text action inside the registration form (switching where the client secret comes from).
+const linkButtonStyle = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: 'var(--signal-primary)',
+  fontSize: 13,
+  cursor: 'pointer',
+  textAlign: 'left' as const,
 };
 
 function runBadge(run: DiscoveryRun | undefined) {
@@ -298,6 +330,8 @@ export function EnvironmentsAdminPage() {
   const [tenantId, setTenantId] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [secretSource, setSecretSource] = useState<SecretSource>('typed');
+  const [copyFromId, setCopyFromId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
   const [checkResults, setCheckResults] = useState<Record<number, ConnectivityResult>>({});
   const [notice, setNotice] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
@@ -311,6 +345,44 @@ export function EnvironmentsAdminPage() {
     queryKey: ['days'],
     queryFn: () => apiFetch<{ days: Day[] }>('/admin/days'),
   });
+
+  const { data: defaultsData } = useQuery({
+    queryKey: ['admin-environment-defaults'],
+    queryFn: () => apiFetch<{ defaults: AzureRegistrationDefaults }>('/admin/environments/defaults'),
+  });
+  const defaults = defaultsData?.defaults;
+
+  function applyConnectionDefaults() {
+    setExternalAccountId(defaults?.subscriptionId ?? '');
+    setExternalScope(defaults?.resourceGroup ?? '');
+    setTenantId(defaults?.tenantId ?? '');
+    setClientId(defaults?.clientId ?? '');
+    setClientSecret('');
+    setCopyFromId('');
+    setSecretSource(defaults?.hasClientSecret ? 'default' : 'typed');
+  }
+
+  // Pre-fill once the defaults arrive (the form starts empty while they load).
+  useEffect(() => {
+    if (defaults) applyConnectionDefaults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaults]);
+
+  function copyConnectionFrom(id: number | '') {
+    if (id === '') {
+      applyConnectionDefaults();
+      return;
+    }
+    const source = data?.environments.find((env) => env.id === id);
+    if (!source) return;
+    setCopyFromId(id);
+    setExternalAccountId(source.externalAccountId);
+    setExternalScope(source.externalScope ?? '');
+    setTenantId(source.tenantId ?? '');
+    setClientId(source.clientId ?? '');
+    setClientSecret('');
+    setSecretSource('copy');
+  }
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['admin-environments'] });
@@ -331,7 +403,9 @@ export function EnvironmentsAdminPage() {
           externalScope: externalScope || undefined,
           tenantId,
           clientId,
-          clientSecret,
+          ...(secretSource === 'typed' && { clientSecret }),
+          ...(secretSource === 'copy' && { copySecretFromEnvironmentId: copyFromId }),
+          ...(secretSource === 'default' && { useServerDefaultSecret: true }),
           cyberRange: {
             dayId,
             name,
@@ -361,11 +435,7 @@ export function EnvironmentsAdminPage() {
       setDayId('');
       setDifficulty('');
       setExpectedDurationMinutes('');
-      setExternalAccountId('');
-      setExternalScope('');
-      setTenantId('');
-      setClientId('');
-      setClientSecret('');
+      applyConnectionDefaults();
       setError(null);
       refresh();
     },
@@ -394,7 +464,7 @@ export function EnvironmentsAdminPage() {
       !externalAccountId.trim() ||
       !tenantId.trim() ||
       !clientId.trim() ||
-      !clientSecret.trim()
+      (secretSource === 'typed' && !clientSecret.trim())
     ) {
       setError('Name, type, difficulty, subscription/account id, tenant id, client id and client secret are all required');
       return;
@@ -467,17 +537,71 @@ export function EnvironmentsAdminPage() {
           min="1"
           style={inputStyle}
         />
-        <input value={externalAccountId} onChange={(e) => setExternalAccountId(e.target.value)} placeholder="Subscription ID" style={inputStyle} />
-        <input value={externalScope} onChange={(e) => setExternalScope(e.target.value)} placeholder="Resource group" style={inputStyle} />
-        <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Tenant ID" style={inputStyle} />
-        <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID (Service Principal)" style={inputStyle} />
-        <input
-          value={clientSecret}
-          onChange={(e) => setClientSecret(e.target.value)}
-          placeholder="Client secret"
-          type="password"
-          style={inputStyle}
-        />
+        {(data?.environments.length ?? 0) > 0 && (
+          <select
+            aria-label="Copy connection details from"
+            value={copyFromId}
+            onChange={(e) => copyConnectionFrom(e.target.value ? Number(e.target.value) : '')}
+            style={{ ...inputStyle, background: 'var(--surface-1)' }}
+          >
+            <option value="">{defaults?.tenantId ? 'Connection details: server defaults' : 'Connection details: enter manually'}</option>
+            {data?.environments.map((env) => (
+              <option key={env.id} value={env.id}>
+                Copy connection details from "{env.name}"
+              </option>
+            ))}
+          </select>
+        )}
+        {/* Visible labels: these are usually pre-filled (server defaults / copied), so a placeholder alone
+            wouldn't say which id is which. */}
+        <label style={fieldLabelStyle}>
+          Subscription ID
+          <input value={externalAccountId} onChange={(e) => setExternalAccountId(e.target.value)} placeholder="Subscription ID" style={inputStyle} />
+        </label>
+        <label style={fieldLabelStyle}>
+          Resource group
+          <input value={externalScope} onChange={(e) => setExternalScope(e.target.value)} placeholder="Resource group" style={inputStyle} />
+        </label>
+        <label style={fieldLabelStyle}>
+          Tenant ID
+          <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Tenant ID" style={inputStyle} />
+        </label>
+        <label style={fieldLabelStyle}>
+          Client ID (Service Principal)
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID (Service Principal)" style={inputStyle} />
+        </label>
+        {secretSource === 'typed' ? (
+          <>
+            <input
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder="Client secret"
+              type="password"
+              style={inputStyle}
+            />
+            {defaults?.hasClientSecret && (
+              <button type="button" onClick={() => setSecretSource('default')} style={linkButtonStyle}>
+                Use the server's default client secret
+              </button>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            {secretSource === 'copy'
+              ? `Client secret: the one stored for "${data?.environments.find((env) => env.id === copyFromId)?.name ?? ''}".`
+              : "Client secret: the server's default (DEFAULT_AZURE_CLIENT_SECRET)."}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setSecretSource('typed');
+                setCopyFromId('');
+              }}
+              style={linkButtonStyle}
+            >
+              Enter a different secret
+            </button>
+          </div>
+        )}
         {notice && (
           <div role="status" style={{ color: notice.tone === 'ok' ? 'var(--signal-primary)' : 'var(--signal-tertiary)', fontSize: 14 }}>
             {notice.text}

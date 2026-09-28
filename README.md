@@ -59,6 +59,12 @@ Required configuration:
 - Persistent storage mounted at `/data` — the database file is `DB_PATH=/data/cyber-range.db`. Without it,
   every redeploy starts from an empty database.
 
+Optional registration defaults — pre-fill the Environments page's "Register Azure environment" form so the
+same Service Principal isn't retyped every time: `DEFAULT_AZURE_SUBSCRIPTION_ID`, `DEFAULT_AZURE_RESOURCE_GROUP`,
+`DEFAULT_AZURE_TENANT_ID`, `DEFAULT_AZURE_CLIENT_ID`, `DEFAULT_AZURE_CLIENT_SECRET`. Any subset works; the
+secret is never sent to the browser (it is encrypted and stored per environment on registration). The form can
+also copy the connection details, secret included, from an already-registered environment.
+
 The process listens on `PORT` (default 4000). Health check: `GET /api/health`.
 
 On startup the server applies migrations and seeds missing defaults. If no active event exists, it creates

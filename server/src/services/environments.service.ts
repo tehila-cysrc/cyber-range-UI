@@ -1,7 +1,7 @@
 import { ClientSecretCredential } from '@azure/identity';
 import { ResourceManagementClient } from '@azure/arm-resources';
 import { db } from '../db/index.js';
-import { deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential, updateCredentialMetadata } from './credential.service.js';
+import { copyCredential, deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential, updateCredentialMetadata } from './credential.service.js';
 import { writeAudit } from './audit.service.js';
 import { insertCyberRange, type NewCyberRangeInput } from './cyberRangeCatalog.service.js';
 import { classifyAzureError } from './azureErrors.js';
@@ -15,8 +15,37 @@ export interface CloudEnvironmentInput {
   tenantId: string;
   clientId: string;
   clientSecret: string;
+  // Reuse that environment's stored secret instead of clientSecret (see copyCredential).
+  copySecretFromEnvironmentId?: number;
   discoveryMode?: 'on_demand' | 'scheduled';
   discoveryIntervalMinutes?: number | null;
+}
+
+// Deployment-wide defaults that pre-fill the registration form, so an instructor doesn't retype the
+// same Service Principal every time. Prefixed DEFAULT_ so they can never be picked up by
+// @azure/identity's own AZURE_* environment-credential lookup. The secret itself is never returned.
+export interface AzureRegistrationDefaults {
+  subscriptionId: string | null;
+  resourceGroup: string | null;
+  tenantId: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+}
+
+export function azureRegistrationDefaults(): AzureRegistrationDefaults {
+  const read = (key: string) => process.env[key]?.trim() || null;
+  return {
+    subscriptionId: read('DEFAULT_AZURE_SUBSCRIPTION_ID'),
+    resourceGroup: read('DEFAULT_AZURE_RESOURCE_GROUP'),
+    tenantId: read('DEFAULT_AZURE_TENANT_ID'),
+    clientId: read('DEFAULT_AZURE_CLIENT_ID'),
+    hasClientSecret: Boolean(read('DEFAULT_AZURE_CLIENT_SECRET')),
+  };
+}
+
+/** The server-default client secret, only for storing it encrypted on registration. */
+export function defaultAzureClientSecret(): string | null {
+  return process.env.DEFAULT_AZURE_CLIENT_SECRET?.trim() || null;
 }
 
 export interface CloudEnvironmentSummary {
@@ -88,12 +117,17 @@ export function getEnvironment(id: number): CloudEnvironmentSummary | null {
 }
 
 export function createEnvironment(input: CloudEnvironmentInput, actorUsername: string): CloudEnvironmentSummary {
-  const credentialId = storeCredential(
-    'service_principal',
-    input.clientSecret,
-    { tenantId: input.tenantId, clientId: input.clientId },
-    actorUsername,
-  );
+  const metadata = { tenantId: input.tenantId, clientId: input.clientId };
+  let credentialId: number;
+  if (input.copySecretFromEnvironmentId !== undefined) {
+    const source = db
+      .prepare('SELECT credential_id AS credentialId FROM cloud_environments WHERE id = ?')
+      .get(input.copySecretFromEnvironmentId) as { credentialId: number } | undefined;
+    if (!source) throw new Error(`no environment with id ${input.copySecretFromEnvironmentId}`);
+    credentialId = copyCredential(source.credentialId, metadata, actorUsername);
+  } else {
+    credentialId = storeCredential('service_principal', input.clientSecret, metadata, actorUsername);
+  }
 
   const result = db
     .prepare(
@@ -114,7 +148,10 @@ export function createEnvironment(input: CloudEnvironmentInput, actorUsername: s
     );
 
   const id = result.lastInsertRowid as number;
-  writeAudit(actorUsername, 'environment.registered', 'cloud_environment', id, { name: input.name });
+  writeAudit(actorUsername, 'environment.registered', 'cloud_environment', id, {
+    name: input.name,
+    ...(input.copySecretFromEnvironmentId !== undefined && { secretCopiedFromEnvironmentId: input.copySecretFromEnvironmentId }),
+  });
 
   return getEnvironment(id)!;
 }

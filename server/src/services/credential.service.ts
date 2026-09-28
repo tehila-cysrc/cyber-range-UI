@@ -55,6 +55,27 @@ export function storeCredential(
   return result.lastInsertRowid as number;
 }
 
+// "Copy connection details from an existing environment": a new credentials row holding the same
+// ciphertext (same key, same plaintext -> nothing new is revealed), so the secret is never decrypted
+// or sent to the browser, and each environment still owns its row — rotating or deleting one
+// environment's credential never touches the other.
+export function copyCredential(
+  sourceCredentialId: number,
+  metadata: Record<string, unknown> | null,
+  createdByUsername: string,
+): number {
+  const result = db
+    .prepare(
+      `INSERT INTO credentials (kind, secret_ciphertext, secret_iv, secret_auth_tag, metadata_json, created_at, created_by_username)
+       SELECT kind, secret_ciphertext, secret_iv, secret_auth_tag, ?, ?, ? FROM credentials WHERE id = ?`,
+    )
+    .run(metadata ? JSON.stringify(metadata) : null, new Date().toISOString(), createdByUsername, sourceCredentialId);
+  if (result.changes === 0) {
+    throw new Error(`no credential with id ${sourceCredentialId}`);
+  }
+  return Number(result.lastInsertRowid);
+}
+
 export function rotateCredential(credentialId: number, plaintextSecret: string): void {
   const { ciphertext, iv, authTag } = encrypt(plaintextSecret);
 
