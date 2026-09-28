@@ -7,7 +7,6 @@ dist
 .claude
 server/data
 docs
-script-library
 *.md
 .env
 .env.*

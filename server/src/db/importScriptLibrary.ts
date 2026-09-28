@@ -75,6 +75,19 @@ export function importScriptLibrary(): { imported: number; skipped: number } {
   return { imported, skipped };
 }
 
+// Startup hook: a fresh deployment gets the catalog without anyone running the import by hand. Only
+// when the table is empty, so scripts an instructor deleted don't come back on every restart. A
+// missing/broken script-library/ must not keep the API from starting — log and carry on.
+export function importScriptLibraryIfEmpty(): void {
+  const row = db.prepare('SELECT COUNT(*) AS n FROM scripts').get() as { n: number };
+  if (Number(row.n) > 0) return;
+  try {
+    importScriptLibrary();
+  } catch (err) {
+    console.warn(`[import-script-library] skipped: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   importScriptLibrary();
