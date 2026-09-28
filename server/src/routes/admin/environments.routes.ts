@@ -9,9 +9,12 @@ import {
   linkEnvironmentToCyberRange,
   listEnvironments,
   listLinkedCyberRanges,
+  registerEnvironmentWithCyberRange,
   unlinkEnvironmentFromCyberRange,
   updateEnvironment,
 } from '../../services/environments.service.js';
+import { masterKeyProblem } from '../../services/credential.service.js';
+import { validateNewCyberRange } from '../../services/cyberRangeCatalog.service.js';
 import { getDiscoveryRun, listDiscoveryRuns, triggerDiscovery } from '../../services/discovery/discovery.service.js';
 
 const router = Router();
@@ -22,8 +25,10 @@ router.get('/environments', (_req, res) => {
   res.json({ environments: listEnvironments() });
 });
 
+// Optional `cyberRange` {dayId, name, difficulty, expectedDurationMinutes?}: creates that Cyber Range
+// and links it in the same transaction (the Environments page always sends it).
 router.post('/environments', (req, res) => {
-  const { provider, name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes } =
+  const { provider, name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes, cyberRange } =
     req.body ?? {};
 
   if (
@@ -37,23 +42,37 @@ router.post('/environments', (req, res) => {
     res.status(400).json({ error: "provider must be 'azure' or 'aws'; name, externalAccountId, tenantId, clientId and clientSecret are required" });
     return;
   }
+  if (cyberRange !== undefined) {
+    const invalid = validateNewCyberRange(cyberRange);
+    if (invalid) {
+      res.status(400).json({ error: `cyberRange: ${invalid}` });
+      return;
+    }
+  }
+  const keyProblem = masterKeyProblem();
+  if (keyProblem) {
+    res.status(503).json({ error: keyProblem });
+    return;
+  }
 
-  const environment = createEnvironment(
-    {
-      provider,
-      name,
-      externalAccountId,
-      externalScope: externalScope ?? null,
-      tenantId,
-      clientId,
-      clientSecret,
-      discoveryMode,
-      discoveryIntervalMinutes: discoveryIntervalMinutes ?? null,
-    },
-    req.user!.username,
-  );
+  const input = {
+    provider,
+    name,
+    externalAccountId,
+    externalScope: externalScope ?? null,
+    tenantId,
+    clientId,
+    clientSecret,
+    discoveryMode,
+    discoveryIntervalMinutes: discoveryIntervalMinutes ?? null,
+  } as const;
 
-  res.status(201).json({ environment });
+  if (cyberRange === undefined) {
+    res.status(201).json({ environment: createEnvironment(input, req.user!.username) });
+    return;
+  }
+  const { environment, cyberRangeId } = registerEnvironmentWithCyberRange(input, cyberRange, req.user!.username);
+  res.status(201).json({ environment, cyberRangeId });
 });
 
 router.patch('/environments/:id', (req, res) => {
@@ -64,6 +83,14 @@ router.patch('/environments/:id', (req, res) => {
   for (const [key, value] of Object.entries(stringFields)) {
     if (value !== undefined && typeof value !== 'string') {
       res.status(400).json({ error: `${key} must be a string when provided` });
+      return;
+    }
+  }
+
+  if (clientSecret !== undefined) {
+    const keyProblem = masterKeyProblem();
+    if (keyProblem) {
+      res.status(503).json({ error: keyProblem });
       return;
     }
   }

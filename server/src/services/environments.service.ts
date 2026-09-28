@@ -3,6 +3,7 @@ import { ResourceManagementClient } from '@azure/arm-resources';
 import { db } from '../db/index.js';
 import { deleteCredential, readCredentialPlaintext, rotateCredential, storeCredential, updateCredentialMetadata } from './credential.service.js';
 import { writeAudit } from './audit.service.js';
+import { insertCyberRange, type NewCyberRangeInput } from './cyberRangeCatalog.service.js';
 import { classifyAzureError } from './azureErrors.js';
 import type { ResolvedCloudCredential } from './discovery/discoveryProvider.js';
 
@@ -116,6 +117,27 @@ export function createEnvironment(input: CloudEnvironmentInput, actorUsername: s
   writeAudit(actorUsername, 'environment.registered', 'cloud_environment', id, { name: input.name });
 
   return getEnvironment(id)!;
+}
+
+// The Environments page registers an environment together with the new Cyber Range it backs. One
+// transaction, so a failure in any step (e.g. a missing CREDENTIAL_MASTER_KEY) leaves nothing behind —
+// the three separate client calls this replaces left an orphaned Cyber Range on every failed attempt.
+export function registerEnvironmentWithCyberRange(
+  input: CloudEnvironmentInput,
+  cyberRange: NewCyberRangeInput,
+  actorUsername: string,
+): { environment: CloudEnvironmentSummary; cyberRangeId: number } {
+  db.exec('BEGIN');
+  try {
+    const cyberRangeId = insertCyberRange(cyberRange);
+    const environment = createEnvironment(input, actorUsername);
+    linkEnvironmentToCyberRange(cyberRangeId, environment.id, actorUsername);
+    db.exec('COMMIT');
+    return { environment, cyberRangeId };
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 export function updateEnvironment(

@@ -91,6 +91,7 @@ export function ScenarioConfigPage() {
   const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
   const [creating, setCreating] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: rangesData } = useQuery({
     queryKey: ['cyber-ranges'],
@@ -130,6 +131,19 @@ export function ScenarioConfigPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: expectedKey });
 
+  // Only a scenario nothing depends on yet can go (e.g. one left by a failed environment
+  // registration) — the server explains what blocks it otherwise.
+  const deleteScenario = useMutation({
+    mutationFn: (id: number) => apiFetch(`/admin/cyber-ranges/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setCyberRangeId('');
+      setEditingDetails(false);
+      queryClient.invalidateQueries({ queryKey: ['cyber-ranges'] });
+    },
+    onError: (err) => setDeleteError(err instanceof ApiError ? err.message : 'Could not delete this scenario.'),
+  });
+  const selectedName = rangesData?.cyberRanges.find((cr) => cr.id === cyberRangeId)?.name;
+
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ ...monoLabel, marginBottom: 4 }}>Scenario configuration</div>
@@ -143,6 +157,7 @@ export function ScenarioConfigPage() {
             setCyberRangeId(e.target.value ? Number(e.target.value) : '');
             setCreating(false);
             setEditingDetails(false);
+            setDeleteError(null);
           }}
           style={{ ...fieldStyle, maxWidth: '100%' }}
         >
@@ -169,7 +184,33 @@ export function ScenarioConfigPage() {
             {editingDetails ? 'Hide details' : 'Edit details & student briefing'}
           </Button>
         )}
+        {cyberRangeId !== '' && !creating && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={deleteScenario.isPending}
+            onClick={async () => {
+              setDeleteError(null);
+              const ok = await confirmAction({
+                title: `Delete scenario "${selectedName ?? ''}"?`,
+                message:
+                  'Removes the scenario with its topology, pressure thresholds and expected techniques. Not possible while an environment backs it or a team has it assigned.',
+                confirmLabel: 'Delete scenario',
+                danger: true,
+              });
+              if (ok) deleteScenario.mutate(cyberRangeId);
+            }}
+            style={{ padding: '6px 14px', fontSize: 14 }}
+          >
+            Delete scenario
+          </Button>
+        )}
       </div>
+      {deleteError && (
+        <div role="alert" style={{ color: 'var(--signal-alert)', fontSize: 14, marginBottom: 'var(--space-md)' }}>
+          {deleteError}
+        </div>
+      )}
 
       {creating && (
         <ScenarioDetailsForm

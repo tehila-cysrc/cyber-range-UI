@@ -314,24 +314,14 @@ export function EnvironmentsAdminPage() {
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['admin-environments'] });
+    queryClient.invalidateQueries({ queryKey: ['cyber-ranges'] });
   }
 
-  // Registering an environment now also creates its Cyber Range in one step — the seeded catalog is
-  // just a starting point, not a fixed list; an instructor names a new Cyber Range every time they
-  // register an environment for it, then this links the two automatically (no separate "pick an
-  // existing range and link it" step).
+  // Registering an environment also creates its Cyber Range — an instructor names a new Cyber Range
+  // every time they register an environment for it. One request: the server creates the range, the
+  // environment and the link in a single transaction, so a failure leaves no orphaned Cyber Range.
   const createEnvironment = useMutation({
     mutationFn: async () => {
-      const { cyberRange } = await apiFetch<{ cyberRange: { id: number } }>('/admin/cyber-ranges', {
-        method: 'POST',
-        body: JSON.stringify({
-          dayId,
-          name,
-          difficulty,
-          expectedDurationMinutes: expectedDurationMinutes ? Number(expectedDurationMinutes) : undefined,
-        }),
-      });
-
       const { environment } = await apiFetch<{ environment: { id: number } }>('/admin/environments', {
         method: 'POST',
         body: JSON.stringify({
@@ -342,12 +332,13 @@ export function EnvironmentsAdminPage() {
           tenantId,
           clientId,
           clientSecret,
+          cyberRange: {
+            dayId,
+            name,
+            difficulty,
+            expectedDurationMinutes: expectedDurationMinutes ? Number(expectedDurationMinutes) : undefined,
+          },
         }),
-      });
-
-      await apiFetch(`/admin/cyber-ranges/${cyberRange.id}/environments`, {
-        method: 'POST',
-        body: JSON.stringify({ environmentId: environment.id }),
       });
       return { environmentId: environment.id, name };
     },

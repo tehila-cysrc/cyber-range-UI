@@ -2,17 +2,17 @@ import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
+import {
+  VALID_DIFFICULTIES,
+  deleteCyberRange,
+  insertCyberRange,
+  normalizeBriefing,
+  validateNewCyberRange,
+} from '../../services/cyberRangeCatalog.service.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
-
-const VALID_DIFFICULTIES = ['intermediate', 'advanced'];
-const MAX_BRIEFING_LENGTH = 4000;
-
-function normalizeBriefing(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim().slice(0, MAX_BRIEFING_LENGTH) : null;
-}
 
 const SELECT_DETAILS = `
   SELECT cr.id AS id, cr.name AS name, cr.difficulty AS difficulty, cr.day_id AS dayId,
@@ -29,29 +29,13 @@ router.get('/days', (_req, res) => {
 // Instructor-authored catalog entry — the seeded catalog is just a starting point, not a fixed list;
 // an instructor can add a new Cyber Range at any time (e.g. from the Environments registration flow).
 router.post('/cyber-ranges', (req, res) => {
-  const { dayId, name, difficulty, expectedDurationMinutes, studentBriefing } = req.body ?? {};
-
-  if (typeof dayId !== 'number' || typeof name !== 'string' || !name.trim() || !VALID_DIFFICULTIES.includes(difficulty)) {
-    res.status(400).json({ error: `dayId (number), name (string) and difficulty ('intermediate'|'advanced') are required` });
+  const invalid = validateNewCyberRange(req.body);
+  if (invalid) {
+    res.status(400).json({ error: invalid });
     return;
   }
-
-  const day = db.prepare('SELECT id FROM days WHERE id = ?').get(dayId);
-  if (!day) {
-    res.status(400).json({ error: 'unknown dayId' });
-    return;
-  }
-
-  const { maxSort } = db
-    .prepare('SELECT COALESCE(MAX(sort_order), 0) AS maxSort FROM cyber_ranges WHERE day_id = ?')
-    .get(dayId) as { maxSort: number };
-
-  const result = db
-    .prepare(
-      `INSERT INTO cyber_ranges (day_id, name, difficulty, expected_duration_minutes, sort_order, student_briefing)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(dayId, name.trim(), difficulty, expectedDurationMinutes ?? null, maxSort + 1, normalizeBriefing(studentBriefing));
+  const { dayId, name, difficulty, expectedDurationMinutes, studentBriefing } = req.body;
+  const id = insertCyberRange({ dayId, name, difficulty, expectedDurationMinutes, studentBriefing });
 
   const cyberRange = db
     .prepare(
@@ -61,7 +45,7 @@ router.post('/cyber-ranges', (req, res) => {
        FROM cyber_ranges cr JOIN days d ON d.id = cr.day_id
        WHERE cr.id = ?`,
     )
-    .get(result.lastInsertRowid);
+    .get(id);
 
   res.status(201).json({ cyberRange });
 });
@@ -115,6 +99,16 @@ router.patch('/cyber-ranges/:id', (req, res) => {
   if (studentBriefing !== undefined) (sets.push('student_briefing = ?'), params.push(normalizeBriefing(studentBriefing)));
   if (sets.length) db.prepare(`UPDATE cyber_ranges SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
   res.json({ cyberRange: db.prepare(SELECT_DETAILS).get(id) });
+});
+
+// Scenarios page "Delete scenario" — see deleteCyberRange for what blocks it.
+router.delete('/cyber-ranges/:id', (req, res) => {
+  const result = deleteCyberRange(Number(req.params.id), req.user!.username);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 export default router;

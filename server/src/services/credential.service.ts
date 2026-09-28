@@ -26,6 +26,17 @@ function getMasterKey(): Buffer {
   return key;
 }
 
+// Lets a route refuse up front, with a message an instructor can act on, instead of a bare 500
+// half-way through a multi-step write. Never includes the key itself.
+export function masterKeyProblem(): string | null {
+  try {
+    getMasterKey();
+    return null;
+  } catch (err) {
+    return `The server can't store cloud credentials: ${err instanceof Error ? err.message : String(err)}. Set it in the deployment's environment variables and restart the server.`;
+  }
+}
+
 export function storeCredential(
   kind: CredentialKind,
   plaintextSecret: string,
