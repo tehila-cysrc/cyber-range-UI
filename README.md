@@ -53,7 +53,7 @@ The client is a static site and the API is a separate Node.js 24 process; the se
 **Client:** `npm run build -w client`, then host `client/dist`. Set `VITE_API_ORIGIN` at build time to the
 API's public origin (e.g. `https://api.example.com`); leave it unset only when the API is reachable on the same
 origin as the page (a reverse proxy routing `/api` and `/socket.io`). Configure the host to serve `index.html`
-for application routes such as `/login` (`client/vercel.json` does this on Vercel).
+for application routes such as `/login` (SPA fallback).
 
 **Server:** `npm ci && npm run build -w server`, then `npm run start -w server`. Required environment:
 
