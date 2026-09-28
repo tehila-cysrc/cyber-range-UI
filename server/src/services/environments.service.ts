@@ -21,33 +21,6 @@ export interface CloudEnvironmentInput {
   discoveryIntervalMinutes?: number | null;
 }
 
-// Deployment-wide defaults that pre-fill the registration form, so an instructor doesn't retype the
-// same Service Principal every time. Prefixed DEFAULT_ so they can never be picked up by
-// @azure/identity's own AZURE_* environment-credential lookup. The secret itself is never returned.
-export interface AzureRegistrationDefaults {
-  subscriptionId: string | null;
-  resourceGroup: string | null;
-  tenantId: string | null;
-  clientId: string | null;
-  hasClientSecret: boolean;
-}
-
-export function azureRegistrationDefaults(): AzureRegistrationDefaults {
-  const read = (key: string) => process.env[key]?.trim() || null;
-  return {
-    subscriptionId: read('DEFAULT_AZURE_SUBSCRIPTION_ID'),
-    resourceGroup: read('DEFAULT_AZURE_RESOURCE_GROUP'),
-    tenantId: read('DEFAULT_AZURE_TENANT_ID'),
-    clientId: read('DEFAULT_AZURE_CLIENT_ID'),
-    hasClientSecret: Boolean(read('DEFAULT_AZURE_CLIENT_SECRET')),
-  };
-}
-
-/** The server-default client secret, only for storing it encrypted on registration. */
-export function defaultAzureClientSecret(): string | null {
-  return process.env.DEFAULT_AZURE_CLIENT_SECRET?.trim() || null;
-}
-
 export interface CloudEnvironmentSummary {
   id: number;
   provider: string;

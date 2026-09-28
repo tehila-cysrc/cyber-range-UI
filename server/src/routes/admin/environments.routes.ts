@@ -2,10 +2,8 @@ import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import {
-  azureRegistrationDefaults,
   checkConnectivity,
   createEnvironment,
-  defaultAzureClientSecret,
   deleteEnvironment,
   getEnvironment,
   linkEnvironmentToCyberRange,
@@ -27,14 +25,10 @@ router.get('/environments', (_req, res) => {
   res.json({ environments: listEnvironments() });
 });
 
-router.get('/environments/defaults', (_req, res) => {
-  res.json({ defaults: azureRegistrationDefaults() });
-});
-
 // Optional `cyberRange` {dayId, name, difficulty, expectedDurationMinutes?}: creates that Cyber Range
 // and links it in the same transaction (the Environments page always sends it).
-// The secret comes from exactly one of: `clientSecret`, `copySecretFromEnvironmentId` (reuse another
-// environment's stored secret) or `useServerDefaultSecret` (DEFAULT_AZURE_CLIENT_SECRET).
+// The secret comes from exactly one of `clientSecret` or `copySecretFromEnvironmentId` (reuse another
+// environment's stored secret).
 router.post('/environments', (req, res) => {
   const {
     provider,
@@ -45,7 +39,6 @@ router.post('/environments', (req, res) => {
     clientId,
     clientSecret,
     copySecretFromEnvironmentId,
-    useServerDefaultSecret,
     discoveryMode,
     discoveryIntervalMinutes,
     cyberRange,
@@ -65,19 +58,13 @@ router.post('/environments', (req, res) => {
   const secretSources = [
     typeof clientSecret === 'string' && clientSecret.trim() !== '',
     copySecretFromEnvironmentId !== undefined,
-    useServerDefaultSecret === true,
   ].filter(Boolean).length;
   if (secretSources !== 1) {
-    res.status(400).json({ error: 'provide exactly one of clientSecret, copySecretFromEnvironmentId or useServerDefaultSecret' });
+    res.status(400).json({ error: 'provide exactly one of clientSecret or copySecretFromEnvironmentId' });
     return;
   }
   if (copySecretFromEnvironmentId !== undefined && (typeof copySecretFromEnvironmentId !== 'number' || !getEnvironment(copySecretFromEnvironmentId))) {
     res.status(400).json({ error: 'copySecretFromEnvironmentId must be an existing environment' });
-    return;
-  }
-  const serverSecret = useServerDefaultSecret === true ? defaultAzureClientSecret() : null;
-  if (useServerDefaultSecret === true && !serverSecret) {
-    res.status(400).json({ error: 'the server has no DEFAULT_AZURE_CLIENT_SECRET configured — enter the client secret instead' });
     return;
   }
   if (cyberRange !== undefined) {
@@ -100,7 +87,7 @@ router.post('/environments', (req, res) => {
     externalScope: externalScope ?? null,
     tenantId,
     clientId,
-    clientSecret: serverSecret ?? clientSecret ?? '',
+    clientSecret: clientSecret ?? '',
     copySecretFromEnvironmentId,
     discoveryMode,
     discoveryIntervalMinutes: discoveryIntervalMinutes ?? null,

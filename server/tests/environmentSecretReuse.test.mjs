@@ -44,15 +44,3 @@ test('copying from an unknown environment stores nothing', () => {
   assert.throws(() => env.createEnvironment(input('x', { copySecretFromEnvironmentId: 99999 }), 'instructor'));
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM credentials').get().n, before);
 });
-
-test('server defaults are exposed without the secret', () => {
-  process.env.DEFAULT_AZURE_TENANT_ID = ' tenant ';
-  process.env.DEFAULT_AZURE_CLIENT_SECRET = 'top-secret';
-  delete process.env.DEFAULT_AZURE_CLIENT_ID;
-  const defaults = env.azureRegistrationDefaults();
-  assert.equal(defaults.tenantId, 'tenant');
-  assert.equal(defaults.clientId, null);
-  assert.equal(defaults.hasClientSecret, true);
-  assert.ok(!JSON.stringify(defaults).includes('top-secret'));
-  assert.equal(env.defaultAzureClientSecret(), 'top-secret');
-});
