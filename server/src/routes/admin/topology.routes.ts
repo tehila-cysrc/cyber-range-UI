@@ -245,8 +245,17 @@ router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
 
   try {
     await storeVmLoginSecret(credential, node.keyVaultUri, secretName, password);
-  } catch {
-    res.status(502).json({ error: 'failed to store the credential in Key Vault' });
+  } catch (err) {
+    // Surface Azure's reason (firewall vs. missing permission) — the generic message hid a stale
+    // Key Vault IP allowlist. The error body never contains the secret value.
+    const e = err as { statusCode?: number; code?: string; message?: string };
+    console.error(`[access-target] Key Vault setSecret failed for node ${nodeId}:`, e.statusCode, e.code, e.message);
+    const reason = /not authorized and caller is not a trusted service/i.test(e.message ?? '')
+      ? `the Key Vault firewall blocked this server's IP (${/Client address: (\S+)/.exec(e.message ?? '')?.[1] ?? 'unknown'}) — add it to the vault's network rules`
+      : e.statusCode === 403
+        ? "the environment's Service Principal lacks Key Vault secret 'Set' permission"
+        : (e.code ?? 'unknown error');
+    res.status(502).json({ error: `failed to store the credential in Key Vault: ${reason}` });
     return;
   }
 
