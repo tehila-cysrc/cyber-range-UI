@@ -10,10 +10,11 @@ import {
   normalizeJoinCode,
   recordFailure,
 } from '../services/registration.service.js';
+import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
 
 const router = Router();
 
-export const MIN_PASSWORD_LENGTH = 8;
+export { MIN_PASSWORD_LENGTH };
 const TOKEN_TTL_HOURS = Number(process.env.TOKEN_TTL_HOURS ?? 12);
 
 interface UserRow {
@@ -203,6 +204,17 @@ router.get('/me', requireAuth, (req, res) => {
     )
     .get(req.user!.id);
   res.json({ user });
+});
+
+// Self-service profile edit for any signed-in user — see profile.service.ts for the rules.
+router.patch('/me', requireAuth, (req, res) => {
+  const token = req.headers.authorization!.slice(7);
+  const result = updateOwnProfile(req.user!.id, token, req.body ?? {});
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ user: result.user, passwordChanged: result.passwordChanged });
 });
 
 export default router;

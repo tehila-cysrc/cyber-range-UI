@@ -10,6 +10,7 @@ import { Toaster } from '../components/Toaster';
 import { ConfirmDialogHost } from '../components/ConfirmDialog';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
 import { UserIcon } from '../components/icons';
+import { ProfileDialog } from '../features/auth/ProfileDialog';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
 import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
@@ -139,6 +140,7 @@ function LiveStatusBadge() {
 // small menu revealed on click instead of sitting permanently in the nav bar.
 function UserMenu({ displayName, role, onLogout }: { displayName: string; role: string; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -148,6 +150,17 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const menuButtonStyle: React.CSSProperties = {
+    background: 'transparent',
+    border: '1px solid var(--surface-border)',
+    color: 'var(--text-muted)',
+    borderRadius: 'var(--radius-control)',
+    padding: '4px 10px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontSize: 14,
+  };
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -192,22 +205,20 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
             {displayName} · {role}
           </div>
           <button
-            onClick={onLogout}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--surface-border)',
-              color: 'var(--text-muted)',
-              borderRadius: 'var(--radius-control)',
-              padding: '4px 10px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 14,
+            onClick={() => {
+              setOpen(false);
+              setEditing(true);
             }}
+            style={menuButtonStyle}
           >
+            Edit profile
+          </button>
+          <button onClick={onLogout} style={menuButtonStyle}>
             Sign out
           </button>
         </div>
       )}
+      {editing && <ProfileDialog onClose={() => setEditing(false)} />}
     </div>
   );
 }
