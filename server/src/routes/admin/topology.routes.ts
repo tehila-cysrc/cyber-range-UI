@@ -10,6 +10,7 @@ import { requestInstructorAccessSession } from '../../services/accessBroker/acce
 import { TopologyLayoutPlanner } from '../../services/discovery/topologyLayout.js';
 import { publicationStatus, publishTopology } from '../../services/topologyPublication.service.js';
 import { emitTopologyPublished } from '../../sockets/emitters.js';
+import { getNodePower, requestNodePower, type VmPowerAction } from '../../services/vmPower.service.js';
 
 const router = Router();
 
@@ -345,6 +346,29 @@ router.post('/topology/nodes/:nodeId/connect', async (req, res) => {
 // execution's id (fire-and-track, like POST .../environments/:id/discover) — the actual Run Command
 // call can take minutes for a script meant to generate real, observable activity, so the client polls
 // GET .../script-executions/:id rather than the request staying open.
+router.post('/topology/nodes/:nodeId/power', (req, res) => {
+  const action = req.body?.action;
+  if (action !== 'start' && action !== 'stop') {
+    res.status(400).json({ error: "action must be 'start' or 'stop'" });
+    return;
+  }
+  const outcome = requestNodePower(Number(req.params.nodeId), action as VmPowerAction, req.user!.username);
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.message });
+    return;
+  }
+  res.status(202).json({ operation: outcome.operation });
+});
+
+router.get('/topology/nodes/:nodeId/power', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  if (!db.prepare('SELECT 1 FROM topology_nodes WHERE id = ?').get(nodeId)) {
+    res.status(404).json({ error: 'node not found' });
+    return;
+  }
+  res.json({ operation: getNodePower(nodeId) });
+});
+
 router.post('/topology/nodes/:nodeId/run-script', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const { scriptId, content, scriptType } = req.body ?? {};
