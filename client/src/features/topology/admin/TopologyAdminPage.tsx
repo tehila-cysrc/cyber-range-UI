@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../../lib/apiClient';
@@ -373,6 +373,87 @@ export function TopologyAdminPage() {
   );
 }
 
+function VmPowerControls({ nodeId, label, enabled }: { nodeId: number; label: string; enabled: boolean }) {
+  const queryClient = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
+  const seenStatus = useRef<string | undefined>(undefined);
+
+  const { data } = useQuery({
+    enabled,
+    queryKey: ['node-power', nodeId],
+    queryFn: () =>
+      apiFetch<{ operation: { action: 'start' | 'stop'; status: 'running' | 'succeeded' | 'failed'; message: string | null } | null }>(
+        `/admin/topology/nodes/${nodeId}/power`,
+      ),
+    refetchInterval: (query) => (query.state.data?.operation?.status === 'running' ? 2000 : false),
+  });
+  const operation = data?.operation ?? null;
+
+  useEffect(() => {
+    const status = operation?.status;
+    if (seenStatus.current === 'running' && status && status !== 'running') {
+      queryClient.invalidateQueries({ queryKey: ['topology'] });
+      if (status === 'succeeded') {
+        pushToast(operation.action === 'start' ? `${label} is running.` : `${label} is stopped.`, 'success');
+      } else {
+        pushToast(operation.message ?? `Could not change power for ${label}.`, 'error');
+      }
+    }
+    seenStatus.current = status;
+  }, [operation, label, pushToast, queryClient]);
+
+  const power = useMutation({
+    mutationFn: (action: 'start' | 'stop') =>
+      apiFetch(`/admin/topology/nodes/${nodeId}/power`, { method: 'POST', body: JSON.stringify({ action }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['node-power', nodeId] });
+      queryClient.invalidateQueries({ queryKey: ['topology'] });
+    },
+    onError: (err) => pushToast(err instanceof ApiError ? err.message : `Could not change power for ${label}`),
+  });
+
+  async function handlePower(action: 'start' | 'stop') {
+    const starting = action === 'start';
+    const ok = await confirmAction({
+      title: starting ? `Start ${label}?` : `Stop ${label}?`,
+      message: starting ? 'This virtual machine will be started.' : 'This virtual machine will be stopped and deallocated. Compute shuts down.',
+      confirmLabel: starting ? 'Start' : 'Stop',
+      danger: !starting,
+    });
+    if (ok) power.mutate(action);
+  }
+
+  const busy = power.isPending || operation?.status === 'running';
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button
+          variant="primary"
+          disabled={!enabled || busy}
+          title={enabled ? undefined : 'Start needs an Azure-discovered virtual machine'}
+          onClick={() => handlePower('start')}
+          style={{ flex: 1 }}
+        >
+          {busy && operation?.action === 'start' ? 'Starting…' : 'Start'}
+        </Button>
+        <Button
+          variant="destructive"
+          disabled={!enabled || busy}
+          title={enabled ? undefined : 'Stop needs an Azure-discovered virtual machine'}
+          onClick={() => handlePower('stop')}
+          style={{ flex: 1 }}
+        >
+          {busy && operation?.action === 'stop' ? 'Stopping…' : 'Stop'}
+        </Button>
+      </div>
+      {operation?.status === 'failed' && (
+        <div style={{ fontSize: 12, color: 'var(--signal-alert)', marginTop: 6 }}>{operation.message ?? 'Start/stop failed'}</div>
+      )}
+    </div>
+  );
+}
+
 function NodePanel({
   node,
   zones,
@@ -487,6 +568,8 @@ function NodePanel({
           ))}
         </select>
       </Field>
+
+      {node.nodeType === 'vm' && <VmPowerControls nodeId={node.id} label={node.label} enabled={!!node.environmentId} />}
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)', margin: '10px 0' }}>
         <input type="checkbox" checked={!!node.isVisibleToStudents} onChange={(e) => onSave({ isVisibleToStudents: e.target.checked })} />

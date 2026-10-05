@@ -1,9 +1,17 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { confirmAction } from '../../components/ConfirmDialog';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { useToastStore } from '../../stores/toastStore';
+
+interface PowerOperation {
+  action: 'start' | 'stop';
+  status: 'running' | 'succeeded' | 'failed';
+  vmCount: number;
+  message: string | null;
+}
 
 interface CloudEnvironment {
   id: number;
@@ -178,7 +186,51 @@ function EnvironmentCard({
   onDelete: () => void;
 }) {
   const queryClient = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
   const [isEditing, setIsEditing] = useState(false);
+  const seenPowerStatus = useRef<string | undefined>(undefined);
+
+  const { data: powerData } = useQuery({
+    queryKey: ['environment-power', env.id],
+    queryFn: () => apiFetch<{ operation: PowerOperation | null }>(`/admin/environments/${env.id}/power`),
+    refetchInterval: (query) => (query.state.data?.operation?.status === 'running' ? 2000 : false),
+  });
+  const operation = powerData?.operation ?? null;
+
+  useEffect(() => {
+    const status = operation?.status;
+    if (seenPowerStatus.current === 'running' && status && status !== 'running') {
+      const verb = operation.action === 'start' ? 'Start' : 'Stop';
+      if (status === 'succeeded') {
+        pushToast(`${verb} finished for ${operation.vmCount} virtual machine${operation.vmCount === 1 ? '' : 's'}.`, 'success');
+      } else {
+        pushToast(operation.message ?? `${verb} failed.`, 'error');
+      }
+    }
+    seenPowerStatus.current = status;
+  }, [operation, pushToast]);
+
+  const power = useMutation({
+    mutationFn: (action: 'start' | 'stop') =>
+      apiFetch(`/admin/environments/${env.id}/power`, { method: 'POST', body: JSON.stringify({ action }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['environment-power', env.id] }),
+    onError: (err) => pushToast(err instanceof ApiError ? err.message : 'Could not change virtual machine power'),
+  });
+
+  async function handlePower(action: 'start' | 'stop') {
+    const starting = action === 'start';
+    const ok = await confirmAction({
+      title: starting ? `Start all virtual machines in "${env.name}"?` : `Stop all virtual machines in "${env.name}"?`,
+      message: starting
+        ? 'Every discovered virtual machine in this environment will be started.'
+        : 'Every discovered virtual machine will be stopped and deallocated. Compute shuts down.',
+      confirmLabel: starting ? 'Start all' : 'Stop all',
+      danger: !starting,
+    });
+    if (ok) power.mutate(action);
+  }
+
+  const powerBusy = power.isPending || operation?.status === 'running';
 
   const { data: runsData } = useQuery({
     queryKey: ['discovery-runs', env.id],
@@ -240,6 +292,16 @@ function EnvironmentCard({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <strong style={{ color: 'var(--text-primary)', fontSize: 16, overflowWrap: 'anywhere' }}>{env.name}</strong>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {env.provider === 'azure' && (
+            <>
+              <Button variant="primary" disabled={powerBusy} onClick={() => handlePower('start')}>
+                {powerBusy && operation?.action === 'start' ? 'Starting…' : 'Start all'}
+              </Button>
+              <Button variant="destructive" disabled={powerBusy} onClick={() => handlePower('stop')}>
+                {powerBusy && operation?.action === 'stop' ? 'Stopping…' : 'Stop all'}
+              </Button>
+            </>
+          )}
           <Button variant="ghost" disabled={isChecking} onClick={onCheckConnectivity}>
             Check connectivity
           </Button>
@@ -271,6 +333,12 @@ function EnvironmentCard({
             </TelemetryBadge>
           ))}
         {runBadge(latestRun)}
+        {operation?.status === 'running' && (
+          <TelemetryBadge tone="secondary">
+            {operation.action === 'start' ? 'Starting' : 'Stopping'} {operation.vmCount} virtual machine{operation.vmCount === 1 ? '' : 's'}…
+          </TelemetryBadge>
+        )}
+        {operation?.status === 'failed' && <TelemetryBadge tone="alert">{operation.message ?? 'Start/stop failed'}</TelemetryBadge>}
       </div>
 
       <div style={{ marginTop: 12, borderTop: '1px solid var(--surface-border)', paddingTop: 8 }}>

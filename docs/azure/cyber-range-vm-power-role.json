@@ -1,0 +1,14 @@
+{
+  "Name": "Cyber Range VM Power Operator",
+  "IsCustom": true,
+  "Description": "Lets the Cyber Range platform's registered Service Principal start and deallocate lab virtual machines — the minimum beyond Reader that the Environments and Topology Admin power buttons need. Stop deallocates (Azure portal Stop). Assign this in ADDITION to Reader at the resource group scope; never assign Contributor/Owner to this Service Principal.",
+  "Actions": [
+    "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/start/action",
+    "Microsoft.Compute/virtualMachines/deallocate/action"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": ["/subscriptions/<SUBSCRIPTION_ID>"]
+}

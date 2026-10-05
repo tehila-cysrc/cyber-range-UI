@@ -16,6 +16,7 @@ import {
 import { masterKeyProblem } from '../../services/credential.service.js';
 import { validateNewCyberRange } from '../../services/cyberRangeCatalog.service.js';
 import { getDiscoveryRun, listDiscoveryRuns, triggerDiscovery } from '../../services/discovery/discovery.service.js';
+import { getEnvironmentPower, requestEnvironmentPower, type VmPowerAction } from '../../services/vmPower.service.js';
 
 const router = Router();
 
@@ -192,6 +193,34 @@ router.get('/environments/:id/discovery-runs', (req, res) => {
     return;
   }
   res.json({ runs: listDiscoveryRuns(id) });
+});
+
+function readPowerAction(body: unknown): VmPowerAction | null {
+  const action = (body as { action?: unknown } | null)?.action;
+  return action === 'start' || action === 'stop' ? action : null;
+}
+
+router.post('/environments/:id/power', (req, res) => {
+  const action = readPowerAction(req.body);
+  if (!action) {
+    res.status(400).json({ error: "action must be 'start' or 'stop'" });
+    return;
+  }
+  const outcome = requestEnvironmentPower(Number(req.params.id), action, req.user!.username);
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.message });
+    return;
+  }
+  res.status(202).json({ operation: outcome.operation });
+});
+
+router.get('/environments/:id/power', (req, res) => {
+  const id = Number(req.params.id);
+  if (!getEnvironment(id)) {
+    res.status(404).json({ error: 'environment not found' });
+    return;
+  }
+  res.json({ operation: getEnvironmentPower(id) });
 });
 
 router.get('/environments/:id/discovery-runs/:runId', (req, res) => {
