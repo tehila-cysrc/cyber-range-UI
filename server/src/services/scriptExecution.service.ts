@@ -269,6 +269,28 @@ export function runScriptOnNode(nodeId: number, request: RunScriptRequest, actor
 
 const OUTPUT_EXCERPT_MAX = 4000;
 
+// Control-plane failures that used to collapse into "operation failed for an unexpected reason".
+// The Azure code and sanitized message are still appended so a new code stays visible.
+const SCRIPT_RUN_HINTS: Record<string, string> = {
+  VMAgentStatusCommunicationError:
+    'The Azure VM Guest Agent is not reporting. The VM has to be running and the agent Ready before a script can start.',
+  OperationNotAllowed: 'Azure refused to run the script. The VM is usually stopped or deallocated — it has to be running.',
+  Conflict: 'Azure reported a conflict on this VM. Another operation may still be in progress, or the guest agent is not ready.',
+  AuthorizationFailed:
+    'The registered credential is not allowed to run commands on this VM. It needs Microsoft.Compute/virtualMachines/runCommand/action.',
+  VMExtensionProvisioningError: 'Azure could not provision the Run Command extension on this VM. Check the guest agent, then retry.',
+  VMExtensionProvisioningTimeout: 'Azure timed out waiting for the Run Command extension on this VM. Check the guest agent, then retry.',
+  ResourceNotFound: 'Azure could not find this virtual machine. Re-run discovery in case it was deleted or moved.',
+};
+
+export function scriptRunFailureMessage(err: unknown): string {
+  const classified = classifyAzureError(err);
+  const hint = classified.code ? SCRIPT_RUN_HINTS[classified.code] : undefined;
+  if (!hint) return classified.message;
+  const detail = classified.code && classified.detail ? `${classified.code}: ${classified.detail}` : classified.code;
+  return detail ? `${hint} (${detail})` : hint;
+}
+
 async function executeInBackground(
   executionId: number,
   credential: ResolvedCloudCredential,
@@ -309,7 +331,8 @@ async function executeInBackground(
       }
     }
   } catch (err) {
-    const { message } = classifyAzureError(err);
+    const message = scriptRunFailureMessage(err);
+    console.error(`[script] execution ${executionId} on ${vmRef.vmName} failed: ${message}`);
     db.prepare(`UPDATE script_executions SET status = 'failed', finished_at = ?, error_text = ? WHERE id = ?`).run(
       new Date().toISOString(),
       message.slice(0, OUTPUT_EXCERPT_MAX),
