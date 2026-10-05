@@ -391,6 +391,7 @@ function NodePanel({
   const [label, setLabel] = useState(node.label);
   const metadata = parseMetadata(node.metadataJson);
   const osType = metadata?.osType === 'Windows' || metadata?.osType === 'Linux' ? metadata.osType : null;
+  const privateIp = typeof metadata?.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
 
   const queryClient = useQueryClient();
   const [accessUsername, setAccessUsername] = useState('');
@@ -445,6 +446,16 @@ function NodePanel({
       <PanelHeader onClose={onClose} />
 
       <input value={label} onChange={(e) => setLabel(e.target.value)} onBlur={() => label !== node.label && onSave({ label })} style={{ ...fieldStyle, width: '100%', fontSize: 15, fontWeight: 500, marginBottom: 10 }} />
+
+      {/* Shown to students too (TopologyViewerPage) once published — the instructor needs it on hand, not buried in Diagnostics. */}
+      {privateIp && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, fontSize: 13 }}>
+          <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Internal IP
+          </span>
+          <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', userSelect: 'all' }}>{privateIp}</span>
+        </div>
+      )}
 
       <Field label="Role">
         <select value={node.role ?? ''} onChange={(e) => onSave({ role: e.target.value })} style={{ ...fieldStyle, width: '100%' }}>

@@ -224,9 +224,9 @@ export function TopologyViewerPage() {
                 {ip && (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      IP Route
+                      Internal IP
                     </span>
-                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{ip}</span>
+                    <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', userSelect: 'all' }}>{ip}</span>
                   </div>
                 )}
                 {os && (
