@@ -36,6 +36,125 @@ input[type='radio'] {
   accent-color: var(--signal-primary);
 }
 
+/* Every <select> (27 call sites, mostly inline-styled) gets a branded open list instead of the OS
+   popup with its blue highlight. Customizable select (Chromium 135+) keeps native keyboard/a11y and
+   <optgroup>; other browsers ignore this block and show the plain native dropdown. The closed box keeps
+   each call site's inline background/border/padding — inline styles win, so hover uses box-shadow. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  select {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    transition: box-shadow 120ms ease;
+  }
+
+  select:hover {
+    box-shadow: 0 0 0 1px var(--surface-border-strong);
+  }
+
+  select:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px var(--signal-primary);
+  }
+
+  select:open {
+    box-shadow: 0 0 0 1px var(--signal-primary);
+  }
+
+  select::picker-icon {
+    content: '';
+    width: 8px;
+    height: 8px;
+    margin-left: auto;
+    border-right: 1.5px solid var(--text-muted);
+    border-bottom: 1.5px solid var(--text-muted);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 120ms ease;
+  }
+
+  select:open::picker-icon {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  ::picker(select) {
+    margin-top: 4px;
+    padding: 4px;
+    max-height: min(360px, 60vh);
+    overflow-y: auto;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--surface-border-strong);
+    border-radius: var(--radius-container);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  select option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 7px 10px;
+    border-radius: var(--radius-control);
+    font-size: 14px;
+    color: var(--text-primary);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  select option:hover,
+  select option:focus-visible {
+    outline: none;
+    background: color-mix(in srgb, var(--signal-primary) 14%, transparent);
+  }
+
+  select option:checked {
+    color: var(--signal-primary);
+    font-weight: 600;
+  }
+
+  select option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: var(--signal-primary);
+  }
+
+  /* Placeholder entries ("Select a team…", "Assign scenario…") read as hints, not choices. */
+  select option[value=''] {
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  select option:disabled {
+    color: var(--text-telemetry);
+    cursor: default;
+    background: transparent;
+  }
+
+  /* Group headings (TeamSelect's organizations): Chromium renders the label attribute inside the
+     optgroup itself, so the heading style goes on the optgroup and options reset it below. */
+  select optgroup {
+    padding: 8px 10px 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-telemetry);
+  }
+
+  select optgroup option {
+    margin: 0 -10px;
+    font-family: var(--font-sans);
+    letter-spacing: normal;
+    text-transform: none;
+  }
+}
+
 /* Native file picker button otherwise renders as a white OS button on the dark UI. */
 input[type='file'] {
   font-size: 14px;
