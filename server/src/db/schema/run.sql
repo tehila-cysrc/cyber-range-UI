@@ -250,3 +250,13 @@ CREATE TABLE IF NOT EXISTS ttp_detections (
 -- land on this constraint rather than double-awarding.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ttp_detections_one_credit
   ON ttp_detections (team_id, cyber_range_id, expected_ttp_id) WHERE status = 'credited';
+
+-- Per-organization join codes (the general code stays on event_runs.registration_code). RUN-scoped
+-- like that code, so an event reset closes every organization's registration too. A student who
+-- enters an organization's code can only pick (and join) that organization's teams.
+CREATE TABLE IF NOT EXISTS organization_registrations (
+  event_run_id INTEGER NOT NULL REFERENCES event_runs(id) ON DELETE CASCADE,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  PRIMARY KEY (event_run_id, organization_id)
+);

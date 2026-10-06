@@ -9,6 +9,7 @@ export interface Organization {
   id: number;
   name: string;
   teamCount: number;
+  joinCode: string | null;
 }
 
 const inputStyle = {
@@ -59,6 +60,23 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
     onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not delete the organization'),
   });
 
+  // Per-organization join code: a student who uses it can only pick this organization's teams.
+  const setRegistration = useMutation({
+    mutationFn: ({ id, open }: { id: number; open: boolean }) =>
+      apiFetch(`/admin/organizations/${id}/registration`, { method: 'PUT', body: JSON.stringify({ open }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-organizations'] }),
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not change the join code'),
+  });
+
+  async function handleNewCode(org: Organization) {
+    const ok = await confirmAction({
+      title: `Issue a new join code for ${org.name}?`,
+      message: 'The current code stops working immediately. Students who already registered are not affected.',
+      confirmLabel: 'Issue new code',
+    });
+    if (ok) setRegistration.mutate({ id: org.id, open: true });
+  }
+
   function handleCreate(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -91,6 +109,11 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
   return (
     <section aria-label="Organizations" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
       <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Organizations</h2>
+      {organizations.length > 0 && (
+        <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
+          A student who registers with an organization's join code can only pick that organization's teams.
+        </div>
+      )}
       {organizations.length === 0 && (
         <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No organizations yet.</div>
       )}
@@ -111,10 +134,17 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
         ) : (
           <div
             key={org.id}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 14, padding: '4px 0' }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              padding: '6px 0',
+              borderBottom: '1px solid var(--surface-border)',
+            }}
           >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 14 }}>
             <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {org.name}{' '}
+              <bdi>{org.name}</bdi>{' '}
               <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>
                 · {org.teamCount} team{org.teamCount === 1 ? '' : 's'}
               </span>
@@ -139,6 +169,43 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
                 delete
               </button>
             </span>
+          </div>
+          {org.joinCode ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span
+                className="tabular"
+                aria-label={`Join code for ${org.name}`}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 18, letterSpacing: '0.14em', color: 'var(--signal-primary)' }}
+              >
+                {org.joinCode}
+              </span>
+              <span style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => handleNewCode(org)}
+                  disabled={setRegistration.isPending}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}
+                >
+                  new code
+                </button>
+                <button
+                  onClick={() => setRegistration.mutate({ id: org.id, open: false })}
+                  disabled={setRegistration.isPending}
+                  style={{ background: 'none', border: 'none', color: 'var(--signal-alert)', cursor: 'pointer', fontSize: 13 }}
+                >
+                  close registration
+                </button>
+              </span>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              disabled={setRegistration.isPending}
+              onClick={() => setRegistration.mutate({ id: org.id, open: true })}
+              aria-label={`Open registration for ${org.name}`}
+            >
+              Open registration (join code)
+            </Button>
+          )}
           </div>
         ),
       )}

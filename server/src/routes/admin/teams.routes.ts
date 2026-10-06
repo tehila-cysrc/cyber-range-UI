@@ -4,7 +4,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
-import { generateJoinCode, getActiveRunRegistration, setRegistrationCode } from '../../services/registration.service.js';
+import { generateUniqueJoinCode, getActiveRunRegistration, setRegistrationCode } from '../../services/registration.service.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { setTeamOrganization } from '../../services/organizations.service.js';
 
@@ -47,7 +47,7 @@ router.put('/registration', (req, res) => {
     res.status(409).json({ error: 'no active event run' });
     return;
   }
-  const code = open ? generateJoinCode() : null;
+  const code = open ? generateUniqueJoinCode(reg.runId) : null;
   setRegistrationCode(reg.runId, code);
   writeAudit(req.user!.username, open ? 'registration.opened' : 'registration.closed', 'event_run', reg.runId, null);
   res.json({ open: !!code, joinCode: code });
@@ -93,11 +93,13 @@ router.patch('/teams/:id', (req, res) => {
     res.status(400).json({ error: 'organizationId is required (null to clear)' });
     return;
   }
-  const r = setTeamOrganization(Number(req.params.id), req.body.organizationId);
+  const teamId = Number(req.params.id);
+  const r = setTeamOrganization(teamId, req.body.organizationId);
   if (!r.ok) {
     res.status(r.status).json({ error: r.error });
     return;
   }
+  writeAudit(req.user!.username, 'team.organization_changed', 'team', teamId, { organizationId: r.value.organizationId });
   res.json({ ok: true, organizationId: r.value.organizationId });
 });
 

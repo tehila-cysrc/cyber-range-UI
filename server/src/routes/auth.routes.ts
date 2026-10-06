@@ -6,9 +6,12 @@ import { endActiveSessions } from '../services/accessBroker/accessBroker.service
 import {
   getActiveRunRegistration,
   isRateLimited,
-  joinCodeMatches,
+  isRegistrationOpen,
   normalizeJoinCode,
   recordFailure,
+  resolveJoinCode,
+  teamsForScope,
+  type JoinScope,
 } from '../services/registration.service.js';
 import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
 
@@ -79,47 +82,51 @@ router.post('/login', (req, res) => {
 
 // Public: is self-registration open for this event? Reveals nothing else (no team names, no code).
 router.get('/registration', (_req, res) => {
-  const reg = getActiveRunRegistration();
-  res.json({ open: !!reg?.code });
+  res.json({ open: isRegistrationOpen() });
 });
 
 // Validates a join code and, only if it's right, returns the team names for the picker. POST so the
 // code never lands in a URL / access log. Previously team names were public (GET /auth/teams).
-function checkJoinCode(req: import('express').Request, res: import('express').Response): boolean {
+// Returns what the code unlocks (general code -> unassigned teams, organization code -> that
+// organization's teams), or null after already sending the error response.
+function checkJoinCode(
+  req: import('express').Request,
+  res: import('express').Response,
+): (JoinScope & { runId: number }) | null {
   const ip = req.ip ?? 'unknown';
   if (isRateLimited(ip)) {
     res.status(429).json({ error: 'too many wrong join codes — wait a few minutes and try again' });
-    return false;
+    return null;
   }
   const reg = getActiveRunRegistration();
   if (!reg) {
     res.status(409).json({ error: 'no active event run — ask an instructor to seed/reset the event' });
-    return false;
+    return null;
   }
-  if (!reg.code) {
+  if (!isRegistrationOpen()) {
     res.status(403).json({ error: 'registration is closed — ask your instructor for an account or a join code', reason: 'registration_closed' });
-    return false;
+    return null;
   }
-  if (!joinCodeMatches(reg.code, normalizeJoinCode(req.body?.joinCode))) {
+  const scope = resolveJoinCode(reg.runId, reg.code, normalizeJoinCode(req.body?.joinCode));
+  if (!scope) {
     recordFailure(ip);
     res.status(403).json({ error: 'that join code is not valid for this event', reason: 'invalid_join_code' });
-    return false;
+    return null;
   }
-  return true;
+  return { ...scope, runId: reg.runId };
 }
 
 router.post('/registration/teams', (req, res) => {
-  if (!checkJoinCode(req, res)) return;
-  const teams = db
-    .prepare('SELECT id, name FROM teams WHERE event_run_id = ? ORDER BY sort_order')
-    .all(getActiveRunRegistration()!.runId) as { id: number; name: string }[];
-  res.json({ teams });
+  const scope = checkJoinCode(req, res);
+  if (!scope) return;
+  res.json({ teams: teamsForScope(scope.runId, scope), organizationName: scope.organizationName });
 });
 
 // Self-registration, gated by the instructor's join code (see registration.service.ts): only when the
 // instructor has opened registration for this event, and only with the code they handed out.
 router.post('/register', (req, res) => {
-  if (!checkJoinCode(req, res)) return;
+  const scope = checkJoinCode(req, res);
+  if (!scope) return;
   const { teamId, username, password, displayName } = req.body ?? {};
 
   if (typeof username !== 'string' || !username.trim()) {
@@ -143,11 +150,12 @@ router.post('/register', (req, res) => {
     return;
   }
 
+  // Server-side scope check — the picker only lists the code's teams, but teamId comes from the client.
   const team = db
-    .prepare('SELECT id FROM teams WHERE id = ? AND event_run_id = ?')
-    .get(teamId, activeRun.id);
+    .prepare('SELECT id FROM teams WHERE id = ? AND event_run_id = ? AND organization_id IS ?')
+    .get(teamId, activeRun.id, scope.organizationId);
   if (!team) {
-    res.status(400).json({ error: 'unknown team for the active event' });
+    res.status(400).json({ error: 'that team is not available with this join code' });
     return;
   }
 

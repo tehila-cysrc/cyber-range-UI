@@ -366,7 +366,14 @@ export function TeamsAdminPage() {
             background: 'var(--surface-1)',
           }}
         >
-          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>Student self-registration</h2>
+          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>
+            {organizations.length > 0 ? 'General join code' : 'Student self-registration'}
+          </h2>
+          {organizations.length > 0 && (
+            <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
+              Only lists teams with no organization. Each organization has its own code below.
+            </div>
+          )}
           {registration?.open ? (
             <>
               <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>

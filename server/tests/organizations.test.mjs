@@ -10,6 +10,7 @@ process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'cyber-range-orgs-')), 'te
 const { db } = await import('../dist/db/index.js');
 const { seed } = await import('../dist/db/seed.js');
 const orgs = await import('../dist/services/organizations.service.js');
+const reg = await import('../dist/services/registration.service.js');
 
 let alpha;
 let bravo;
@@ -55,4 +56,37 @@ test('deleting an organization un-assigns its teams without deleting them', () =
   assert.equal(teamOrg(alpha), null);
   assert.ok(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(alpha));
   assert.equal(orgs.deleteOrganization(acme.id).status, 404);
+});
+
+test("an organization join code only unlocks that organization's teams", () => {
+  const run = reg.getActiveRunRegistration();
+  const initech = orgs.createOrganization('Initech').value;
+  orgs.setTeamOrganization(alpha, initech.id);
+  orgs.setTeamOrganization(bravo, null);
+  assert.equal(reg.isRegistrationOpen(), false);
+
+  const orgCode = reg.generateUniqueJoinCode(run.runId);
+  reg.setOrganizationCode(run.runId, initech.id, orgCode);
+  assert.equal(reg.isRegistrationOpen(), true);
+
+  const scope = reg.resolveJoinCode(run.runId, null, orgCode);
+  assert.deepEqual(scope, { organizationId: initech.id, organizationName: 'Initech' });
+  assert.deepEqual(reg.teamsForScope(run.runId, scope).map((t) => t.id), [alpha]);
+  assert.equal(reg.resolveJoinCode(run.runId, null, 'WRONGCODE'), null);
+
+  // The general code unlocks only teams with no organization.
+  const general = reg.generateUniqueJoinCode(run.runId);
+  reg.setRegistrationCode(run.runId, general);
+  const generalScope = reg.resolveJoinCode(run.runId, general, general);
+  assert.equal(generalScope.organizationId, null);
+  assert.deepEqual(reg.teamsForScope(run.runId, generalScope).map((t) => t.id), [bravo]);
+  reg.setRegistrationCode(run.runId, null);
+
+  // Closing (or deleting the organization) invalidates its code.
+  reg.setOrganizationCode(run.runId, initech.id, null);
+  assert.equal(reg.resolveJoinCode(run.runId, null, orgCode), null);
+  reg.setOrganizationCode(run.runId, initech.id, orgCode);
+  orgs.deleteOrganization(initech.id);
+  assert.equal(reg.resolveJoinCode(run.runId, null, orgCode), null);
+  assert.equal(reg.isRegistrationOpen(), false);
 });

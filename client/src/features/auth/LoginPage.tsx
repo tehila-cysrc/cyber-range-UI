@@ -34,6 +34,8 @@ export function LoginPage() {
   // a join code. null = still checking.
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
   const [joinCode, setJoinCode] = useState('');
+  // Set when the join code belongs to an organization — the team list is then only its teams.
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [codeAccepted, setCodeAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -67,11 +69,12 @@ export function LoginPage() {
     }
     setSubmitting(true);
     try {
-      const res = await apiFetch<{ teams: Team[] }>('/auth/registration/teams', {
+      const res = await apiFetch<{ teams: Team[]; organizationName: string | null }>('/auth/registration/teams', {
         method: 'POST',
         body: JSON.stringify({ joinCode }),
       });
       setTeams(res.teams);
+      setOrganizationName(res.organizationName);
       setCodeAccepted(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not check the join code');
@@ -242,7 +245,9 @@ export function LoginPage() {
 
         {mode === 'register' && codeAccepted && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Team</span>
+            <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+              Team{organizationName ? ` — ${organizationName}` : ''}
+            </span>
             <select
               value={teamId}
               onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : '')}
