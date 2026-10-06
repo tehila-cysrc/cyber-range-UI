@@ -432,7 +432,7 @@ function ExpectedRow({
           onChange={(e) => patch.mutate({ topologyNodeId: e.target.value ? Number(e.target.value) : null })}
           style={{ ...fieldStyle, flex: '1 1 10rem', fontSize: 13 }}
         >
-          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Admin'}</option>
+          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Builder'}</option>
           {nodes.map((n) => (
             <option key={n.id} value={n.id}>
               Host: {n.label}
@@ -634,7 +634,7 @@ function AddExpectedForm({
           onChange={(e) => setTopologyNodeId(e.target.value ? Number(e.target.value) : '')}
           style={{ ...fieldStyle, flex: '1 1 10rem', fontSize: 13 }}
         >
-          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Admin'}</option>
+          <option value="">{nodes.length ? 'No specific host' : 'No hosts yet — add them in Topology Builder'}</option>
           {nodes.map((n) => (
             <option key={n.id} value={n.id}>
               Host: {n.label}

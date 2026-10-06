@@ -114,7 +114,7 @@ export function AuditLogPage() {
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Audit Log</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Activity Log</h1>
         <span style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
         <input
           value={searchInput}

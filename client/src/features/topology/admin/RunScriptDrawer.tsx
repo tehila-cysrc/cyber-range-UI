@@ -208,7 +208,7 @@ export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId
             />
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
               <input type="checkbox" checked={saveToLibrary} onChange={(e) => setSaveToLibrary(e.target.checked)} />
-              Save to Script Library
+              Save to Training Scripts
             </label>
             {saveToLibrary && (
               <>

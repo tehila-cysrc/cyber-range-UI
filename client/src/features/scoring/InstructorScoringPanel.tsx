@@ -267,7 +267,7 @@ export function InstructorScoringPanel() {
       {/* Inside the Team Workspace the header and team picker come from the workspace. */}
       {!lockedTeam && (
         <>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Progress — Scoring</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 4px' }}>Team Scores</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: 15, margin: '0 0 var(--space-lg)' }}>
           Award points to a team or an individual student — it updates live on their Progress page and
           the leaderboard.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { useClockStore } from '../stores/clockStore';
@@ -9,7 +9,7 @@ import { useSocketEvent } from '../hooks/useSocketEvent';
 import { Toaster } from '../components/Toaster';
 import { ConfirmDialogHost } from '../components/ConfirmDialog';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
-import { UserIcon } from '../components/icons';
+import { GearIcon, UserIcon } from '../components/icons';
 import { ProfileDialog } from '../features/auth/ProfileDialog';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
@@ -31,21 +31,46 @@ const NAV_ITEMS = [
   { to: '/debrief', label: 'Debrief' },
 ];
 
-// Student-only views that have no working instructor equivalent (no team_id, no team-switcher) —
-// instructors use the corresponding INSTRUCTOR_NAV_ITEMS entry instead (e.g. Roster for Team).
-// Debrief stays: it has an instructor team picker.
-const HIDDEN_FOR_INSTRUCTOR = new Set(['/', '/topology', '/team']);
+type NavLinkItem = { to: string; label: string; end?: boolean; alert?: boolean };
+type NavGroup = { label: string; items: NavLinkItem[] };
 
-const INSTRUCTOR_NAV_ITEMS = [
-  { to: '/instructor', label: 'Instructor' },
-  { to: '/admin/scenarios', label: 'Scenarios' },
-  { to: '/admin/topology', label: 'Topology Admin' },
-  { to: '/admin/scripts', label: 'Script Library' },
-  { to: '/admin/teams', label: 'Roster' },
-  { to: '/admin/environments', label: 'Environments' },
-  { to: '/admin/audit-log', label: 'Audit Log' },
-  { to: '/admin/event-reset', label: 'Reset', alert: true },
+// The instructor bar is grouped by when each page is used (during the event / before it) instead of
+// one flat row of 12 tabs. The student-only views (Home, Topology, Team) have no instructor entry. Labels describe the instructor's view of the page — e.g. /investigation
+// is reading a team's timeline, not investigating. Routes are unchanged; only labels differ.
+const INSTRUCTOR_DASHBOARD: NavLinkItem = { to: '/instructor', label: 'Live Dashboard' };
+const INSTRUCTOR_GROUPS: NavGroup[] = [
+  {
+    label: 'Monitor',
+    items: [
+      { to: '/investigation', label: 'Team Timelines' },
+      { to: '/progress', label: 'Team Scores' },
+      { to: '/leaderboard', label: 'Leaderboard' },
+    ],
+  },
+  {
+    label: 'Setup',
+    items: [
+      { to: '/admin/scenarios', label: 'Scenarios' },
+      { to: '/admin/topology', label: 'Topology Builder' },
+      { to: '/admin/teams', label: 'Teams & Students' },
+      { to: '/admin/environments', label: 'Cloud Environments' },
+      { to: '/admin/scripts', label: 'Training Scripts' },
+    ],
+  },
 ];
+const INSTRUCTOR_DEBRIEF: NavLinkItem = { to: '/debrief', label: 'Debrief' };
+// Rare / destructive actions live behind the gear, out of the main row.
+const INSTRUCTOR_SYSTEM: NavGroup = {
+  label: 'System',
+  items: [
+    { to: '/admin/audit-log', label: 'Activity Log' },
+    { to: '/admin/event-reset', label: 'Reset Event…', alert: true },
+  ],
+};
+
+function isUnder(pathname: string, to: string) {
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 function NavItem({
   to,
@@ -100,6 +125,113 @@ function NavItem({
         </span>
       )}
     </NavLink>
+  );
+}
+
+// A nav-bar group that opens a small menu of links. The menu is position:fixed (placed from the
+// trigger's rect) because under 700px the links row scrolls horizontally and would clip an
+// absolutely-positioned menu.
+function NavDropdown({
+  group,
+  trigger,
+  align = 'left',
+}: {
+  group: NavGroup;
+  trigger?: React.ReactNode;
+  align?: 'left' | 'right';
+}) {
+  const { pathname } = useLocation();
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const open = pos !== null;
+  const activeItem = group.items.find((item) => isUnder(pathname, item.to));
+  const anyAlert = activeItem?.alert;
+
+  useEffect(() => setPos(null), [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e: Event) {
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setPos(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setPos(null);
+        buttonRef.current?.focus();
+      }
+    }
+    const onScrollOrResize = () => setPos(null);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+    };
+  }, [open]);
+
+  function toggle() {
+    if (open) return setPos(null);
+    const rect = buttonRef.current!.getBoundingClientRect();
+    setPos(
+      align === 'right'
+        ? { top: rect.bottom + 6, right: window.innerWidth - rect.right }
+        : { top: rect.bottom + 6, left: rect.left },
+    );
+  }
+
+  const activeColor = anyAlert ? 'var(--signal-alert)' : 'var(--signal-primary)';
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={trigger ? group.label : undefined}
+        title={trigger ? group.label : undefined}
+        className={trigger ? 'nav-icon-button' : 'nav-group-button'}
+        data-active={!!activeItem}
+        style={
+          trigger
+            ? { color: activeItem ? activeColor : undefined }
+            : { borderBottomColor: activeItem ? activeColor : 'transparent' }
+        }
+      >
+        {trigger ?? (
+          <>
+            {group.label}
+            {activeItem && <span className="nav-group-current">: {activeItem.label}</span>}
+            <span aria-hidden="true" className="nav-group-caret">
+              ▾
+            </span>
+          </>
+        )}
+      </button>
+      {open && (
+        <div ref={menuRef} role="menu" aria-label={group.label} className="nav-menu" style={pos}>
+          {group.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              role="menuitem"
+              className="nav-menu-item"
+              data-alert={item.alert || undefined}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -335,15 +467,18 @@ export function AppShell() {
         </div>
 
         <div className="app-nav-links">
-          {NAV_ITEMS.filter((item) => !isInstructor || !HIDDEN_FOR_INSTRUCTOR.has(item.to))
-            .filter((item) => !(isStudent && item.to === '/leaderboard' && leaderboard && !leaderboard.enabled))
-            .map((item) => (
-              <NavItem key={item.to} {...item} />
-            ))}
-          {isInstructor &&
-            INSTRUCTOR_NAV_ITEMS.map((item) => (
-              <NavItem key={item.to} {...item} badge={item.to === '/instructor' ? openHelpCount : undefined} />
-            ))}
+          {isInstructor ? (
+            <>
+              <NavItem {...INSTRUCTOR_DASHBOARD} badge={openHelpCount} />
+              {INSTRUCTOR_GROUPS.map((group) => (
+                <NavDropdown key={group.label} group={group} />
+              ))}
+              <NavItem {...INSTRUCTOR_DEBRIEF} />
+            </>
+          ) : (
+            NAV_ITEMS.filter((item) => !(isStudent && item.to === '/leaderboard' && leaderboard && !leaderboard.enabled))
+              .map((item) => <NavItem key={item.to} {...item} />)
+          )}
         </div>
 
         {isStudent && activeRange?.active && <HeaderRemoteSession />}
@@ -351,6 +486,7 @@ export function AppShell() {
         {isStudent && activeRange?.active && <HeaderHelp />}
 
         {user && <LiveStatusBadge />}
+        {isInstructor && <NavDropdown group={INSTRUCTOR_SYSTEM} trigger={<GearIcon />} align="right" />}
         {user && <UserMenu displayName={user.displayName} role={user.role} onLogout={handleLogout} />}
       </nav>
 

@@ -279,7 +279,7 @@ export function InstructorTeamWorkspacePage() {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           {members.length === 0 ? (
-            <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>No members yet — add students on the Roster page.</span>
+            <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>No members yet — add students on the Teams &amp; Students page.</span>
           ) : (
             members.map((m) => (
               <span key={m.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-primary)' }}>

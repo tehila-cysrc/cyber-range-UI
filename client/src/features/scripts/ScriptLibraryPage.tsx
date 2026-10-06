@@ -96,7 +96,7 @@ export function ScriptLibraryPage() {
   return (
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Script Library</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Training Scripts</h1>
         <Button variant="primary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
           + New script
         </Button>

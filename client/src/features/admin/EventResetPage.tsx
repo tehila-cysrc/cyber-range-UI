@@ -99,7 +99,7 @@ export function EventResetPage() {
       for (;;) {
         await new Promise((r) => setTimeout(r, POLL_MS));
         const poll = await fetch(`${API_ORIGIN}/api/event-reset-jobs/${jobId}`);
-        if (!poll.ok) throw new ApiError(poll.status, 'Lost track of the reset job — check the Audit Log, then try again.');
+        if (!poll.ok) throw new ApiError(poll.status, 'Lost track of the reset job — check the Activity Log, then try again.');
         const { job } = (await poll.json()) as { job: ResetJob };
         setPhase(job.phase);
         if (job.state !== 'running') return job;
@@ -137,7 +137,7 @@ export function EventResetPage() {
         <p style={{ color: 'var(--text-muted)' }}>
           All teams, accounts, documentation, scores, and help requests have been wiped. Cyber Range
           definitions, topology, and categories were preserved. Student self-registration is closed
-          for the new event until you open it on the Roster page.
+          for the new event until you open it on the Teams &amp; Students page.
         </p>
         {result.remoteAccess && <RemoteAccessSummary result={result.remoteAccess} endedSessions={result.endedSessions} />}
         {result.newInstructor && (

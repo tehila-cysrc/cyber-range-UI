@@ -176,6 +176,92 @@ input[type='file']::file-selector-button:hover {
   min-width: 0;
 }
 
+/* Instructor nav groups (Monitor / Setup) and the gear menu — see NavDropdown in AppShell.tsx.
+   The group button mirrors a plain nav link: same type, underline when one of its pages is open. */
+.nav-group-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nav-group-button:hover,
+.nav-group-button[aria-expanded='true'],
+.nav-group-button[data-active='true'] {
+  color: var(--text-primary);
+}
+.nav-group-current {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: -6px;
+}
+.nav-group-caret {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.nav-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.nav-icon-button:hover,
+.nav-icon-button[aria-expanded='true'] {
+  color: var(--text-primary);
+}
+.nav-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  padding: var(--space-xs);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-container);
+  background: var(--surface-1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+.nav-menu-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-menu-item:hover,
+.nav-menu-item:focus-visible {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.nav-menu-item.active {
+  color: var(--text-primary);
+  box-shadow: inset 2px 0 0 var(--signal-primary);
+}
+.nav-menu-item[data-alert] {
+  color: var(--signal-alert);
+  margin-top: var(--space-xs);
+  border-top: 1px solid var(--surface-border);
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+}
+.nav-menu-item[data-alert].active {
+  box-shadow: inset 2px 0 0 var(--signal-alert);
+}
+
 /* Connection status in the nav: a bare dot + label (no border/fill) so it reads as a status
    indicator, not a button. The pulsing ring only runs while connected. */
 .live-status {

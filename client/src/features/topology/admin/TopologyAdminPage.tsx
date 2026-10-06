@@ -251,7 +251,7 @@ export function TopologyAdminPage() {
         >
           {listHidden ? '☰ Scenarios' : '⟨ Hide list'}
         </button>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Topology Admin</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Topology Builder</h1>
         {selectedRange && (
           <span style={{ fontSize: 15, color: 'var(--text-muted)' }}>
             · <bdi>{selectedRange.dayLabel} — {selectedRange.name}</bdi>

@@ -331,7 +331,7 @@ export function InstructorDashboardPage() {
     <div style={{ minWidth: 0 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
-          Instructor Dashboard
+          Live Dashboard
           {filtering && (
             <span style={{ fontSize: 15, color: 'var(--text-muted)', fontWeight: 400 }}>
               {' '}· <bdi>{orgFilter === 'none' ? 'No organization' : visibleTeams[0]?.organizationName ?? ''}</bdi>
