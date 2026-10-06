@@ -7,6 +7,7 @@ import { endActiveSessions } from '../../services/accessBroker/accessBroker.serv
 import { generateUniqueJoinCode, getActiveRunRegistration, setRegistrationCode } from '../../services/registration.service.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { setTeamOrganization } from '../../services/organizations.service.js';
+import { emitLeaderboardUpdate } from '../../sockets/emitters.js';
 
 const router = Router();
 
@@ -84,6 +85,8 @@ router.post('/teams', (req, res) => {
     return;
   }
 
+  // Students' boards are scoped by organization, so team membership changes move them too.
+  emitLeaderboardUpdate();
   res.status(201).json({ team: { id: teamId, name: name.trim(), organizationId: org.value.organizationId } });
 });
 
@@ -100,6 +103,7 @@ router.patch('/teams/:id', (req, res) => {
     return;
   }
   writeAudit(req.user!.username, 'team.organization_changed', 'team', teamId, { organizationId: r.value.organizationId });
+  emitLeaderboardUpdate();
   res.json({ ok: true, organizationId: r.value.organizationId });
 });
 
@@ -113,6 +117,7 @@ router.delete('/teams/:id', (req, res) => {
     res.status(404).json({ error: 'team not found' });
     return;
   }
+  emitLeaderboardUpdate();
   res.json({ ok: true });
 });
 

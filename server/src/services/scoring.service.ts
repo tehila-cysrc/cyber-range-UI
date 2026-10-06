@@ -9,23 +9,33 @@ export interface LeaderboardEntry {
 // Pluggable by design (scoring_config.method_key) — sum_points is the only strategy implemented,
 // since the PRD leaves "final leaderboard scoring mechanism" as an open question (see
 // CLAUDE/invariants.md). Swap this function's body, not the schema, if a different method is needed.
-export function computeLeaderboard(): LeaderboardEntry[] {
+// organizationId limits the board to one organization's teams (the student view).
+export function computeLeaderboard(organizationId?: number): LeaderboardEntry[] {
+  const where = organizationId === undefined ? '' : 'WHERE t.organization_id = ?';
   return db
     .prepare(
       `SELECT t.id AS teamId, t.name AS teamName, COALESCE(SUM(s.points), 0) AS totalPoints
        FROM teams t
        LEFT JOIN scores s ON s.team_id = t.id
+       ${where}
        GROUP BY t.id
        ORDER BY totalPoints DESC, t.sort_order ASC`,
     )
-    .all() as unknown as LeaderboardEntry[];
+    .all(...(organizationId === undefined ? [] : [organizationId])) as unknown as LeaderboardEntry[];
 }
 
-export function isLeaderboardEnabled(): boolean {
-  const row = db.prepare('SELECT leaderboard_enabled AS enabled FROM scoring_config WHERE id = 1').get() as
-    | { enabled: number }
-    | undefined;
-  return row?.enabled === 1;
+// What /leaderboard returns. The instructor always sees every team. A student sees only the teams of
+// their own organization — their team and the team(s) it competes with — and nothing at all (the
+// tab is hidden) while their team has no organization or is alone in it. There is no instructor
+// on/off switch: the board is on by default.
+export function leaderboardFor(user: { role: string; teamId: number | null }): { enabled: boolean; teams: LeaderboardEntry[] } {
+  if (user.role === 'instructor') return { enabled: true, teams: computeLeaderboard() };
+  const row = user.teamId === null
+    ? undefined
+    : (db.prepare('SELECT organization_id AS orgId FROM teams WHERE id = ?').get(user.teamId) as { orgId: number | null } | undefined);
+  if (!row || row.orgId === null) return { enabled: false, teams: [] };
+  const teams = computeLeaderboard(row.orgId);
+  return teams.length >= 2 ? { enabled: true, teams } : { enabled: false, teams: [] };
 }
 
 export function teamTotal(teamId: number): number {

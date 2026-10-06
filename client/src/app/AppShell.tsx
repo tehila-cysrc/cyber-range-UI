@@ -432,15 +432,16 @@ export function AppShell() {
   useOwnHelpRequestSync(isStudent);
   const openHelpCount = useOpenHelpRequestCount(isInstructor);
   const { data: activeRange } = useActiveCyberRange(isStudent);
-  // Students don't need a Leaderboard tab that only says "not enabled"; the instructor keeps it
-  // (they switch it on from the Dashboard and may want to preview it).
+  // A student's board is their own organization's teams only; with no team to compete against
+  // (no organization, or alone in it) the server answers enabled:false and the tab is hidden.
   const { data: leaderboard } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: () => apiFetch<{ enabled: boolean; teams: unknown[] }>('/leaderboard'),
     enabled: isStudent,
   });
-  useSocketEvent<{ teams: unknown[]; enabled?: boolean }>('leaderboard:update', ({ teams, enabled }) => {
-    queryClient.setQueryData(['leaderboard'], { enabled: enabled ?? true, teams });
+  // A bare signal — the board is scoped per viewer, so refetch rather than take a broadcast list.
+  useSocketEvent('leaderboard:update', () => {
+    queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
   });
 
   // Mounted once for every page: when the instructor assigns/switches/completes this team's

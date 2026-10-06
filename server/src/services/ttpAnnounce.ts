@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { emitLeaderboardUpdate, emitScoreAwarded, emitTtpChanged } from '../sockets/emitters.js';
-import { computeLeaderboard, isLeaderboardEnabled, studentTotal, teamTotal } from './scoring.service.js';
+import { studentTotal, teamTotal } from './scoring.service.js';
 import { reconcileTeamTtps, recordScriptOccurrences, teamIdsOnRange, type Credit } from './ttpScoring.service.js';
 
 // Socket side of ATT&CK scoring, split from ttpScoring.service.ts so the scoring core stays testable
@@ -30,9 +30,9 @@ export function announceCredits(credits: Pick<Credit, 'scoreId' | 'teamId' | 'cr
   }
 }
 
-// Totals changed without a new award (void) — refresh the board if it's on.
+// Totals changed without a new award (void) — open boards refetch.
 export function announceLeaderboard() {
-  if (isLeaderboardEnabled()) emitLeaderboardUpdate(computeLeaderboard());
+  emitLeaderboardUpdate();
 }
 
 export function reconcileAndAnnounce(teamId: number, cyberRangeId: number): Credit[] {

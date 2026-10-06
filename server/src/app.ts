@@ -18,7 +18,6 @@ import adminHelpRequestsRoutes from './routes/admin/helpRequests.routes.js';
 import adminDashboardRoutes from './routes/admin/dashboard.routes.js';
 import adminPressureThresholdsRoutes from './routes/admin/pressureThresholds.routes.js';
 import adminScoringRoutes from './routes/admin/scoring.routes.js';
-import adminScoringConfigRoutes from './routes/admin/scoringConfig.routes.js';
 import leaderboardRoutes from './routes/leaderboard.routes.js';
 import historyRoutes from './routes/history.routes.js';
 import adminEventRoutes, { resetJobsPublicRouter } from './routes/admin/event.routes.js';
@@ -67,7 +66,6 @@ export function createApp() {
   app.use('/api/admin', adminDashboardRoutes);
   app.use('/api/admin', adminPressureThresholdsRoutes);
   app.use('/api/admin', adminScoringRoutes);
-  app.use('/api/admin', adminScoringConfigRoutes);
   app.use('/api', leaderboardRoutes);
   app.use('/api', historyRoutes);
   app.use('/api/admin', adminEventRoutes);

@@ -32,13 +32,15 @@ export function LeaderboardPage() {
     queryFn: () => apiFetch<LeaderboardResponse>('/leaderboard'),
   });
 
-  useSocketEvent<{ teams: LeaderboardEntry[]; enabled?: boolean }>('leaderboard:update', ({ teams, enabled }) => {
-    queryClient.setQueryData<LeaderboardResponse>(['leaderboard'], { enabled: enabled ?? true, teams });
+  // Scoped per viewer on the server (students: own organization only), so refetch on the signal.
+  useSocketEvent('leaderboard:update', () => {
+    queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
   });
 
   // Instructor-only organization filter (e.g. one organization's ranking on the classroom screen).
-  // Team -> organization comes from the instructor-only /admin/teams, so /leaderboard and the student
-  // view stay organization-free. Kept in the URL (?org=<id>|none).
+  // Team -> organization comes from the instructor-only /admin/teams; /leaderboard and the student
+  // view never fetch it (the server already limits a student to their own organization). Kept in the
+  // URL (?org=<id>|none).
   const isInstructor = useAuthStore((s) => s.user?.role === 'instructor');
   const { data: rosterData } = useQuery({
     queryKey: ['admin-teams'],
@@ -62,7 +64,7 @@ export function LeaderboardPage() {
   if (data && !data.enabled) {
     return (
       <div style={{ padding: 'var(--space-xl)' }}>
-        <EmptyState message="The leaderboard isn't enabled for this event yet." />
+        <EmptyState message="No other team to compete against yet." />
       </div>
     );
   }

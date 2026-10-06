@@ -59,16 +59,17 @@ export function emitScoreAwarded(
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('score:awarded', payload);
 }
 
-// `enabled` travels with every update so turning the leaderboard OFF reaches already-open pages too
-// (previously only enabling it broadcast anything, so students kept seeing a stale board).
 // A cyber range's student topology was (re)published — open student topology pages refetch. Only the
 // range id travels; students re-read through the normal team-scoped GET.
 export function emitTopologyPublished(cyberRangeId: number) {
   getIo().emit('topology:published', { cyberRangeId });
 }
 
-export function emitLeaderboardUpdate(teams: unknown, enabled = true) {
-  getIo().emit('leaderboard:update', { teams: enabled ? teams : [], enabled });
+// A bare "changed" signal: totals or team->organization links moved. No teams travel, because each
+// viewer's board is scoped differently (students: own organization only) — clients refetch
+// GET /leaderboard, which applies that scope.
+export function emitLeaderboardUpdate() {
+  getIo().emit('leaderboard:update', {});
 }
 
 // The instructor assigned, switched or completed a team's scenario — the team's open pages (Home,

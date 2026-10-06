@@ -140,20 +140,6 @@ export function InstructorDashboardPage() {
     refetchInterval: 5000,
   });
 
-  const { data: scoringConfig } = useQuery({
-    queryKey: ['scoring-config'],
-    queryFn: () => apiFetch<{ config: { leaderboardEnabled: number } }>('/admin/scoring-config'),
-  });
-
-  const toggleLeaderboard = useMutation({
-    mutationFn: (enabled: boolean) =>
-      apiFetch('/admin/scoring-config', {
-        method: 'PUT',
-        body: JSON.stringify({ leaderboardEnabled: enabled }),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scoring-config'] }),
-  });
-
   const { data: helpData } = useQuery({
     queryKey: ['help-requests', 'open'],
     queryFn: () => apiFetch<{ helpRequests: HelpRequest[] }>('/admin/help-requests?status=open'),
@@ -339,14 +325,6 @@ export function InstructorDashboardPage() {
             </span>
           )}
         </h1>
-        <label style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={scoringConfig?.config.leaderboardEnabled === 1}
-            onChange={(e) => toggleLeaderboard.mutate(e.target.checked)}
-          />
-          Leaderboard enabled
-        </label>
       </div>
 
       {visibleHelp.length > 0 && (

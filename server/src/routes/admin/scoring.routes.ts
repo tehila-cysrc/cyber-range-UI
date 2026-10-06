@@ -3,7 +3,7 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { emitScoreAwarded, emitLeaderboardUpdate } from '../../sockets/emitters.js';
-import { computeLeaderboard, isLeaderboardEnabled, teamTotal, studentTotal } from '../../services/scoring.service.js';
+import { teamTotal, studentTotal } from '../../services/scoring.service.js';
 
 const router = Router();
 
@@ -119,9 +119,7 @@ router.post('/scores', (req, res) => {
     studentTotal: studentUserId ? studentTotal(studentUserId) : null,
   });
 
-  if (isLeaderboardEnabled()) {
-    emitLeaderboardUpdate(computeLeaderboard());
-  }
+  emitLeaderboardUpdate();
 
   res.status(201).json({ score });
 });

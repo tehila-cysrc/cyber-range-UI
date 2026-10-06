@@ -15,6 +15,7 @@ import {
   renameOrganization,
   type OrgResult,
 } from '../../services/organizations.service.js';
+import { emitLeaderboardUpdate } from '../../sockets/emitters.js';
 
 const router = Router();
 
@@ -69,6 +70,7 @@ router.delete('/organizations/:id', (req, res) => {
   const r = deleteOrganization(id);
   if (!r.ok) return fail(res, r);
   writeAudit(req.user!.username, 'organization.deleted', 'organization', id, r.value);
+  emitLeaderboardUpdate(); // its teams lose their organization
   res.json({ ok: true, ...r.value });
 });
 
