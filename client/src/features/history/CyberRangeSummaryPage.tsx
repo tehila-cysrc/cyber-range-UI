@@ -246,6 +246,7 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
               teamId={(isInstructor ? teamId : ownTeamId) ?? 0}
               teamIdParam={isInstructor ? teamId : null}
               editable={false}
+              embedded
             />
           </Suspense>
 

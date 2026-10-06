@@ -38,6 +38,9 @@ interface InvestigationCanvasProps {
   nodes: CanvasNodeDataDTO[];
   edges: CanvasEdgeDataDTO[];
   editable?: boolean;
+  // Inside a scrolling page (Debrief): the mouse wheel scrolls the page instead of zooming the board,
+  // which otherwise traps the scroll; zoom stays on the +/- controls.
+  embedded?: boolean;
   // Controlled selection (owned by the container, not this presentational component) so the
   // container can auto-open the inspector on a node *it* just created/duplicated — without also
   // stealing focus locally when a teammate creates one via realtime.
@@ -62,6 +65,7 @@ function CanvasInner({
   nodes,
   edges,
   editable = false,
+  embedded = false,
   selectedNodeId,
   onSelectionChange,
   onNodeCreate,
@@ -215,6 +219,8 @@ function CanvasInner({
           }}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
+          zoomOnScroll={!embedded}
+          preventScrolling={!embedded}
           fitView
           // Without a cap, a board with 1–3 nodes zooms in to 2x and the cards fill the screen.
           fitViewOptions={{ padding: 0.25, maxZoom: 1 }}

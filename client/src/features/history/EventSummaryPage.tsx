@@ -9,6 +9,8 @@ interface DaySummary {
   dayKey: string;
   dayLabel: string;
   completedCount: number;
+  pausedCount: number;
+  activeCount: number;
   totalPoints: number;
 }
 
@@ -63,6 +65,16 @@ export function EventSummaryPage() {
               {day.completedCount}
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Cyber Ranges completed</div>
+            {(day.pausedCount > 0 || day.activeCount > 0) && (
+              <div style={{ fontSize: 13, color: 'var(--signal-tertiary)', marginTop: 2 }}>
+                {[
+                  day.pausedCount > 0 ? `${day.pausedCount} paused` : null,
+                  day.activeCount > 0 ? `${day.activeCount} in progress` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
             <div className="tabular" style={{ fontSize: 16, color: 'var(--signal-primary)', marginTop: 6 }}>
               {day.totalPoints} pts
             </div>

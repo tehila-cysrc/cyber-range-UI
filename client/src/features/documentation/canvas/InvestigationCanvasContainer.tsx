@@ -17,13 +17,15 @@ interface InvestigationCanvasContainerProps {
   /** Query param to send; null for a student (server resolves their own team implicitly). */
   teamIdParam: number | null;
   editable: boolean;
+  /** Shown inside a scrolling page (Debrief) — see InvestigationCanvas's `embedded`. */
+  embedded?: boolean;
 }
 
 // Owns all data fetching/mutation/socket wiring for the Canvas, keeping InvestigationCanvas.tsx
 // itself presentational — same split as TopologyAdminPage (owns queries) / TopologyGraph
 // (presentational). Autosave-per-action with optimistic cache updates (no manual Save button),
 // matching Timeline's and Topology's existing immediate-persist conventions.
-export function InvestigationCanvasContainer({ cyberRangeId, teamId, teamIdParam, editable }: InvestigationCanvasContainerProps) {
+export function InvestigationCanvasContainer({ cyberRangeId, teamId, teamIdParam, editable, embedded = false }: InvestigationCanvasContainerProps) {
   const queryClient = useQueryClient();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -221,6 +223,7 @@ export function InvestigationCanvasContainer({ cyberRangeId, teamId, teamIdParam
         nodes={data.nodes}
         edges={data.edges}
         editable={editable}
+        embedded={embedded}
         selectedNodeId={validSelectedNodeId}
         onSelectionChange={setSelectedNodeId}
         onNodeCreate={(type, x, y) => createNode.mutate({ nodeType: type, posX: x, posY: y })}

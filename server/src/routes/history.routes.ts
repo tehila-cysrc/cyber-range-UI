@@ -61,7 +61,9 @@ router.get('/history', (req, res) => {
 });
 
 // US-010 + FR-8: cross-day (AI/Azure/AWS) summary for the whole event, real data only — a day with
-// no activity for this team is simply omitted, never shown with placeholder/zeroed content.
+// no activity for this team is simply omitted, never shown with placeholder/zeroed content. Counts
+// every scenario the team worked on (completed, paused by a switch, or live) and all their points —
+// counting only completed ones silently dropped a switched-away scenario's work from the summary.
 // Declared before the /:cyberRangeId route below so "event-summary" isn't captured as an id.
 router.get('/history/event-summary', (req, res) => {
   const teamId = resolveTeamId(req, res);
@@ -71,7 +73,9 @@ router.get('/history/event-summary', (req, res) => {
     .prepare(
       `SELECT
          d.key AS dayKey, d.label AS dayLabel,
-         COUNT(*) AS completedCount,
+         SUM(p.status = 'completed') AS completedCount,
+         SUM(p.status = 'paused') AS pausedCount,
+         SUM(p.status = 'active') AS activeCount,
          COALESCE(SUM(
            (SELECT COALESCE(SUM(s.points), 0) FROM scores s
             WHERE s.team_id = p.team_id AND s.cyber_range_id = p.cyber_range_id)
@@ -79,7 +83,7 @@ router.get('/history/event-summary', (req, res) => {
        FROM team_cyber_range_progress p
        JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
        JOIN days d ON d.id = cr.day_id
-       WHERE p.team_id = ? AND p.status = 'completed'
+       WHERE p.team_id = ? AND p.status IN ('completed', 'paused', 'active')
        GROUP BY d.id
        ORDER BY d.sort_order`,
     )
