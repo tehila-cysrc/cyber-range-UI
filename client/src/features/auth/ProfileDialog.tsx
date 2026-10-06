@@ -115,6 +115,10 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
         onSubmit={handleSubmit}
         style={{
           width: 'min(460px, 100%)',
+          // The avatar picker makes this taller than a laptop screen — scroll inside instead of clipping the title.
+          maxHeight: 'calc(100vh - 32px)',
+          overflowY: 'auto',
+          scrollbarColor: 'var(--surface-border-strong) transparent',
           background: 'var(--surface-1)',
           border: '1px solid var(--surface-border-strong)',
           borderRadius: 'var(--radius-container)',
