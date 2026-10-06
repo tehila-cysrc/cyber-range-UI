@@ -1,474 +1,340 @@
 import { useState, type FormEvent } from 'react';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { apiFetch, ApiError } from '../../lib/apiClient';
-import { Button } from '../../components/Button';
-import { confirmAction } from '../../components/ConfirmDialog';
-import { useToastStore } from '../../stores/toastStore';
-import { Avatar } from '../../components/Avatar';
-import { OrganizationsPanel, type Organization } from './OrganizationsPanel';
+import { useSearchParams } from 'react-router-dom';
+import { OrgDetail } from './roster/OrgDetail';
+import { InstructorsView } from './roster/InstructorsView';
+import {
+  inputStyle,
+  postJson,
+  useRosterData,
+  useRosterMutation,
+  type Organization,
+  type Selection,
+  type Team,
+} from './roster/rosterData';
 
-interface Member {
-  id: number;
-  username: string;
-  displayName: string;
-}
-
-interface TeamWithMembers {
-  id: number;
-  name: string;
-  organizationId: number | null;
-  organizationName: string | null;
-  members: Member[];
-}
-
-// Onboards a new cohort's roster — the counterpart to Phase 9's event reset, which wipes teams/
-// accounts but has no in-product way to add new ones back (see BACKLOG.md).
+// Roster: organizations on the side, the selected one in the main area (teams collapsed by default).
+// Scales to many organizations/teams — only one organization's teams are ever on screen, and a single
+// search box finds any organization, team or student. Selection lives in the URL (?org=<id>|none|
+// instructors, &team=<id>) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
-  const queryClient = useQueryClient();
-  const [teamName, setTeamName] = useState('');
-  const [teamOrgId, setTeamOrgId] = useState<number | ''>('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<'student' | 'instructor'>('student');
-  const [teamId, setTeamId] = useState<number | ''>('');
-  const [error, setError] = useState<string | null>(null);
-
-  const { data } = useQuery({
-    queryKey: ['admin-teams'],
-    queryFn: () => apiFetch<{ teams: TeamWithMembers[] }>('/admin/teams'),
-  });
-
-  const { data: orgData } = useQuery({
-    queryKey: ['admin-organizations'],
-    queryFn: () => apiFetch<{ organizations: Organization[] }>('/admin/organizations'),
-  });
-  const organizations = orgData?.organizations ?? [];
-
-  // Student self-registration is closed unless opened here; opening issues a fresh join code.
-  const { data: registration } = useQuery({
-    queryKey: ['admin-registration'],
-    queryFn: () => apiFetch<{ open: boolean; joinCode: string | null }>('/admin/registration'),
-  });
-  const setRegistration = useMutation({
-    mutationFn: (open: boolean) =>
-      apiFetch<{ open: boolean; joinCode: string | null }>('/admin/registration', { method: 'PUT', body: JSON.stringify({ open }) }),
-    onSuccess: (res) => queryClient.setQueryData(['admin-registration'], res),
-  });
-
-  function refresh() {
-    queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
-    queryClient.invalidateQueries({ queryKey: ['admin-organizations'] });
-  }
-
+  const { teams, organizations, loaded } = useRosterData();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const pushToast = useToastStore((s) => s.push);
 
-  // Self-registered students pick their own team; a wrong pick used to be unfixable (UX-10).
-  const moveUser = useMutation({
-    mutationFn: ({ userId, teamId }: { userId: number; teamId: number }) =>
-      apiFetch(`/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ teamId }) }),
-    onSuccess: () => {
-      refresh();
-      queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
-    },
-    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not move the student'),
-  });
+  const selection = resolveSelection(params.get('org'), organizations, loaded);
+  const focusTeamId = params.get('team') ? Number(params.get('team')) : null;
 
-  async function handleMove(m: Member, from: TeamWithMembers, toTeamId: number) {
-    const to = data?.teams.find((t) => t.id === toTeamId);
-    if (!to) return;
-    const ok = await confirmAction({
-      title: `Move ${m.displayName} to ${to.name}?`,
-      message: `Their past timeline entries and scores stay with ${from.name}. They are signed out and join ${to.name} when they sign in again.`,
-      confirmLabel: 'Move student',
-    });
-    if (ok) moveUser.mutate({ userId: m.id, teamId: toTeamId });
+  function select(next: Selection, teamId?: number) {
+    const p: Record<string, string> = { org: next.kind === 'org' ? String(next.id) : next.kind };
+    if (teamId) p.team = String(teamId);
+    setParams(p, { replace: true });
+    setSearch('');
   }
 
-  const createTeam = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/teams', {
-        method: 'POST',
-        body: JSON.stringify({ name: teamName, organizationId: teamOrgId || null }),
-      }),
-    onSuccess: () => {
-      setTeamName('');
-      refresh();
-    },
-  });
-
-  const setTeamOrg = useMutation({
-    mutationFn: ({ teamId, organizationId }: { teamId: number; organizationId: number | null }) =>
-      apiFetch(`/admin/teams/${teamId}`, { method: 'PATCH', body: JSON.stringify({ organizationId }) }),
-    onSuccess: refresh,
-    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not change the organization'),
-  });
-
-  // Deleting a team cascades to its accounts, timeline, canvas, scores and help requests — one
-  // stray click mid-exercise used to wipe a whole team's investigation with no prompt.
-  const deleteTeam = useMutation({
-    mutationFn: (id: number) => apiFetch(`/admin/teams/${id}`, { method: 'DELETE' }),
-    onSuccess: refresh,
-  });
-
-  async function handleDeleteTeam(team: TeamWithMembers) {
-    const ok = await confirmAction({
-      title: `Delete "${team.name}" permanently?`,
-      message: `This removes its ${team.members.length} account(s) and ALL of its timeline entries, canvas, scores and help requests. This cannot be undone.`,
-      requireText: team.name,
-      confirmLabel: 'Delete team',
-      danger: true,
-    });
-    if (ok) deleteTeam.mutate(team.id);
-  }
-
-  async function handleRemoveMember(m: Member, team: TeamWithMembers) {
-    const ok = await confirmAction({
-      title: `Delete the account ${m.displayName} (@${m.username})?`,
-      message: `They are removed from ${team.name} and can no longer sign in. An account that already recorded timeline entries or scores can't be deleted — move it to another team instead.`,
-      confirmLabel: 'Delete account',
-      danger: true,
-    });
-    if (ok) deleteUser.mutate(m.id);
-  }
-
-  const createUser = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/users', {
-        method: 'POST',
-        body: JSON.stringify({
-          username,
-          password,
-          role,
-          teamId: role === 'student' ? teamId : undefined,
-          displayName,
-        }),
-      }),
-    onSuccess: () => {
-      setUsername('');
-      setPassword('');
-      setDisplayName('');
-      setError(null);
-      refresh();
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create user'),
-  });
-
-  const deleteUser = useMutation({
-    mutationFn: (id: number) => apiFetch(`/admin/users/${id}`, { method: 'DELETE' }),
-    onSuccess: refresh,
-  });
-
-  function handleCreateTeam(e: FormEvent) {
-    e.preventDefault();
-    if (!teamName.trim()) return;
-    createTeam.mutate();
-  }
-
-  function handleCreateUser(e: FormEvent) {
-    e.preventDefault();
-    if (!username.trim() || !password) return;
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-    if (role === 'student' && !teamId) {
-      setError('Pick a team for a student account');
-      return;
-    }
-    createUser.mutate();
-  }
-
-  const inputStyle = {
-    background: 'var(--surface-1)',
-    border: '1px solid var(--surface-border)',
-    borderRadius: 'var(--radius-control)',
-    padding: 8,
-    color: 'var(--text-primary)',
-  };
-
-  // Search matches a team name (show the whole team) or a student's name/username (show just them).
-  const q = search.trim().toLowerCase();
-  const visibleTeams = (data?.teams ?? [])
-    .map((team) => {
-      if (!q || team.name.toLowerCase().includes(q) || team.organizationName?.toLowerCase().includes(q)) {
-        return { team, members: team.members };
-      }
-      return {
-        team,
-        members: team.members.filter((m) => m.displayName.toLowerCase().includes(q) || m.username.toLowerCase().includes(q)),
-      };
-    })
-    .filter(
-      ({ team, members }) =>
-        !q || members.length > 0 || team.name.toLowerCase().includes(q) || team.organizationName?.toLowerCase().includes(q),
-    );
-
-  // Teams grouped under their organization (alphabetical), unassigned teams last. Headers only show
-  // once an organization exists, so events that don't use organizations look exactly as before.
-  const groups: { key: string; label: string | null; items: typeof visibleTeams }[] = [];
-  for (const item of visibleTeams) {
-    const key = item.team.organizationId === null ? 'none' : String(item.team.organizationId);
-    let group = groups.find((g) => g.key === key);
-    if (!group) {
-      group = { key, label: item.team.organizationName, items: [] };
-      groups.push(group);
-    }
-    group.items.push(item);
-  }
-  groups.sort((a, b) => (a.label === null ? 1 : b.label === null ? -1 : a.label.localeCompare(b.label)));
-  const showGroupHeaders = organizations.length > 0;
+  const selectedOrg = selection.kind === 'org' ? organizations.find((o) => o.id === selection.id) ?? null : null;
 
   return (
-    <div className="page split-main-side" style={{ padding: 'var(--space-xl)' }}>
-      <div>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Teams & Accounts</h1>
-        {data && data.teams.length > 0 && (
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search students, teams or organizations…"
-            aria-label="Search students, teams or organizations"
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              marginBottom: 'var(--space-md)',
-              background: 'var(--surface-1)',
-              border: '1px solid var(--surface-border)',
-              borderRadius: 'var(--radius-control)',
-              padding: 8,
-              color: 'var(--text-primary)',
-            }}
+    <div className="page roster-layout" style={{ padding: 'var(--space-xl)' }}>
+      <aside style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', minWidth: 0 }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search organizations, teams, students…"
+          aria-label="Search organizations, teams and students"
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+        />
+        <Sidebar organizations={organizations} teams={teams} selection={selection} onSelect={select} />
+      </aside>
+
+      <main style={{ minWidth: 0 }}>
+        {search.trim() ? (
+          <SearchResults query={search.trim()} organizations={organizations} teams={teams} onSelect={select} />
+        ) : !loaded ? null : selection.kind === 'instructors' ? (
+          <InstructorsView />
+        ) : (
+          <OrgDetail
+            org={selectedOrg}
+            teams={teams}
+            organizations={organizations}
+            focusTeamId={focusTeamId}
+            onDeleted={() => select({ kind: 'none' })}
           />
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-          {data && data.teams.length === 0 && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No teams yet — create one on the right.</div>
-          )}
-          {visibleTeams.length === 0 && search.trim() && (
-            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No student or team matches “{search.trim()}”.</div>
-          )}
-          {groups.map((group) => (
-            <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-              {showGroupHeaders && (
-                <h2 style={{ fontSize: 14, color: 'var(--text-muted)', margin: 'var(--space-sm) 0 0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  {group.label ?? 'No organization'}
-                </h2>
-              )}
-          {group.items.map(({ team, members }) => (
-            <div
-              key={team.id}
-              style={{
-                padding: 'var(--space-md)',
-                border: '1px solid var(--surface-border)',
-                borderRadius: 'var(--radius-container)',
-                background: 'var(--surface-1)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.name}</strong>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {organizations.length > 0 && (
-                    <select
-                      value={team.organizationId ?? ''}
-                      aria-label={`Organization of ${team.name}`}
-                      disabled={setTeamOrg.isPending}
-                      onChange={(e) =>
-                        setTeamOrg.mutate({ teamId: team.id, organizationId: e.target.value ? Number(e.target.value) : null })
-                      }
-                      style={{
-                        background: 'var(--surface-1)',
-                        border: '1px solid var(--surface-border)',
-                        borderRadius: 'var(--radius-control)',
-                        padding: '2px 4px',
-                        color: 'var(--text-muted)',
-                        fontSize: 13,
-                      }}
-                    >
-                      <option value="">No organization</option>
-                      {organizations.map((o) => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  <Button variant="destructive" onClick={() => handleDeleteTeam(team)} disabled={deleteTeam.isPending}>
-                    Delete team
-                  </Button>
-                </span>
-              </div>
-              {members.map((m) => (
-                <div key={m.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar name={m.displayName} size={22} />
-                    {m.displayName} <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {(data?.teams.length ?? 0) > 1 && (
-                    <select
-                      value=""
-                      aria-label={`Move ${m.displayName} to another team`}
-                      disabled={moveUser.isPending}
-                      onChange={(e) => {
-                        const toTeamId = Number(e.target.value);
-                        if (toTeamId) void handleMove(m, team, toTeamId);
-                      }}
-                      style={{
-                        background: 'var(--surface-1)',
-                        border: '1px solid var(--surface-border)',
-                        borderRadius: 'var(--radius-control)',
-                        padding: '2px 4px',
-                        color: 'var(--text-muted)',
-                        fontSize: 13,
-                      }}
-                    >
-                      <option value="">move to…</option>
-                      {data?.teams
-                        .filter((t) => t.id !== team.id)
-                        .map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                    </select>
-                  )}
-                  <button
-                    onClick={() => handleRemoveMember(m, team)}
-                    aria-label={`Delete account ${m.displayName}`}
-                    disabled={deleteUser.isPending}
-                    style={{ background: 'none', border: 'none', color: 'var(--signal-alert)', cursor: 'pointer', fontSize: 13 }}
-                  >
-                    delete account
-                  </button>
-                  </span>
-                </div>
-              ))}
-              {team.members.length === 0 && !search.trim() && (
-                <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No members yet.</div>
-              )}
-            </div>
-          ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      </main>
+    </div>
+  );
+}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-        {/* One registration control at a time: once organizations exist, registration goes through each
-            organization's own code (OrganizationsPanel). A general code left open from before is still
-            shown here, only so it can be closed rather than stay open out of sight. */}
-        {(organizations.length === 0 || registration?.open) && (
-        <section
-          aria-label="Student self-registration"
+// Default: the first organization, or the unassigned teams when there are none. A stale ?org= (e.g.
+// the organization was deleted in another tab) falls back the same way.
+function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
+  if (raw === 'instructors') return { kind: 'instructors' };
+  if (raw === 'none') return { kind: 'none' };
+  const id = Number(raw);
+  if (raw && (!loaded || organizations.some((o) => o.id === id))) return { kind: 'org', id };
+  return organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' };
+}
+
+function sameSelection(a: Selection, b: Selection) {
+  return a.kind === b.kind && (a.kind !== 'org' || (b.kind === 'org' && a.id === b.id));
+}
+
+function Sidebar({
+  organizations,
+  teams,
+  selection,
+  onSelect,
+}: {
+  organizations: Organization[];
+  teams: Team[];
+  selection: Selection;
+  onSelect: (s: Selection) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const create = useRosterMutation(
+    () => postJson('/admin/organizations', { name }) as Promise<{ organization: Organization }>,
+    'Could not create the organization',
+  );
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    create.mutate(undefined, {
+      onSuccess: (res) => {
+        setName('');
+        setCreating(false);
+        onSelect({ kind: 'org', id: (res as { organization: Organization }).organization.id });
+      },
+    });
+  }
+
+  const students = (orgId: number | null) =>
+    teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
+  const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
+
+  const entries: { key: string; sel: Selection; label: string; teams: number; students: number; codeOpen: boolean }[] = [
+    ...organizations.map((o) => ({
+      key: `org-${o.id}`,
+      sel: { kind: 'org', id: o.id } as Selection,
+      label: o.name,
+      teams: o.teamCount,
+      students: students(o.id),
+      codeOpen: !!o.joinCode,
+    })),
+    // Always offered when there are no organizations (it's then simply "Teams"); otherwise only when
+    // some team is actually unassigned.
+    ...(organizations.length === 0 || unassignedTeams > 0
+      ? [{
+          key: 'none',
+          sel: { kind: 'none' } as Selection,
+          label: organizations.length > 0 ? 'No organization' : 'Teams',
+          teams: unassignedTeams,
+          students: students(null),
+          codeOpen: false,
+        }]
+      : []),
+  ];
+
+  return (
+    <>
+      {/* Narrow screens: the list collapses into a single picker. */}
+      <select
+        className="roster-picker"
+        aria-label="Organization"
+        value={selection.kind === 'org' ? `org-${selection.id}` : selection.kind}
+        onChange={(e) => {
+          const v = e.target.value;
+          onSelect(v === 'none' ? { kind: 'none' } : v === 'instructors' ? { kind: 'instructors' } : { kind: 'org', id: Number(v.slice(4)) });
+        }}
+        style={{ ...inputStyle, width: '100%' }}
+      >
+        {entries.map((e) => (
+          <option key={e.key} value={e.key}>
+            {e.label} ({e.teams})
+          </option>
+        ))}
+        <option value="instructors">Instructors</option>
+      </select>
+
+      <nav aria-label="Organizations" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <span style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>
+            Organizations
+          </span>
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            aria-label="New organization"
+            title="New organization"
+            style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', width: 26, height: 26, fontSize: 16, lineHeight: 1 }}
+          >
+            +
+          </button>
+        </div>
+        {creating && (
+          <form onSubmit={handleCreate} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setCreating(false)}
+              placeholder="Organization name"
+              aria-label="Organization name"
+              style={{ ...inputStyle, flex: 1, padding: 6 }}
+            />
+            <button type="submit" disabled={create.isPending} style={{ ...inputStyle, cursor: 'pointer', padding: '6px 10px' }}>Add</button>
+          </form>
+        )}
+        {/* The header and "+" stay visible on narrow screens; only the list gives way to the picker. */}
+        <div className="roster-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {organizations.length === 0 && !creating && (
+          <div style={{ fontSize: 13, color: 'var(--text-telemetry)', padding: '2px 0 6px' }}>No organizations yet.</div>
+        )}
+        {entries.map((e) => (
+          <SidebarItem
+            key={e.key}
+            active={sameSelection(selection, e.sel)}
+            onClick={() => onSelect(e.sel)}
+            label={e.label}
+            muted={e.key === 'none' && organizations.length > 0}
+            meta={`${e.teams} · ${e.students}`}
+            metaTitle={`${e.teams} teams · ${e.students} students`}
+            codeOpen={e.codeOpen}
+          />
+        ))}
+        <div style={{ borderTop: '1px solid var(--surface-border)', margin: '8px 0' }} />
+        <SidebarItem active={selection.kind === 'instructors'} onClick={() => onSelect({ kind: 'instructors' })} label="Instructors" />
+        </div>
+      </nav>
+    </>
+  );
+}
+
+function SidebarItem({
+  active,
+  onClick,
+  label,
+  meta,
+  metaTitle,
+  codeOpen = false,
+  muted = false,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  meta?: string;
+  metaTitle?: string;
+  codeOpen?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        textAlign: 'start',
+        padding: '7px 10px',
+        borderRadius: 'var(--radius-control)',
+        border: 'none',
+        borderInlineStart: `2px solid ${active ? 'var(--signal-primary)' : 'transparent'}`,
+        background: active ? 'var(--surface-2)' : 'transparent',
+        color: muted ? 'var(--text-muted)' : 'var(--text-primary)',
+        fontStyle: muted ? 'italic' : 'normal',
+        cursor: 'pointer',
+        fontSize: 14,
+      }}
+    >
+      <span
+        aria-label={codeOpen ? 'registration open' : undefined}
+        title={codeOpen ? 'Join code open' : undefined}
+        style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: codeOpen ? 'var(--signal-primary)' : 'transparent' }}
+      />
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <bdi>{label}</bdi>
+      </span>
+      {meta && (
+        <span className="tabular" title={metaTitle} style={{ fontSize: 12, color: 'var(--text-telemetry)', flexShrink: 0 }}>
+          {meta}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// One flat result list across every organization — each hit says where it lives, and clicking it
+// opens that organization with the team expanded.
+function SearchResults({
+  query,
+  organizations,
+  teams,
+  onSelect,
+}: {
+  query: string;
+  organizations: Organization[];
+  teams: Team[];
+  onSelect: (s: Selection, teamId?: number) => void;
+}) {
+  const q = query.toLowerCase();
+  const where = (t: Team): Selection => (t.organizationId === null ? { kind: 'none' } : { kind: 'org', id: t.organizationId });
+  const orgLabel = (t: Team) => t.organizationName ?? 'No organization';
+
+  const orgHits = organizations.filter((o) => o.name.toLowerCase().includes(q));
+  const teamHits = teams.filter((t) => t.name.toLowerCase().includes(q));
+  const studentHits = teams.flatMap((t) =>
+    t.members
+      .filter((m) => m.displayName.toLowerCase().includes(q) || m.username.toLowerCase().includes(q))
+      .map((m) => ({ m, t })),
+  );
+
+  const rows: { key: string; kind: string; primary: string; secondary: string; go: () => void }[] = [
+    ...orgHits.map((o) => ({ key: `o${o.id}`, kind: 'Organization', primary: o.name, secondary: `${o.teamCount} teams`, go: () => onSelect({ kind: 'org', id: o.id }) })),
+    ...teamHits.map((t) => ({ key: `t${t.id}`, kind: 'Team', primary: t.name, secondary: orgLabel(t), go: () => onSelect(where(t), t.id) })),
+    ...studentHits.map(({ m, t }) => ({
+      key: `s${m.id}`,
+      kind: 'Student',
+      primary: `${m.displayName} @${m.username}`,
+      secondary: `${t.name} · ${orgLabel(t)}`,
+      go: () => onSelect(where(t), t.id),
+    })),
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+      <h1 style={{ fontSize: 18, color: 'var(--text-primary)', margin: 0 }}>
+        {rows.length} result{rows.length === 1 ? '' : 's'} for “{query}”
+      </h1>
+      {rows.map((r) => (
+        <button
+          key={r.key}
+          type="button"
+          onClick={r.go}
           style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-sm)',
-            padding: 'var(--space-md)',
-            border: `1px solid ${registration?.open ? 'var(--signal-primary)' : 'var(--surface-border)'}`,
+            alignItems: 'center',
+            gap: 12,
+            textAlign: 'start',
+            padding: '10px 12px',
+            border: '1px solid var(--surface-border)',
             borderRadius: 'var(--radius-container)',
             background: 'var(--surface-1)',
+            cursor: 'pointer',
           }}
         >
-          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>
-            {organizations.length > 0 ? 'General join code' : 'Student self-registration'}
-          </h2>
-          {organizations.length > 0 && (
-            <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
-              Only lists teams with no organization. Registration now goes through each organization's own
-              code below — close this one.
-            </div>
-          )}
-          {registration?.open ? (
-            <>
-              <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-                Open — students can create their own account with this code (Register tab on the login page):
-              </div>
-              <div
-                className="tabular"
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 26, letterSpacing: '0.16em', color: 'var(--signal-primary)' }}
-              >
-                {registration.joinCode}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
-                {organizations.length === 0 && (
-                <Button
-                  variant="ghost"
-                  disabled={setRegistration.isPending}
-                  onClick={async () => {
-                    const ok = await confirmAction({
-                      title: 'Issue a new join code?',
-                      message: 'The current code stops working immediately. Students who already registered are not affected.',
-                      confirmLabel: 'Issue new code',
-                    });
-                    if (ok) setRegistration.mutate(true);
-                  }}
-                >
-                  New code
-                </Button>
-                )}
-                <Button variant="destructive" disabled={setRegistration.isPending} onClick={() => setRegistration.mutate(false)}>
-                  Close registration
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-                Closed — only accounts you create below can sign in. Open it to hand out a join code instead.
-              </div>
-              <Button variant="ghost" disabled={setRegistration.isPending || !registration} onClick={() => setRegistration.mutate(true)}>
-                Open registration
-              </Button>
-            </>
-          )}
-        </section>
-        )}
-
-        <OrganizationsPanel organizations={organizations} />
-
-        <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New team</h2>
-          <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" aria-label="Team name" style={inputStyle} />
-          {organizations.length > 0 && (
-            <select
-              value={teamOrgId}
-              onChange={(e) => setTeamOrgId(e.target.value ? Number(e.target.value) : '')}
-              aria-label="Organization for the new team"
-              style={{ ...inputStyle, background: 'var(--surface-1)' }}
-            >
-              <option value="">No organization</option>
-              {organizations.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          )}
-          <Button type="submit" variant="ghost">Create team</Button>
-        </form>
-
-        <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New account</h2>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8 characters)" aria-label="Password" minLength={8} autoComplete="new-password" style={inputStyle} />
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
-          <select value={role} onChange={(e) => setRole(e.target.value as 'student' | 'instructor')} style={{ ...inputStyle, background: 'var(--surface-1)' }}>
-            <option value="student">Student</option>
-            <option value="instructor">Instructor</option>
-          </select>
-          {role === 'student' && (
-            <select value={teamId} onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : '')} style={{ ...inputStyle, background: 'var(--surface-1)' }}>
-              <option value="">Select team…</option>
-              {data?.teams.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          )}
-          {error && <div style={{ color: 'var(--signal-alert)', fontSize: 14 }}>{error}</div>}
-          <Button type="submit" variant="ghost" disabled={createUser.isPending}>
-            Create account
-          </Button>
-        </form>
-      </div>
+          <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-telemetry)', width: 90, flexShrink: 0 }}>
+            {r.kind}
+          </span>
+          <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <bdi style={{ color: 'var(--text-primary)', fontSize: 14 }}>{r.primary}</bdi>
+            <bdi style={{ color: 'var(--text-muted)', fontSize: 13 }}>{r.secondary}</bdi>
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

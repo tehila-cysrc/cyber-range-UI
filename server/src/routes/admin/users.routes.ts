@@ -10,6 +10,19 @@ const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
+// Instructor accounts of the active run (Roster → Instructors). Students are listed per team by
+// GET /admin/teams instead.
+router.get('/instructors', (_req, res) => {
+  const runId = getActiveEventRunId();
+  const instructors = db
+    .prepare(
+      `SELECT id, username, display_name AS displayName FROM users
+       WHERE role = 'instructor' AND event_run_id = ? ORDER BY display_name COLLATE NOCASE`,
+    )
+    .all(runId);
+  res.json({ instructors });
+});
+
 // Manual account creation for the current event run — mainly for additional instructor accounts
 // or one-off overrides. Students can also self-register via POST /api/auth/register, but only while the
 // instructor has opened registration with a join code (Roster page — see registration.service.ts).
