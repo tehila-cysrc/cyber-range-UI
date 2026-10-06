@@ -147,7 +147,7 @@ export function ScriptPicker({
                     cursor: 'pointer',
                     fontSize: 13,
                     color: o.id == null ? 'var(--text-muted)' : 'var(--text-primary)',
-                    background: i === highlight ? 'var(--surface-2)' : o.id === value ? 'rgba(15, 23, 42, 0.8)' : 'transparent',
+                    background: i === highlight ? 'var(--surface-2)' : o.id === value ? 'var(--surface-1)' : 'transparent',
                   }}
                 >
                   {o.name}

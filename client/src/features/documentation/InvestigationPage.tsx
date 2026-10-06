@@ -578,7 +578,7 @@ function Timeline({
               borderRadius: 999,
               cursor: 'pointer',
               border: `1px solid ${filter === key ? 'var(--signal-secondary)' : 'var(--surface-border)'}`,
-              background: filter === key ? 'rgba(15, 23, 42, 0.8)' : 'transparent',
+              background: filter === key ? 'var(--surface-1)' : 'transparent',
               color: filter === key ? 'var(--text-primary)' : 'var(--text-muted)',
             }}
           >

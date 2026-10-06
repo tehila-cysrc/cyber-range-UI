@@ -85,7 +85,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(2, 6, 23, 0.7)',
+        background: 'var(--overlay-backdrop)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

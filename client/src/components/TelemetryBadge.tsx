@@ -23,7 +23,7 @@ export function TelemetryBadge({ tone = 'muted', children }: { tone?: Tone; chil
         borderRadius: 'var(--radius-control)',
         border: `1px solid ${color}`,
         color,
-        background: 'rgba(15, 23, 42, 0.8)',
+        background: 'var(--surface-1)',
       }}
     >
       {children}

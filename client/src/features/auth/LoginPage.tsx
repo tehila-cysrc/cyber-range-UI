@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, ApiError, SIGNED_OUT_NOTE_KEY } from '../../lib/apiClient';
 import { useAuthStore, type AuthUser } from '../../stores/authStore';
 import { Button } from '../../components/Button';
+import logoGreenUrl from '../../assets/logo-wordmark-green.svg';
 
 interface AuthResponse {
   token: string;
@@ -163,6 +164,7 @@ export function LoginPage() {
         }}
       >
         <div>
+          <img src={logoGreenUrl} alt="CySource" style={{ height: 22, display: 'block', marginBottom: 'var(--space-lg)' }} />
           <div
             style={{
               fontFamily: 'var(--font-mono)',

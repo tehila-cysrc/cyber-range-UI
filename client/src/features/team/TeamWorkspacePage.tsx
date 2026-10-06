@@ -114,7 +114,7 @@ export function TeamWorkspacePage() {
             key={member.id}
             style={{
               padding: '14px 20px',
-              borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
+              borderBottom: '1px solid var(--surface-border)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',

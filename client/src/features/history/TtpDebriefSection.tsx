@@ -98,7 +98,7 @@ function TtpMatrix({ teams }: { teams: TeamTtpReport[] }) {
   for (const r of rows) byTactic.set(r.tacticId, [...(byTactic.get(r.tacticId) ?? []), r]);
   const tactics = [...byTactic.entries()].sort(([a], [b]) => (tacticOrder.get(a) ?? 99) - (tacticOrder.get(b) ?? 99));
 
-  const cell: React.CSSProperties = { padding: '6px 10px', borderBottom: '1px solid rgba(51, 65, 85, 0.3)', textAlign: 'left', verticalAlign: 'top' };
+  const cell: React.CSSProperties = { padding: '6px 10px', borderBottom: '1px solid var(--surface-border)', textAlign: 'left', verticalAlign: 'top' };
 
   return (
     <div style={{ overflowX: 'auto', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-container)', background: 'var(--surface-1)' }}>

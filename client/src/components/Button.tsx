@@ -26,7 +26,7 @@ const variants: Record<Variant, React.CSSProperties> = {
   ghost: {
     background: 'transparent',
     color: 'var(--text-primary)',
-    borderColor: 'rgba(51, 65, 85, 0.7)',
+    borderColor: 'var(--surface-border-control)',
   },
   destructive: {
     background: 'transparent',

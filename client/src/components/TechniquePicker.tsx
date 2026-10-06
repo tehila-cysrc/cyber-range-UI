@@ -28,7 +28,7 @@ export function TtpChip({
         padding: '2px 6px',
         borderRadius: 'var(--radius-control)',
         border: `1px solid ${credited ? color : 'var(--surface-border-strong)'}`,
-        background: 'rgba(15, 23, 42, 0.8)',
+        background: 'var(--surface-1)',
         color: 'var(--text-primary)',
       }}
     >

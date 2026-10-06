@@ -15,8 +15,8 @@ import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
 import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
 import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
-import logoUrl from '../assets/company-logo.svg';
-import appIconUrl from '../assets/app-icon.svg';
+import logoGreenUrl from '../assets/logo-wordmark-green.svg';
+import logoWhiteUrl from '../assets/logo-wordmark-white.svg';
 
 // NOTE: docs/DESIGN.md's nav spec lists "Milestones" as the 4th destination. The PRD dropped
 // discrete milestones in favor of free-form instructor scoring on documentation (US-007), so this
@@ -307,7 +307,7 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
           height: 28,
           borderRadius: '50%',
           border: '1px solid var(--signal-primary)',
-          background: 'rgba(15, 23, 42, 0.8)',
+          background: 'var(--surface-1)',
           color: 'var(--signal-primary)',
           cursor: 'pointer',
         }}
@@ -450,14 +450,18 @@ export function AppShell() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <nav className="app-nav" aria-label="Main">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-          <img src={appIconUrl} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-control)' }} />
+        {/* Brandbook: unaltered logo (no opacity/recolor) with clear space around it — the label sits
+            after a divider rather than touching the wordmark. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+          <img src={logoGreenUrl} alt="CySource" style={{ height: 18, display: 'block' }} />
           <span
             style={{
+              paddingLeft: 'var(--space-md)',
+              borderLeft: '1px solid var(--surface-border-strong)',
               fontFamily: 'var(--font-mono)',
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: 600,
-              letterSpacing: '0.04em',
+              letterSpacing: '0.08em',
               textTransform: 'uppercase',
               color: 'var(--text-primary)',
             }}
@@ -503,7 +507,7 @@ export function AppShell() {
           justifyContent: 'center',
         }}
       >
-        <img src={logoUrl} alt="" style={{ height: 20, opacity: 0.7 }} />
+        <img src={logoWhiteUrl} alt="CySource" style={{ height: 14 }} />
       </footer>
 
       <GamifiedEffects />

@@ -41,9 +41,9 @@ export function useOpenHelpRequestCount(enabled: boolean) {
   const count = enabled ? (data?.helpRequests.length ?? 0) : 0;
   useEffect(() => {
     if (!enabled) return;
-    document.title = count > 0 ? `(${count}) Help requested · Cyber Range` : 'Cyber Range';
+    document.title = count > 0 ? `(${count}) Help requested · CySource Cyber Range` : 'CySource Cyber Range';
     return () => {
-      document.title = 'Cyber Range';
+      document.title = 'CySource Cyber Range';
     };
   }, [count, enabled]);
   return count;

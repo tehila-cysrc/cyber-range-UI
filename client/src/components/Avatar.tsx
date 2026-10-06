@@ -30,7 +30,7 @@ export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
         minWidth: size,
         borderRadius: '50%',
         border: `1px solid ${color}`,
-        background: 'rgba(15, 23, 42, 0.8)',
+        background: 'var(--surface-1)',
         color,
         fontFamily: 'var(--font-mono)',
         fontSize: Math.round(size * 0.38),

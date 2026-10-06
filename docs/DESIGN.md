@@ -125,6 +125,8 @@ spacing:
 
 ## Brand & Style
 
+> **CySource brand overlay (2026-10-06).** This system is now recolored to the company brand — source pack and brandbook in `docs/brand/`. What changed: surfaces are built on **Eerie Black `#151c22`**, the primary signal is **Green Mage `#53b464`**, primary text is **Ice Code `#f1f1f1`**, and the sans typeface is **PP Mori** (web-licensed, `client/src/styles/fonts.css`; Latin-only, so Hebrew falls back to the next font). The CySource wordmark sits in the top bar and login card, unaltered (brandbook: no recolor, opacity, shadow, rotation or distortion; clear space around it). **Deliberately not on-brand:** the cyan/amber/crimson status signals and the role/avatar palettes — the brand's secondary colors (`#b45353`, `#5362b4`, …) fall below WCAG AA on these dark surfaces, and readability wins over brand fidelity there. JetBrains Mono stays for telemetry. `client/src/styles/tokens.css` is the source of truth for values; the YAML front matter above is the original Stitch export and is not kept in sync.
+
 The design system is engineered for elite cyber operations, adversarial simulations, and CTF investigations where cognitive clarity under pressure is paramount. The platform rejects legacy "cyberpunk" tropes—neon green rain, gratuitous scanlines, terminal skeuomorphism, and noisy gauge clusters. Instead, it embodies a serene, high-precision instrument: calm, lethal in its efficiency, and immaculately quiet.
 
 The aesthetic fuses **Precision Modernism** with **Deep Monochromatic Restraint**. Interfaces mimic military-grade aerospace telemetry consoles and Swiss high-modernist typography: massive breathing margins, hairline rules, deliberate mono-spaced telemetry, and stark obsidian surfaces with warm slate undertones.
@@ -135,24 +137,24 @@ The user must feel unhurried, razor-focused, and in total structural control of 
 
 The foundation is built on deep slate and graphite blacks rather than pitch voids, preserving spatial depth without harsh eye strain:
 
-- **Surface Floor (`#090d12`)**: Deep slate-black canvas background providing warm, non-fatiguing absorption.
-- **Surface Layer 1 (`#0f172a`)**: Structural panels, active investigation surfaces, and docked terminal drawers.
-- **Surface Layer 2 (`#1e293b`)**: Discrete elevated chips, table headers, and focused item fills.
-- **Surface Border (`#334155`)**: Ultra-fine containment lines (hairline 1px borders with 40-70% opacity).
+- **Surface Floor (`#151c22`)**: Deep slate-black canvas background providing warm, non-fatiguing absorption.
+- **Surface Layer 1 (`#1b242b`)**: Structural panels, active investigation surfaces, and docked terminal drawers.
+- **Surface Layer 2 (`#26313a`)**: Discrete elevated chips, table headers, and focused item fills.
+- **Surface Border (`#404e5a`)**: Ultra-fine containment lines (hairline 1px borders with 40-70% opacity).
 
 ### Signal Accents
 Accents operate strictly as functional signals, never as decorative fills:
-- **Primary / Emerald Signal (`#10b981`)**: Solved flags, active link nodes, captured objectives, and verified states. Rendered flat without fuzzy radial blooms.
+- **Primary / Green Mage Signal (brand) (`#53b464`)**: Solved flags, active link nodes, captured objectives, and verified states. Rendered flat without fuzzy radial blooms.
 - **Secondary / Deep Ice (`#38bdf8`)**: Target topologies, active investigation nodes, and routing hops.
 - **Tertiary / Warm Amber (`#f59e0b`)**: In-progress exploitation attempts, vulnerability milestones, and time-sensitive debrief flags.
 - **Alert / Crimson Flare (`#f43f5e`)**: IDS alerts, network isolation breaches, and unverified exploit paths.
-- **Typography Primary (`#f8fafc`)**: Crisp slate-white with 100% legibility.
-- **Typography Muted (`#94a3b8`)**: Secondary instructions and column meta descriptions.
-- **Typography Telemetry (`#64748b`)**: Off-target telemetry, timestamps, and network hashes.
+- **Typography Primary (`#f1f1f1`)**: Crisp slate-white with 100% legibility.
+- **Typography Muted (`#9aa6b0`)**: Secondary instructions and column meta descriptions.
+- **Typography Telemetry (`#717e89`)**: Off-target telemetry, timestamps, and network hashes.
 
 ## Typography
 
-Typography establishes an unyielding structural order. The pairing of **Inter** for narrative/editorial content with **JetBrains Mono** for machine-level metadata provides instant visual partitioning between strategic intelligence and real-time network payloads.
+Typography establishes an unyielding structural order. The pairing of **PP Mori** (brand; Inter as fallback) for narrative/editorial content with **JetBrains Mono** for machine-level metadata provides instant visual partitioning between strategic intelligence and real-time network payloads.
 
 - **Headers**: Crisp, confident geometric weights with slight negative letter tracking to lock letterforms together cleanly on dark canvas backdrops.
 - **Labels & Telemetry**: Always set in JetBrains Mono, uppercase, with generous positive tracking (`0.08em`) to mimic aerospace instrument panels and diagnostic hardware.
@@ -187,10 +189,10 @@ A minimalist horizontal bar locked to 56px height. Contains:
 
 Visual hierarchy uses **tonal layer stepping** paired with **hairline structural borders**. Floating drop shadows are eliminated; operational tooling requires planar clarity rather than fake atmospheric illumination.
 
-- **Level 0 (Canvas)**: `#090d12`. The boundless foundational field.
-- **Level 1 (Panels & Top Bar)**: `#0f172a` with a sharp 1px border of `rgba(51, 65, 85, 0.4)`. Used for the top persistent navigation, main challenge work surfaces, and topological containers.
-- **Level 2 (Active Inspections / Modals)**: `#1e293b` with a 1px border of `rgba(100, 116, 139, 0.35)`. Used for command palettes, terminal drawers, and focused vulnerability cards.
-- **Selection Highlight**: When an element is selected (e.g., a node in the network topology or an active milestone), depth is signaled not by lifting or casting shadows, but by changing the border state to a crisp, un-blurred 1px rule of `primary` (`#10b981`) or `secondary` (`#38bdf8`).
+- **Level 0 (Canvas)**: `#151c22`. The boundless foundational field.
+- **Level 1 (Panels & Top Bar)**: `#1b242b` with a sharp 1px border of `rgba(64, 78, 90, 0.4)`. Used for the top persistent navigation, main challenge work surfaces, and topological containers.
+- **Level 2 (Active Inspections / Modals)**: `#26313a` with a 1px border of `rgba(120, 135, 148, 0.35)`. Used for command palettes, terminal drawers, and focused vulnerability cards.
+- **Selection Highlight**: When an element is selected (e.g., a node in the network topology or an active milestone), depth is signaled not by lifting or casting shadows, but by changing the border state to a crisp, un-blurred 1px rule of `primary` (`#53b464`) or `secondary` (`#38bdf8`).
 
 ## Shapes
 
@@ -204,32 +206,32 @@ This restrained radius removes harsh needle-sharp corners while preventing the t
 ## Components
 
 ### Buttons
-- **Primary**: Solid crisp slate white (`#f8fafc`) background with deep slate text (`#090d12`), 4px corner radius, font `Inter` Medium 13px. Zero gradient. On hover: subtle shift to `#e2e8f0`.
-- **Secondary / Ghost**: Transparent fill, 1px border in `rgba(51, 65, 85, 0.7)`, text `#f8fafc`. Hover: background fills to `rgba(30, 41, 59, 0.6)`.
+- **Primary**: Solid crisp slate white (`#f1f1f1`) background with deep slate text (`#151c22`), 4px corner radius, font `Inter` Medium 13px. Zero gradient. On hover: subtle shift to `#e2e8f0`.
+- **Secondary / Ghost**: Transparent fill, 1px border in `rgba(64, 78, 90, 0.7)`, text `#f1f1f1`. Hover: background fills to `rgba(38, 49, 58, 0.6)`.
 - **Destructive / Flag Action**: Transparent with `#f43f5e` muted border; on press, solid muted crimson fill.
 
 ### Navigation Links (Top Bar)
 - Flat inline text links in `Inter` 13px, weight 500.
-- Inactive: `#94a3b8`.
-- Active: `#f8fafc` with an understated 2px horizontal indicator bar positioned flush against the navigation bar's bottom edge (rendered in `#10b981`).
+- Inactive: `#9aa6b0`.
+- Active: `#f1f1f1` with an understated 2px horizontal indicator bar positioned flush against the navigation bar's bottom edge (rendered in `#53b464`).
 
 ### Telemetry Badges & Chips
 - Ultra-compact tags using `JetBrains Mono` 11px uppercase (`label-mono-sm`).
-- Background: `rgba(15, 23, 42, 0.8)` with a 1px border matching the semantic status (e.g. emerald for `PWNED`, amber for `EXPLOITING`, slate for `UNREACHABLE`).
+- Background: `rgba(27, 36, 43, 0.8)` with a 1px border matching the semantic status (e.g. emerald for `PWNED`, amber for `EXPLOITING`, slate for `UNREACHABLE`).
 - Padding: 2px top/bottom, 6px left/right.
 
 ### Input Fields & Flag Submission
 - Monospaced single-line input with zero background ornamentation.
-- Hairline border (`#334155`). When active, transitions cleanly to 1px `#38bdf8` without diffuse glow rings.
-- Prefix labels set to `JetBrains Mono` text `#64748b` (e.g., `flag{...}`).
+- Hairline border (`#404e5a`). When active, transitions cleanly to 1px `#38bdf8` without diffuse glow rings.
+- Prefix labels set to `JetBrains Mono` text `#717e89` (e.g., `flag{...}`).
 
 ### Lists & Telemetry Tables (Leaderboard / Milestones)
-- Full-width flat rows separated by `1px solid rgba(51, 65, 85, 0.3)`.
-- Zero zebra-striping. Hovering a row applies a slight surface shift to `#0f172a`.
+- Full-width flat rows separated by `1px solid rgba(64, 78, 90, 0.3)`.
+- Zero zebra-striping. Hovering a row applies a slight surface shift to `#1b242b`.
 - Data columns strictly aligned: names/identifiers left-aligned, timestamps and IP routes tabular mono, points/deltas right-aligned.
 
 ### Avatars & Icons
-- **Avatar** (`client/src/components/Avatar.tsx`): a person's identity chip, wherever a username/display name appears (timeline authors, team rosters, help requests, scoring). Absolute circle per the Shapes rule above, 1px hairline border, `rgba(15, 23, 42, 0.8)` flat fill (no gradient), initials in `JetBrains Mono`. The border/text color is one of eight `--user-accent-*` tokens (`tokens.css`), picked deterministically from the name so the same person is always the same color everywhere — a rotating identity signal, not a decorative palette; several of the eight hues intentionally reuse the functional signal colors (`secondary`/cyan, `tertiary`/amber, `alert`/crimson) to stay in the same tonal register rather than introducing a separate rainbow.
+- **Avatar** (`client/src/components/Avatar.tsx`): a person's identity chip, wherever a username/display name appears (timeline authors, team rosters, help requests, scoring). Absolute circle per the Shapes rule above, 1px hairline border, `rgba(27, 36, 43, 0.8)` flat fill (no gradient), initials in `JetBrains Mono`. The border/text color is one of eight `--user-accent-*` tokens (`tokens.css`), picked deterministically from the name so the same person is always the same color everywhere — a rotating identity signal, not a decorative palette; several of the eight hues intentionally reuse the functional signal colors (`secondary`/cyan, `tertiary`/amber, `alert`/crimson) to stay in the same tonal register rather than introducing a separate rainbow.
 - **Icons** (`client/src/components/icons.tsx`): thin-stroke (1.75px), `currentColor`, geometric line icons — never filled/skeuomorphic glyphs. Used sparingly at exactly two conceptual spots (an important-finding flag, a help-request life-ring) rather than as general-purpose decoration, per this system's "every pixel of visual noise is operational latency" principle.
 
 ### Network Topology Node Elements
@@ -237,4 +239,4 @@ This restrained radius removes harsh needle-sharp corners while preventing the t
   - Compromised: Crisp emerald perimeter with interior heartbeat ping.
   - Active Recon: Cyan perimeter.
   - Locked / Unscanned: Muted slate perimeter with dim typography.
-- Connecting vector lines are razor-thin 1px paths (`#1e293b`), transitioning to solid white or cyan when traffic is actively sniffing or pivoting.
+- Connecting vector lines are razor-thin 1px paths (`#26313a`), transitioning to solid white or cyan when traffic is actively sniffing or pivoting.

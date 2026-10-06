@@ -1,12 +1,17 @@
-/* Design tokens sourced from docs/DESIGN.md ("Obsidian Telemetry"). */
+/* Design tokens sourced from docs/DESIGN.md ("Obsidian Telemetry"), recolored to the CySource brand
+   (docs/brand/cysource-brandbook-v1.0.pdf): Eerie Black surfaces, Green Mage primary, Ice Code text.
+   The alert/amber/cyan signals stay off-brand on purpose — the brand's secondary reds/blues fall below
+   WCAG AA on these surfaces, and readability wins over brand fidelity for status colors. */
 :root {
-  --surface-floor: #090d12;
-  --surface-1: #0f172a;
-  --surface-2: #1e293b;
-  --surface-border: rgba(51, 65, 85, 0.4);
-  --surface-border-strong: rgba(100, 116, 139, 0.35);
+  --surface-floor: #151c22; /* brand Eerie Black */
+  --surface-1: #1b242b;
+  --surface-2: #26313a;
+  --surface-border: rgba(64, 78, 90, 0.45);
+  --surface-border-strong: rgba(120, 135, 148, 0.35);
+  --surface-border-control: rgba(64, 78, 90, 0.8);
+  --overlay-backdrop: rgba(10, 14, 17, 0.7);
 
-  --signal-primary: #10b981; /* emerald: solved / active / verified */
+  --signal-primary: #53b464; /* brand Green Mage: solved / active / verified */
   --signal-secondary: #38bdf8; /* cyan: topology / recon / routing */
   --signal-tertiary: #f59e0b; /* amber: in-progress / time-sensitive */
   --signal-alert: #f43f5e; /* crimson: alerts / breaches / unverified */
@@ -21,9 +26,9 @@
   --role-lime: #a3e635;
   --role-pink: #f472b6;
 
-  --text-primary: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-telemetry: #64748b;
+  --text-primary: #f1f1f1; /* brand Ice Code */
+  --text-muted: #9aa6b0;
+  --text-telemetry: #717e89;
 
   /* Per-user identity accents (Avatar.tsx) — a rotating palette for author/member badges, kept in
      the same flat, mid-saturation "signal" register as the four functional accents above rather
@@ -37,7 +42,7 @@
   --user-accent-7: #60a5fa;
   --user-accent-8: #2dd4bf;
 
-  --font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'PP Mori', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 
   --radius-control: 0.25rem;

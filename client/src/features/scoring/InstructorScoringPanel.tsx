@@ -350,7 +350,7 @@ export function InstructorScoringPanel() {
                       borderRadius: 999,
                       cursor: 'pointer',
                       border: `1px solid ${docFilter === key ? 'var(--signal-secondary)' : 'var(--surface-border)'}`,
-                      background: docFilter === key ? 'rgba(15, 23, 42, 0.8)' : 'transparent',
+                      background: docFilter === key ? 'var(--surface-1)' : 'transparent',
                       color: docFilter === key ? 'var(--text-primary)' : 'var(--text-muted)',
                     }}
                   >
@@ -417,7 +417,7 @@ export function InstructorScoringPanel() {
                         .join(', ')}
                     </div>
                   )}
-                  <div style={{ borderTop: '1px solid rgba(51, 65, 85, 0.3)', paddingTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ borderTop: '1px solid var(--surface-border)', paddingTop: 'var(--space-sm)', display: 'flex', flexDirection: 'column' }}>
                     <EntryAward
                       teamId={selectedTeam.teamId}
                       studentUserId={entry.authorUserId}

@@ -28,7 +28,7 @@ const rowStyle: React.CSSProperties = {
   gap: 'var(--space-sm)',
   alignItems: 'baseline',
   padding: 'var(--space-sm) 0',
-  borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
+  borderBottom: '1px solid var(--surface-border)',
 };
 
 // Instructor view of one team's ATT&CK results in its active scenario: expected techniques

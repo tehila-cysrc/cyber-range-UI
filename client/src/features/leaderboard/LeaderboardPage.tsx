@@ -213,7 +213,7 @@ export function LeaderboardPage() {
                 gap: 'var(--space-md)',
                 justifyContent: 'space-between',
                 padding: '10px 16px',
-                borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
+                borderBottom: '1px solid var(--surface-border)',
                 fontSize: 15,
               }}
             >

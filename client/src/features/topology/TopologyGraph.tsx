@@ -181,7 +181,7 @@ export function TopologyGraph({
           style: {
             width: rect.width,
             height: rect.height,
-            background: 'rgba(30, 41, 59, 0.25)',
+            background: 'color-mix(in srgb, var(--surface-2) 25%, transparent)',
             border: '1px solid var(--surface-border)',
             borderRadius: 'var(--radius-container)',
             padding: 0,
