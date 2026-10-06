@@ -11,7 +11,7 @@ import {
 } from '../../db/seed.js';
 import { endActiveSessions, revokeAllShareableLinks, setRemoteAccessFrozen, type EnvironmentRevocation } from '../../services/accessBroker/accessBroker.service.js';
 import { writeAudit } from '../../services/audit.service.js';
-import { buildEventExport, buildEventExportCsv } from '../../services/eventExport.service.js';
+import { buildEventExport, buildEventExportCsv, buildEventExportXlsx } from '../../services/eventExport.service.js';
 
 const router = Router();
 // Public (token-less) job-status route — mounted separately in app.ts at /api/event-reset-jobs, since
@@ -126,8 +126,19 @@ router.use(requireAuth, requireRole('instructor'));
 
 // Results archive to keep before a reset wipes the RUN tables (UX audit UX-05). ?format=csv gives a
 // one-row-per-team×scenario summary; default is the full JSON (timelines, canvas, scores).
-router.get('/event/export', (req, res) => {
+router.get('/event/export', async (req, res, next) => {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  if (req.query.format === 'xlsx') {
+    try {
+      const buffer = await buildEventExportXlsx();
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="cyber-range-results-${stamp}.xlsx"`);
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+    return;
+  }
   if (req.query.format === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="cyber-range-results-${stamp}.csv"`);
