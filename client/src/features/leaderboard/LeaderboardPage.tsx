@@ -1,4 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { Avatar } from '../../components/Avatar';
@@ -9,6 +11,12 @@ interface LeaderboardEntry {
   teamId: number;
   teamName: string;
   totalPoints: number;
+}
+
+interface TeamOrganization {
+  id: number;
+  organizationId: number | null;
+  organizationName: string | null;
 }
 
 interface LeaderboardResponse {
@@ -28,6 +36,29 @@ export function LeaderboardPage() {
     queryClient.setQueryData<LeaderboardResponse>(['leaderboard'], { enabled: enabled ?? true, teams });
   });
 
+  // Instructor-only organization filter (e.g. one organization's ranking on the classroom screen).
+  // Team -> organization comes from the instructor-only /admin/teams, so /leaderboard and the student
+  // view stay organization-free. Kept in the URL (?org=<id>|none).
+  const isInstructor = useAuthStore((s) => s.user?.role === 'instructor');
+  const { data: rosterData } = useQuery({
+    queryKey: ['admin-teams'],
+    queryFn: () => apiFetch<{ teams: TeamOrganization[] }>('/admin/teams'),
+    enabled: isInstructor,
+  });
+  const [params, setParams] = useSearchParams();
+  const orgOf = new Map((rosterData?.teams ?? []).map((t) => [t.id, t]));
+  const organizations = [
+    ...new Map(
+      (rosterData?.teams ?? []).filter((t) => t.organizationId !== null).map((t) => [t.organizationId!, t.organizationName ?? '']),
+    ).entries(),
+  ].sort((a, b) => a[1].localeCompare(b[1]));
+  const hasUnassigned = (rosterData?.teams ?? []).some((t) => t.organizationId === null);
+  const rawOrg = params.get('org');
+  // A stale value (organization gone or emptied) falls back to every team.
+  const orgFilter =
+    isInstructor && rawOrg && (rawOrg === 'none' ? hasUnassigned : organizations.some(([id]) => String(id) === rawOrg)) ? rawOrg : null;
+  const orgFilterLabel = orgFilter === 'none' ? 'No organization' : organizations.find(([id]) => String(id) === orgFilter)?.[1];
+
   if (data && !data.enabled) {
     return (
       <div style={{ padding: 'var(--space-xl)' }}>
@@ -36,7 +67,12 @@ export function LeaderboardPage() {
     );
   }
 
-  const teams = data?.teams ?? [];
+  // Ranks are recomputed within the filter: #1 is the organization's best team.
+  const teams = (data?.teams ?? []).filter((t) => {
+    if (!orgFilter) return true;
+    const orgId = orgOf.get(t.teamId)?.organizationId ?? null;
+    return orgFilter === 'none' ? orgId === null : String(orgId) === orgFilter;
+  });
   const [leader, runnerUp, ...rest] = teams;
   const lead = leader && runnerUp ? leader.totalPoints - runnerUp.totalPoints : 0;
   const spotlightTotal = leader && runnerUp ? leader.totalPoints + runnerUp.totalPoints : 0;
@@ -57,9 +93,37 @@ export function LeaderboardPage() {
         >
           Telemetry Stream
         </div>
-        <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
-          Leaderboard
-        </h1>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-md)' }}>
+          <h1 style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
+            Leaderboard
+            {orgFilterLabel && (
+              <span style={{ fontSize: 20, fontWeight: 400, color: 'var(--text-muted)' }}>
+                {' '}· <bdi>{orgFilterLabel}</bdi>
+              </span>
+            )}
+          </h1>
+          {isInstructor && organizations.length > 0 && (
+            <select
+              aria-label="Filter by organization"
+              value={orgFilter ?? ''}
+              onChange={(e) => setParams(e.target.value ? { org: e.target.value } : {}, { replace: true })}
+              style={{
+                background: 'var(--surface-1)',
+                border: '1px solid var(--surface-border)',
+                borderRadius: 'var(--radius-control)',
+                padding: '6px 8px',
+                color: 'var(--text-primary)',
+                fontSize: 14,
+              }}
+            >
+              <option value="">All organizations</option>
+              {organizations.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+              {hasUnassigned && <option value="none">No organization</option>}
+            </select>
+          )}
+        </div>
       </div>
 
       {leader && runnerUp && (
@@ -135,7 +199,7 @@ export function LeaderboardPage() {
       >
         {teams.length === 0 && (
           <div style={{ padding: 'var(--space-lg)' }}>
-            <EmptyState message="No teams have scored yet." />
+            <EmptyState message={orgFilter ? 'No teams in this organization.' : 'No teams have scored yet.'} />
           </div>
         )}
         {(leader && runnerUp ? rest : teams).map((team) => {
