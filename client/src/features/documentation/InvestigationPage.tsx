@@ -13,6 +13,7 @@ import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
 import { useAuthStore } from '../../stores/authStore';
 import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
+import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
 
 // React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
@@ -61,11 +62,6 @@ interface ActiveCyberRange {
   cyberRangeId: number;
   name: string;
   studentBriefing?: string | null;
-}
-
-interface Team {
-  id: number;
-  name: string;
 }
 
 interface TeamStatus {
@@ -144,7 +140,7 @@ export function InvestigationPage() {
   const lockedTeam = useLockedTeam();
   const { data: teamsData } = useQuery({
     queryKey: ['admin-teams-list'],
-    queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
+    queryFn: () => apiFetch<{ teams: TeamOption[] }>('/admin/teams'),
     enabled: isInstructor,
   });
   const { data: dashboardData } = useQuery({
@@ -297,25 +293,7 @@ export function InvestigationPage() {
                 {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
               </h1>
             </div>
-            <select
-              aria-label="Team"
-              value={selectedTeamId}
-              onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
-              style={{
-                background: 'var(--surface-1)',
-                border: '1px solid var(--surface-border)',
-                borderRadius: 'var(--radius-control)',
-                padding: 8,
-                color: 'var(--text-primary)',
-              }}
-            >
-              <option value="">Select a team…</option>
-              {teamsData?.teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <TeamSelect teams={teamsData?.teams} value={selectedTeamId} onChange={setSelectedTeamId} />
           </div>
         )}
 

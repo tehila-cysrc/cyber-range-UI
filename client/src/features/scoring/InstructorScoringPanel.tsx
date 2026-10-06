@@ -9,6 +9,7 @@ import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { TtpChip } from '../../components/TechniquePicker';
+import { TeamSelect } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp } from '../../lib/mitre';
 import { TtpDetectionsPanel } from './TtpDetectionsPanel';
 
@@ -25,6 +26,8 @@ interface TeamRosterMember {
 
 interface TeamRoster {
   id: number;
+  name: string;
+  organizationName: string | null;
   members: TeamRosterMember[];
 }
 
@@ -272,21 +275,15 @@ export function InstructorScoringPanel() {
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 'var(--space-xl)', maxWidth: 280 }}>
           <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Team</span>
-          <select
+          <TeamSelect
+            teams={rosterData?.teams}
             value={selectedTeamId}
-            onChange={(e) => {
-              setSelectedTeamId(e.target.value ? Number(e.target.value) : '');
+            onChange={(teamId) => {
+              setSelectedTeamId(teamId);
               setQuickAwardStudentId('');
             }}
             style={selectStyle}
-          >
-            <option value="">Select a team…</option>
-            {dashboardData?.teams.map((t) => (
-              <option key={t.teamId} value={t.teamId}>
-                {t.teamName}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         </>
       )}

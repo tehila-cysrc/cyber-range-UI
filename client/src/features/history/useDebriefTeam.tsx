@@ -3,11 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { useAuthStore } from '../../stores/authStore';
 import { useLockedTeam } from '../team/LockedTeamContext';
-
-interface Team {
-  id: number;
-  name: string;
-}
+import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 
 // Debrief pages are team-scoped. A student implicitly gets their own team; an instructor has no team,
 // so they pick one (kept in `?teamId=` so links between the Debrief pages and a browser refresh keep
@@ -20,7 +16,7 @@ export function useDebriefTeam() {
 
   const { data: teamsData } = useQuery({
     queryKey: ['admin-teams-list'],
-    queryFn: () => apiFetch<{ teams: Team[] }>('/admin/teams'),
+    queryFn: () => apiFetch<{ teams: TeamOption[] }>('/admin/teams'),
     enabled: isInstructor,
   });
 
@@ -30,25 +26,11 @@ export function useDebriefTeam() {
 
   // Inside the Team Workspace the team is fixed — no picker.
   const picker = isInstructor && !locked ? (
-    <select
-      aria-label="Team"
-      value={teamId ?? ''}
-      onChange={(e) => setParams(e.target.value ? { teamId: e.target.value } : {})}
-      style={{
-        background: 'var(--surface-1)',
-        border: '1px solid var(--surface-border)',
-        borderRadius: 'var(--radius-control)',
-        padding: 8,
-        color: 'var(--text-primary)',
-      }}
-    >
-      <option value="">Select a team…</option>
-      {teamsData?.teams.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}
-        </option>
-      ))}
-    </select>
+    <TeamSelect
+      teams={teamsData?.teams}
+      value={teamId}
+      onChange={(id) => setParams(id ? { teamId: String(id) } : {})}
+    />
   ) : null;
 
   // Links between the Debrief pages. Inside the Team Workspace they stay in its Debrief tab
