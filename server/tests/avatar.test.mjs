@@ -25,26 +25,26 @@ test('seeded users start with no avatar (initials)', () => {
 });
 
 test('accepts only the shipped preset keys; empty means none', () => {
-  for (const ok of ['people-01', 'people-16', 'robot-01', 'robot-08']) assert.deepEqual(parseAvatar(ok), { ok: true, avatar: ok });
+  for (const ok of ['open-peeps-01', 'thumbs-06', 'bottts-neutral-03', 'pixel-art-02']) assert.deepEqual(parseAvatar(ok), { ok: true, avatar: ok });
   for (const none of [undefined, null, '']) assert.deepEqual(parseAvatar(none), { ok: true, avatar: null });
-  for (const bad of ['people-17', 'people-00', 'robot-09', 'robot-1', '../x.svg', 'https://x/y.png', 3]) {
+  for (const bad of ['open-peeps-07', 'thumbs-00', 'bottts-1', 'people-01', 'bottts-neutral', '../x.svg', 'https://x/y.png', 3]) {
     assert.equal(parseAvatar(bad).ok, false, String(bad));
   }
 });
 
 test('setOwnAvatar sets and clears without a password, and rejects unknown keys', () => {
-  assert.equal(setOwnAvatar(alice, 'robot-03').ok, true);
-  assert.equal(avatarOf(alice), 'robot-03');
+  assert.equal(setOwnAvatar(alice, 'bottts-03').ok, true);
+  assert.equal(avatarOf(alice), 'bottts-03');
   assert.equal(setOwnAvatar(alice, 'nope').ok, false);
-  assert.equal(avatarOf(alice), 'robot-03');
+  assert.equal(avatarOf(alice), 'bottts-03');
   assert.equal(setOwnAvatar(alice, null).ok, true);
   assert.equal(avatarOf(alice), null);
 });
 
 test('profile save returns and keeps the avatar', () => {
-  setOwnAvatar(alice, 'people-05');
+  setOwnAvatar(alice, 'micah-05');
   const res = updateOwnProfile(alice, 't', { currentPassword: 'student123', displayName: 'Alice A' });
   assert.equal(res.ok, true);
-  assert.equal(res.user.avatar, 'people-05');
-  assert.equal(avatarOf(alice), 'people-05');
+  assert.equal(res.user.avatar, 'micah-05');
+  assert.equal(avatarOf(alice), 'micah-05');
 });

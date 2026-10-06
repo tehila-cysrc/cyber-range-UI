@@ -1,0 +1,240 @@
+[
+  {
+    "id": "open-peeps",
+    "label": "Open Peeps",
+    "keys": [
+      "open-peeps-01",
+      "open-peeps-02",
+      "open-peeps-03",
+      "open-peeps-04",
+      "open-peeps-05",
+      "open-peeps-06"
+    ],
+    "title": "Open Peeps",
+    "creator": "Pablo Stanley",
+    "source": "https://www.openpeeps.com/",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "notionists",
+    "label": "Notionists",
+    "keys": [
+      "notionists-01",
+      "notionists-02",
+      "notionists-03",
+      "notionists-04",
+      "notionists-05",
+      "notionists-06"
+    ],
+    "title": "Notionists",
+    "creator": "Zoish",
+    "source": "https://heyzoish.gumroad.com/l/notionists",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "lorelei",
+    "label": "Lorelei",
+    "keys": [
+      "lorelei-01",
+      "lorelei-02",
+      "lorelei-03",
+      "lorelei-04",
+      "lorelei-05",
+      "lorelei-06"
+    ],
+    "title": "Lorelei",
+    "creator": "Lisa Wischofsky",
+    "source": "https://www.figma.com/community/file/1198749693280469639",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "adventurer",
+    "label": "Adventurer",
+    "keys": [
+      "adventurer-01",
+      "adventurer-02",
+      "adventurer-03",
+      "adventurer-04",
+      "adventurer-05",
+      "adventurer-06"
+    ],
+    "title": "Adventurer",
+    "creator": "Lisa Wischofsky",
+    "source": "https://www.figma.com/community/file/1184595184137881796",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "avataaars",
+    "label": "Avataaars",
+    "keys": [
+      "avataaars-01",
+      "avataaars-02",
+      "avataaars-03",
+      "avataaars-04",
+      "avataaars-05",
+      "avataaars-06"
+    ],
+    "title": "Avataaars",
+    "creator": "Pablo Stanley",
+    "source": "https://avataaars.com/",
+    "license": "Free for personal and commercial use",
+    "licenseUrl": "https://avataaars.com/"
+  },
+  {
+    "id": "micah",
+    "label": "Micah",
+    "keys": [
+      "micah-01",
+      "micah-02",
+      "micah-03",
+      "micah-04",
+      "micah-05",
+      "micah-06"
+    ],
+    "title": "Avatar Illustration System",
+    "creator": "Micah Lanier",
+    "source": "https://www.figma.com/community/file/829741575478342595",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "toon-head",
+    "label": "Toon Head",
+    "keys": [
+      "toon-head-01",
+      "toon-head-02",
+      "toon-head-03",
+      "toon-head-04",
+      "toon-head-05",
+      "toon-head-06"
+    ],
+    "title": "ToonHead",
+    "creator": "Johan Melin",
+    "source": "https://www.figma.com/community/file/1589627891082866389",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "big-smile",
+    "label": "Big Smile",
+    "keys": [
+      "big-smile-01",
+      "big-smile-02",
+      "big-smile-03",
+      "big-smile-04",
+      "big-smile-05",
+      "big-smile-06"
+    ],
+    "title": "Custom Avatar",
+    "creator": "Ashley Seo",
+    "source": "https://www.figma.com/community/file/881358461963645496",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "miniavs",
+    "label": "Miniavs",
+    "keys": [
+      "miniavs-01",
+      "miniavs-02",
+      "miniavs-03",
+      "miniavs-04",
+      "miniavs-05",
+      "miniavs-06"
+    ],
+    "title": "Miniavs - Free Avatar Creator",
+    "creator": "Webpixels",
+    "source": "https://www.figma.com/community/file/923211396597067458",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "dylan",
+    "label": "Dylan",
+    "keys": [
+      "dylan-01",
+      "dylan-02",
+      "dylan-03",
+      "dylan-04",
+      "dylan-05",
+      "dylan-06"
+    ],
+    "title": "Dylan! The Avatar Generator",
+    "creator": "Natalia Spivak",
+    "source": "https://www.figma.com/community/file/1356575240759683500",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+    "id": "pixel-art",
+    "label": "Pixel Art",
+    "keys": [
+      "pixel-art-01",
+      "pixel-art-02",
+      "pixel-art-03",
+      "pixel-art-04",
+      "pixel-art-05",
+      "pixel-art-06"
+    ],
+    "title": "Pixel Art",
+    "creator": "DiceBear",
+    "source": "https://www.figma.com/community/file/1198754108850888330",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "bottts",
+    "label": "Robots",
+    "keys": [
+      "bottts-01",
+      "bottts-02",
+      "bottts-03",
+      "bottts-04",
+      "bottts-05",
+      "bottts-06"
+    ],
+    "title": "Bottts",
+    "creator": "Pablo Stanley",
+    "source": "https://bottts.com/",
+    "license": "Free for personal and commercial use",
+    "licenseUrl": "https://bottts.com/"
+  },
+  {
+    "id": "bottts-neutral",
+    "label": "Robot faces",
+    "keys": [
+      "bottts-neutral-01",
+      "bottts-neutral-02",
+      "bottts-neutral-03",
+      "bottts-neutral-04",
+      "bottts-neutral-05",
+      "bottts-neutral-06"
+    ],
+    "title": "Bottts",
+    "creator": "Pablo Stanley",
+    "source": "https://bottts.com/",
+    "license": "Free for personal and commercial use",
+    "licenseUrl": "https://bottts.com/"
+  },
+  {
+    "id": "thumbs",
+    "label": "Thumbs",
+    "keys": [
+      "thumbs-01",
+      "thumbs-02",
+      "thumbs-03",
+      "thumbs-04",
+      "thumbs-05",
+      "thumbs-06"
+    ],
+    "title": "Thumbs",
+    "creator": "DiceBear",
+    "source": "https://www.dicebear.com",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  }
+]

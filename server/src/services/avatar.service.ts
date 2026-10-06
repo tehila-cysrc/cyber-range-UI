@@ -1,9 +1,15 @@
 import { db } from '../db/index.js';
 
 // Optional preset avatar per user (users.avatar). NULL = the default initials circle. The client ships
-// the matching SVGs (client/src/assets/avatars/people-01..16, robot-01..08); the server only stores
-// and validates the key so a typo or stale client can't save something that renders as a broken image.
-const AVATAR_KEY = /^(people-(0[1-9]|1[0-6])|robot-0[1-8])$/;
+// the matching SVGs (client/src/assets/avatars/<style>-01..06.svg, from client/scripts/
+// generate-avatars.cjs); the server only stores and validates the key so a typo or stale client can't
+// save something that renders as a broken image. Keep this list in sync with that script's STYLES.
+const STYLES = [
+  'open-peeps', 'notionists', 'lorelei', 'adventurer', 'avataaars', 'micah', 'toon-head',
+  'big-smile', 'miniavs', 'dylan', 'pixel-art', 'bottts', 'bottts-neutral', 'thumbs',
+];
+const PER_STYLE = 6;
+const AVATAR_KEY = new RegExp(`^(${STYLES.join('|')})-0[1-${PER_STYLE}]$`);
 
 export type AvatarParse = { ok: true; avatar: string | null } | { ok: false; error: string };
 
