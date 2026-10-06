@@ -354,6 +354,10 @@ export function TeamsAdminPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+        {/* One registration control at a time: once organizations exist, registration goes through each
+            organization's own code (OrganizationsPanel). A general code left open from before is still
+            shown here, only so it can be closed rather than stay open out of sight. */}
+        {(organizations.length === 0 || registration?.open) && (
         <section
           aria-label="Student self-registration"
           style={{
@@ -371,7 +375,8 @@ export function TeamsAdminPage() {
           </h2>
           {organizations.length > 0 && (
             <div style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
-              Only lists teams with no organization. Each organization has its own code below.
+              Only lists teams with no organization. Registration now goes through each organization's own
+              code below — close this one.
             </div>
           )}
           {registration?.open ? (
@@ -386,6 +391,7 @@ export function TeamsAdminPage() {
                 {registration.joinCode}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                {organizations.length === 0 && (
                 <Button
                   variant="ghost"
                   disabled={setRegistration.isPending}
@@ -400,6 +406,7 @@ export function TeamsAdminPage() {
                 >
                   New code
                 </Button>
+                )}
                 <Button variant="destructive" disabled={setRegistration.isPending} onClick={() => setRegistration.mutate(false)}>
                   Close registration
                 </Button>
@@ -416,6 +423,7 @@ export function TeamsAdminPage() {
             </>
           )}
         </section>
+        )}
 
         <OrganizationsPanel organizations={organizations} />
 
