@@ -6,16 +6,20 @@ import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
 import { generateJoinCode, getActiveRunRegistration, setRegistrationCode } from '../../services/registration.service.js';
 import { writeAudit } from '../../services/audit.service.js';
+import { setTeamOrganization } from '../../services/organizations.service.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('instructor'));
 
 router.get('/teams', (_req, res) => {
-  const teams = db.prepare('SELECT id, name FROM teams ORDER BY sort_order').all() as {
-    id: number;
-    name: string;
-  }[];
+  const teams = db
+    .prepare(
+      `SELECT t.id, t.name, t.organization_id AS organizationId, o.name AS organizationName
+       FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id
+       ORDER BY t.sort_order`,
+    )
+    .all() as { id: number; name: string; organizationId: number | null; organizationName: string | null }[];
 
   const membersStmt = db.prepare(
     'SELECT id, username, display_name AS displayName FROM users WHERE team_id = ? ORDER BY display_name',
@@ -51,7 +55,7 @@ router.put('/registration', (req, res) => {
 
 // Onboarding a new cohort (e.g. after an event reset) — flexible N teams, never a fixed 2.
 router.post('/teams', (req, res) => {
-  const { name } = req.body ?? {};
+  const { name, organizationId } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim()) {
     res.status(400).json({ error: 'name is required' });
     return;
@@ -70,8 +74,31 @@ router.post('/teams', (req, res) => {
   const result = db
     .prepare('INSERT INTO teams (event_run_id, name, sort_order) VALUES (?, ?, ?)')
     .run(runId, name.trim(), nextSort.n);
+  const teamId = Number(result.lastInsertRowid);
 
-  res.status(201).json({ team: { id: result.lastInsertRowid, name: name.trim() } });
+  // Optional — a team can be created first and assigned to an organization later (PATCH below).
+  const org = setTeamOrganization(teamId, organizationId);
+  if (!org.ok) {
+    db.prepare('DELETE FROM teams WHERE id = ?').run(teamId);
+    res.status(org.status).json({ error: org.error });
+    return;
+  }
+
+  res.status(201).json({ team: { id: teamId, name: name.trim(), organizationId: org.value.organizationId } });
+});
+
+// Assign a team to an organization, or clear it with {organizationId: null}.
+router.patch('/teams/:id', (req, res) => {
+  if (!req.body || !('organizationId' in req.body)) {
+    res.status(400).json({ error: 'organizationId is required (null to clear)' });
+    return;
+  }
+  const r = setTeamOrganization(Number(req.params.id), req.body.organizationId);
+  if (!r.ok) {
+    res.status(r.status).json({ error: r.error });
+    return;
+  }
+  res.json({ ok: true, organizationId: r.value.organizationId });
 });
 
 router.delete('/teams/:id', (req, res) => {

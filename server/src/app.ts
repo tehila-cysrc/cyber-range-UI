@@ -11,6 +11,7 @@ import cyberRangesRoutes from './routes/cyberRanges.routes.js';
 import topologyRoutes from './routes/topology.routes.js';
 import helpRequestsRoutes from './routes/helpRequests.routes.js';
 import adminTeamsRoutes from './routes/admin/teams.routes.js';
+import adminOrganizationsRoutes from './routes/admin/organizations.routes.js';
 import adminProgressRoutes from './routes/admin/progress.routes.js';
 import adminTopologyRoutes from './routes/admin/topology.routes.js';
 import adminHelpRequestsRoutes from './routes/admin/helpRequests.routes.js';
@@ -59,6 +60,7 @@ export function createApp() {
   app.use('/api', topologyRoutes);
   app.use('/api', helpRequestsRoutes);
   app.use('/api/admin', adminTeamsRoutes);
+  app.use('/api/admin', adminOrganizationsRoutes);
   app.use('/api/admin', adminProgressRoutes);
   app.use('/api/admin', adminTopologyRoutes);
   app.use('/api/admin', adminHelpRequestsRoutes);

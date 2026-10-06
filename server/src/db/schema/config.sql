@@ -227,3 +227,13 @@ CREATE TABLE IF NOT EXISTS cyber_range_topology_publications (
   published_at TEXT NOT NULL,
   published_by TEXT
 );
+
+-- Organizations a team belongs to (e.g. the customer/unit that sent the students). CONFIG — an
+-- organization outlives an event reset so the next cohort from the same organization reuses it;
+-- teams (RUN) point at it via teams.organization_id (RUN -> CONFIG, never the reverse).
+CREATE TABLE IF NOT EXISTS organizations (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name ON organizations (name COLLATE NOCASE);

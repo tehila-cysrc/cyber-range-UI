@@ -198,6 +198,10 @@ export function migrate() {
   // Set once, on the first "complete" (never cleared by a restart): the ATT&CK debrief may reveal the
   // answer key from then on, so tags made after it never auto-score (ttpScoring.service.ts).
   addColumnIfMissing('team_cyber_range_progress', 'first_completed_at', 'TEXT');
+
+  // Each team optionally belongs to one organization. Deleting an organization un-assigns its teams
+  // (SET NULL) — it never deletes teams or their event history.
+  addColumnIfMissing('teams', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE SET NULL');
   db.exec(
     `UPDATE team_cyber_range_progress SET first_completed_at = completed_at
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,

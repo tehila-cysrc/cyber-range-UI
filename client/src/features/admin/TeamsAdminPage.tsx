@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { confirmAction } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toastStore';
 import { Avatar } from '../../components/Avatar';
+import { OrganizationsPanel, type Organization } from './OrganizationsPanel';
 
 interface Member {
   id: number;
@@ -15,6 +16,8 @@ interface Member {
 interface TeamWithMembers {
   id: number;
   name: string;
+  organizationId: number | null;
+  organizationName: string | null;
   members: Member[];
 }
 
@@ -23,6 +26,7 @@ interface TeamWithMembers {
 export function TeamsAdminPage() {
   const queryClient = useQueryClient();
   const [teamName, setTeamName] = useState('');
+  const [teamOrgId, setTeamOrgId] = useState<number | ''>('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -34,6 +38,12 @@ export function TeamsAdminPage() {
     queryKey: ['admin-teams'],
     queryFn: () => apiFetch<{ teams: TeamWithMembers[] }>('/admin/teams'),
   });
+
+  const { data: orgData } = useQuery({
+    queryKey: ['admin-organizations'],
+    queryFn: () => apiFetch<{ organizations: Organization[] }>('/admin/organizations'),
+  });
+  const organizations = orgData?.organizations ?? [];
 
   // Student self-registration is closed unless opened here; opening issues a fresh join code.
   const { data: registration } = useQuery({
@@ -48,6 +58,7 @@ export function TeamsAdminPage() {
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
+    queryClient.invalidateQueries({ queryKey: ['admin-organizations'] });
   }
 
   const [search, setSearch] = useState('');
@@ -76,11 +87,22 @@ export function TeamsAdminPage() {
   }
 
   const createTeam = useMutation({
-    mutationFn: () => apiFetch('/admin/teams', { method: 'POST', body: JSON.stringify({ name: teamName }) }),
+    mutationFn: () =>
+      apiFetch('/admin/teams', {
+        method: 'POST',
+        body: JSON.stringify({ name: teamName, organizationId: teamOrgId || null }),
+      }),
     onSuccess: () => {
       setTeamName('');
       refresh();
     },
+  });
+
+  const setTeamOrg = useMutation({
+    mutationFn: ({ teamId, organizationId }: { teamId: number; organizationId: number | null }) =>
+      apiFetch(`/admin/teams/${teamId}`, { method: 'PATCH', body: JSON.stringify({ organizationId }) }),
+    onSuccess: refresh,
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not change the organization'),
   });
 
   // Deleting a team cascades to its accounts, timeline, canvas, scores and help requests — one
@@ -170,13 +192,33 @@ export function TeamsAdminPage() {
   const q = search.trim().toLowerCase();
   const visibleTeams = (data?.teams ?? [])
     .map((team) => {
-      if (!q || team.name.toLowerCase().includes(q)) return { team, members: team.members };
+      if (!q || team.name.toLowerCase().includes(q) || team.organizationName?.toLowerCase().includes(q)) {
+        return { team, members: team.members };
+      }
       return {
         team,
         members: team.members.filter((m) => m.displayName.toLowerCase().includes(q) || m.username.toLowerCase().includes(q)),
       };
     })
-    .filter(({ team, members }) => !q || members.length > 0 || team.name.toLowerCase().includes(q));
+    .filter(
+      ({ team, members }) =>
+        !q || members.length > 0 || team.name.toLowerCase().includes(q) || team.organizationName?.toLowerCase().includes(q),
+    );
+
+  // Teams grouped under their organization (alphabetical), unassigned teams last. Headers only show
+  // once an organization exists, so events that don't use organizations look exactly as before.
+  const groups: { key: string; label: string | null; items: typeof visibleTeams }[] = [];
+  for (const item of visibleTeams) {
+    const key = item.team.organizationId === null ? 'none' : String(item.team.organizationId);
+    let group = groups.find((g) => g.key === key);
+    if (!group) {
+      group = { key, label: item.team.organizationName, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  groups.sort((a, b) => (a.label === null ? 1 : b.label === null ? -1 : a.label.localeCompare(b.label)));
+  const showGroupHeaders = organizations.length > 0;
 
   return (
     <div className="page split-main-side" style={{ padding: 'var(--space-xl)' }}>
@@ -186,8 +228,8 @@ export function TeamsAdminPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search students or teams…"
-            aria-label="Search students or teams"
+            placeholder="Search students, teams or organizations…"
+            aria-label="Search students, teams or organizations"
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -207,7 +249,14 @@ export function TeamsAdminPage() {
           {visibleTeams.length === 0 && search.trim() && (
             <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No student or team matches “{search.trim()}”.</div>
           )}
-          {visibleTeams.map(({ team, members }) => (
+          {groups.map((group) => (
+            <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              {showGroupHeaders && (
+                <h2 style={{ fontSize: 14, color: 'var(--text-muted)', margin: 'var(--space-sm) 0 0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {group.label ?? 'No organization'}
+                </h2>
+              )}
+          {group.items.map(({ team, members }) => (
             <div
               key={team.id}
               style={{
@@ -219,9 +268,34 @@ export function TeamsAdminPage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.name}</strong>
-                <Button variant="destructive" onClick={() => handleDeleteTeam(team)} disabled={deleteTeam.isPending}>
-                  Delete team
-                </Button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {organizations.length > 0 && (
+                    <select
+                      value={team.organizationId ?? ''}
+                      aria-label={`Organization of ${team.name}`}
+                      disabled={setTeamOrg.isPending}
+                      onChange={(e) =>
+                        setTeamOrg.mutate({ teamId: team.id, organizationId: e.target.value ? Number(e.target.value) : null })
+                      }
+                      style={{
+                        background: 'var(--surface-1)',
+                        border: '1px solid var(--surface-border)',
+                        borderRadius: 'var(--radius-control)',
+                        padding: '2px 4px',
+                        color: 'var(--text-muted)',
+                        fontSize: 13,
+                      }}
+                    >
+                      <option value="">No organization</option>
+                      {organizations.map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <Button variant="destructive" onClick={() => handleDeleteTeam(team)} disabled={deleteTeam.isPending}>
+                    Delete team
+                  </Button>
+                </span>
               </div>
               {members.map((m) => (
                 <div key={m.id} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', padding: '4px 0' }}>
@@ -272,6 +346,8 @@ export function TeamsAdminPage() {
               {team.members.length === 0 && !search.trim() && (
                 <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No members yet.</div>
               )}
+            </div>
+          ))}
             </div>
           ))}
         </div>
@@ -334,9 +410,24 @@ export function TeamsAdminPage() {
           )}
         </section>
 
+        <OrganizationsPanel organizations={organizations} />
+
         <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New team</h2>
           <input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="Team name" aria-label="Team name" style={inputStyle} />
+          {organizations.length > 0 && (
+            <select
+              value={teamOrgId}
+              onChange={(e) => setTeamOrgId(e.target.value ? Number(e.target.value) : '')}
+              aria-label="Organization for the new team"
+              style={{ ...inputStyle, background: 'var(--surface-1)' }}
+            >
+              <option value="">No organization</option>
+              {organizations.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          )}
           <Button type="submit" variant="ghost">Create team</Button>
         </form>
 
