@@ -47,7 +47,7 @@ interface HelpRequest {
 
 interface TeamRoster {
   id: number;
-  members: { id: number; displayName: string }[];
+  members: { id: number; displayName: string; avatar?: string | null }[];
 }
 
 interface CatalogCyberRange {
@@ -283,7 +283,7 @@ export function InstructorTeamWorkspacePage() {
           ) : (
             members.map((m) => (
               <span key={m.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-primary)' }}>
-                <Avatar name={m.displayName} size={20} />
+                <Avatar name={m.displayName} avatar={m.avatar} size={20} />
                 {m.displayName}
               </span>
             ))

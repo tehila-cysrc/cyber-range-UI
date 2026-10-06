@@ -48,6 +48,7 @@ interface HelpRequest {
   teamName: string;
   cyberRangeName: string;
   requestedByName: string;
+  requestedByAvatar?: string | null;
   message: string | null;
   teamId: number;
 }
@@ -380,7 +381,7 @@ export function InstructorDashboardPage() {
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                   <span style={{ fontSize: 15, color: 'var(--text-primary)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                     <TelemetryBadge tone="alert">{hr.teamName}</TelemetryBadge>
-                    <Avatar name={hr.requestedByName} size={22} />
+                    <Avatar name={hr.requestedByName} avatar={hr.requestedByAvatar} size={22} />
                     {hr.requestedByName} needs help on {hr.cyberRangeName}
                     <span className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
                       · waiting {formatAgo(hr.createdAt).replace(' ago', '')}

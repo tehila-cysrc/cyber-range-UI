@@ -463,8 +463,9 @@ input[type='file']::file-selector-button:hover {
   padding: 0 !important;
 }
 
+/* Brand green, not the cyan topology signal — the blue ring read as off-brand next to the CySource palette. */
 :focus-visible {
-  outline: 2px solid var(--signal-secondary);
+  outline: 2px solid var(--signal-primary);
   outline-offset: 2px;
 }
 

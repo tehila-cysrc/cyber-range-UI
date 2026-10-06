@@ -90,7 +90,7 @@ router.get('/history/:cyberRangeId', (req, res) => {
          e.id AS id, e.body AS body, e.image_data_url AS imageDataUrl,
          e.is_important_finding AS isImportantFinding,
          e.after_time_limit AS afterTimeLimit,
-         e.created_at AS createdAt, u.display_name AS authorName, c.label AS categoryLabel
+         e.created_at AS createdAt, u.display_name AS authorName, u.avatar AS authorAvatar, c.label AS categoryLabel
        FROM documentation_entries e
        JOIN users u ON u.id = e.author_user_id
        LEFT JOIN documentation_categories c ON c.id = e.category_id

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/apiClient';
 import { Avatar } from '../../../components/Avatar';
+import { AvatarPicker } from '../../../components/AvatarPicker';
 import { Button } from '../../../components/Button';
 import { confirmAction } from '../../../components/ConfirmDialog';
 import { useAuthStore } from '../../../stores/authStore';
@@ -18,15 +19,17 @@ export function InstructorsView() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const create = useRosterMutation(
-    () => postJson('/admin/users', { username, password, displayName, role: 'instructor' }),
+    () => postJson('/admin/users', { username, password, displayName, avatar, role: 'instructor' }),
     'Could not create the account',
     () => {
       setUsername('');
       setPassword('');
       setDisplayName('');
+      setAvatar(null);
       setFormError(null);
     },
   );
@@ -62,7 +65,7 @@ export function InstructorsView() {
         {instructors.map((m) => (
           <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <Avatar name={m.displayName} size={22} />
+              <Avatar name={m.displayName} avatar={m.avatar} size={22} />
               <bdi>{m.displayName}</bdi> <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
               {m.id === me?.id && <span style={{ fontSize: 12, color: 'var(--signal-primary)' }}>you</span>}
             </span>
@@ -80,6 +83,7 @@ export function InstructorsView() {
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
         <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8 characters)" aria-label="Password" autoComplete="new-password" style={inputStyle} />
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
+        <AvatarPicker name={displayName || username} value={avatar} onChange={setAvatar} collapsible />
         {formError && <div style={{ color: 'var(--signal-alert)', fontSize: 14 }}>{formError}</div>}
         <Button type="submit" variant="ghost" disabled={create.isPending}>Create instructor</Button>
       </form>

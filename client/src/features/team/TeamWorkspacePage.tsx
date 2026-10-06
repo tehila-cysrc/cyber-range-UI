@@ -4,7 +4,7 @@ import { Avatar } from '../../components/Avatar';
 
 interface TeamWorkspace {
   team: { id: number; name: string };
-  members: { id: number; username: string; displayName: string }[];
+  members: { id: number; username: string; displayName: string; avatar?: string | null }[];
 }
 
 export function TeamWorkspacePage() {
@@ -122,7 +122,7 @@ export function TeamWorkspacePage() {
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar name={member.displayName} size={36} />
+              <Avatar name={member.displayName} avatar={member.avatar} size={36} />
               <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{member.displayName}</span>
             </span>
             <span className="tabular" style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-telemetry)' }}>

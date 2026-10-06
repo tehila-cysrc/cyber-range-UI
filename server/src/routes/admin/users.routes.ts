@@ -5,6 +5,7 @@ import { requireRole } from '../../middleware/requireRole.js';
 import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
 import { MIN_PASSWORD_LENGTH } from '../auth.routes.js';
+import { parseAvatar } from '../../services/avatar.service.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/instructors', (_req, res) => {
   const runId = getActiveEventRunId();
   const instructors = db
     .prepare(
-      `SELECT id, username, display_name AS displayName FROM users
+      `SELECT id, username, display_name AS displayName, avatar FROM users
        WHERE role = 'instructor' AND event_run_id = ? ORDER BY display_name COLLATE NOCASE`,
     )
     .all(runId);
@@ -45,6 +46,11 @@ router.post('/users', (req, res) => {
     res.status(400).json({ error: 'teamId is required for a student' });
     return;
   }
+  const avatar = parseAvatar(req.body?.avatar);
+  if (!avatar.ok) {
+    res.status(400).json({ error: avatar.error });
+    return;
+  }
 
   const runId = getActiveEventRunId();
   if (runId === null) {
@@ -55,8 +61,8 @@ router.post('/users', (req, res) => {
   try {
     const result = db
       .prepare(
-        `INSERT INTO users (event_run_id, username, password, role, team_id, display_name)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (event_run_id, username, password, role, team_id, display_name, avatar)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         runId,
@@ -65,6 +71,7 @@ router.post('/users', (req, res) => {
         role,
         role === 'student' ? teamId : null,
         (displayName || username).trim(),
+        avatar.avatar,
       );
 
     res.status(201).json({

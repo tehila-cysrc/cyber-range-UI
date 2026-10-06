@@ -27,7 +27,7 @@ router.get('/me', (req, res) => {
   const team = db.prepare('SELECT id, name FROM teams WHERE id = ?').get(teamId);
   const members = db
     .prepare(
-      'SELECT id, username, display_name AS displayName FROM users WHERE team_id = ? ORDER BY display_name',
+      'SELECT id, username, display_name AS displayName, avatar FROM users WHERE team_id = ? ORDER BY display_name',
     )
     .all(teamId);
 
@@ -114,7 +114,7 @@ router.get('/me/scores', (req, res) => {
       `SELECT
          s.id AS id, s.points AS points, s.is_gamified AS isGamified, s.note AS note,
          s.created_at AS createdAt, s.student_user_id AS studentUserId, s.source AS source,
-         u.display_name AS studentName,
+         u.display_name AS studentName, u.avatar AS studentAvatar,
          s.documentation_entry_id AS documentationEntryId,
          substr(e.body, 1, 140) AS documentationExcerpt,
          cr.name AS cyberRangeName
@@ -133,7 +133,7 @@ router.get('/me/scores', (req, res) => {
 
   const perStudent = db
     .prepare(
-      `SELECT u.id AS studentUserId, u.display_name AS studentName, COALESCE(SUM(s.points), 0) AS total
+      `SELECT u.id AS studentUserId, u.display_name AS studentName, u.avatar AS studentAvatar, COALESCE(SUM(s.points), 0) AS total
        FROM users u
        LEFT JOIN scores s ON s.student_user_id = u.id AND s.team_id = ?
        WHERE u.team_id = ?

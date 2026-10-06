@@ -22,7 +22,7 @@ router.get('/teams', (_req, res) => {
     .all() as { id: number; name: string; organizationId: number | null; organizationName: string | null }[];
 
   const membersStmt = db.prepare(
-    'SELECT id, username, display_name AS displayName FROM users WHERE team_id = ? ORDER BY display_name',
+    'SELECT id, username, display_name AS displayName, avatar FROM users WHERE team_id = ? ORDER BY display_name',
   );
 
   const result = teams.map((team) => ({

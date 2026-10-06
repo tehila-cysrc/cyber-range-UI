@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('student', 'instructor')),
   team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
+  avatar TEXT, -- optional preset key (avatar.service.ts); NULL = initials
   UNIQUE (event_run_id, username)
 );
 

@@ -6,6 +6,7 @@ export interface AuthUser {
   role: 'student' | 'instructor';
   teamId: number | null;
   displayName: string;
+  avatar?: string | null; // preset key (lib/avatars.ts); absent on sessions stored before avatars existed
 }
 
 interface AuthState {

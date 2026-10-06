@@ -6,6 +6,7 @@ export interface Member {
   id: number;
   username: string;
   displayName: string;
+  avatar?: string | null;
 }
 
 export interface Team {

@@ -202,6 +202,8 @@ export function migrate() {
   // Each team optionally belongs to one organization. Deleting an organization un-assigns its teams
   // (SET NULL) — it never deletes teams or their event history.
   addColumnIfMissing('teams', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE SET NULL');
+  // Optional preset avatar key (services/avatar.service.ts); NULL keeps the initials circle.
+  addColumnIfMissing('users', 'avatar', 'TEXT');
   db.exec(
     `UPDATE team_cyber_range_progress SET first_completed_at = completed_at
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,

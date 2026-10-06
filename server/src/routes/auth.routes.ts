@@ -14,6 +14,7 @@ import {
   type JoinScope,
 } from '../services/registration.service.js';
 import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
+import { parseAvatar, setOwnAvatar } from '../services/avatar.service.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ interface UserRow {
   role: string;
   teamId: number | null;
   displayName: string;
+  avatar: string | null;
 }
 
 router.post('/login', (req, res) => {
@@ -47,7 +49,7 @@ router.post('/login', (req, res) => {
   // Plaintext comparison is an explicit, documented decision for this internal tool — see CLAUDE.md.
   const user = db
     .prepare(
-      `SELECT id, username, password, role, team_id AS teamId, display_name AS displayName
+      `SELECT id, username, password, role, team_id AS teamId, display_name AS displayName, avatar
        FROM users WHERE event_run_id = ? AND username = ?`,
     )
     .get(activeRun.id, username) as UserRow | undefined;
@@ -76,6 +78,7 @@ router.post('/login', (req, res) => {
       role: user.role,
       teamId: user.teamId,
       displayName: user.displayName,
+      avatar: user.avatar,
     },
   });
 });
@@ -128,6 +131,11 @@ router.post('/register', (req, res) => {
   const scope = checkJoinCode(req, res);
   if (!scope) return;
   const { teamId, username, password, displayName } = req.body ?? {};
+  const avatar = parseAvatar(req.body?.avatar);
+  if (!avatar.ok) {
+    res.status(400).json({ error: avatar.error });
+    return;
+  }
 
   if (typeof username !== 'string' || !username.trim()) {
     res.status(400).json({ error: 'username is required' });
@@ -163,10 +171,10 @@ router.post('/register', (req, res) => {
   try {
     const result = db
       .prepare(
-        `INSERT INTO users (event_run_id, username, password, role, team_id, display_name)
-         VALUES (?, ?, ?, 'student', ?, ?)`,
+        `INSERT INTO users (event_run_id, username, password, role, team_id, display_name, avatar)
+         VALUES (?, ?, ?, 'student', ?, ?, ?)`,
       )
-      .run(activeRun.id, username.trim(), password, teamId, (displayName || username).trim());
+      .run(activeRun.id, username.trim(), password, teamId, (displayName || username).trim(), avatar.avatar);
     userId = Number(result.lastInsertRowid);
   } catch (err) {
     res.status(409).json({ error: `username "${username}" is already taken this run` });
@@ -192,6 +200,7 @@ router.post('/register', (req, res) => {
       role: 'student',
       teamId,
       displayName: (displayName || username).trim(),
+      avatar: avatar.avatar,
     },
   });
 });
@@ -208,7 +217,7 @@ router.post('/logout', requireAuth, (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
   const user = db
     .prepare(
-      'SELECT id, username, role, team_id AS teamId, display_name AS displayName FROM users WHERE id = ?',
+      'SELECT id, username, role, team_id AS teamId, display_name AS displayName, avatar FROM users WHERE id = ?',
     )
     .get(req.user!.id);
   res.json({ user });
@@ -223,6 +232,16 @@ router.patch('/me', requireAuth, (req, res) => {
     return;
   }
   res.json({ user: result.user, passwordChanged: result.passwordChanged });
+});
+
+// Pick or clear (null) the signed-in user's preset avatar — see avatar.service.ts.
+router.put('/me/avatar', requireAuth, (req, res) => {
+  const result = setOwnAvatar(req.user!.id, req.body?.avatar);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json({ avatar: result.avatar });
 });
 
 export default router;

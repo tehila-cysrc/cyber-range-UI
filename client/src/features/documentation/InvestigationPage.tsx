@@ -83,6 +83,7 @@ interface DocEntry {
   afterTimeLimit?: number;
   createdAt: string;
   authorName: string;
+  authorAvatar?: string | null;
   categoryKey: string | null;
   categoryLabel: string | null;
   ttps: EntryTtp[];
@@ -679,7 +680,7 @@ function TimelineEntry({
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Avatar name={entry.authorName} size={20} />
+          <Avatar name={entry.authorName} avatar={entry.authorAvatar} size={20} />
           {entry.authorName} · {formatEntryTime(entry.createdAt)}
         </span>
         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

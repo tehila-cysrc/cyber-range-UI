@@ -15,6 +15,7 @@ export interface ProfileUser {
   role: string;
   teamId: number | null;
   displayName: string;
+  avatar: string | null;
 }
 
 export type ProfileUpdateResult =
@@ -27,7 +28,7 @@ export type ProfileUpdateResult =
 export function updateOwnProfile(userId: number, currentToken: string, input: ProfileUpdateInput): ProfileUpdateResult {
   const user = db
     .prepare(
-      `SELECT id, event_run_id AS runId, username, password, role, team_id AS teamId, display_name AS displayName
+      `SELECT id, event_run_id AS runId, username, password, role, team_id AS teamId, display_name AS displayName, avatar
        FROM users WHERE id = ?`,
     )
     .get(userId) as (ProfileUser & { runId: number; password: string }) | undefined;
@@ -90,7 +91,7 @@ export function updateOwnProfile(userId: number, currentToken: string, input: Pr
 
   return {
     ok: true,
-    user: { id: user.id, username, role: user.role, teamId: user.teamId, displayName },
+    user: { id: user.id, username, role: user.role, teamId: user.teamId, displayName, avatar: user.avatar },
     passwordChanged,
   };
 }

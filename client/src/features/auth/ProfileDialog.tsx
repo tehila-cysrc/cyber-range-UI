@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '../../components/Button';
+import { AvatarPicker } from '../../components/AvatarPicker';
 import { apiFetch } from '../../lib/apiClient';
 import { useAuthStore, type AuthUser } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
@@ -37,6 +38,20 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+
+  // The avatar is cosmetic, so it saves on click without the current password (PUT /auth/me/avatar).
+  const saveAvatar = useMutation({
+    mutationFn: (avatar: string | null) =>
+      apiFetch<{ avatar: string | null }>('/auth/me/avatar', { method: 'PUT', body: JSON.stringify({ avatar }) }),
+    onSuccess: ({ avatar }) => {
+      const current = useAuthStore.getState();
+      if (current.token && current.user) setAuth(current.token, { ...current.user, avatar });
+      // Member lists, timelines and help requests carry the avatar too.
+      queryClient.invalidateQueries();
+    },
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not save the avatar', 'error'),
+  });
 
   useEffect(() => {
     setTimeout(() => firstFieldRef.current?.focus(), 0);
@@ -113,6 +128,14 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
         <h2 id="profile-dialog-title" style={{ margin: 0, fontSize: 17, color: 'var(--text-primary)' }}>
           Edit profile
         </h2>
+        <div style={labelStyle}>
+          Avatar — saved as soon as you pick one
+          <AvatarPicker
+            name={user.displayName}
+            value={user.avatar ?? null}
+            onChange={(avatar) => saveAvatar.mutate(avatar)}
+          />
+        </div>
         <label style={labelStyle}>
           Username
           <input ref={firstFieldRef} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" style={fieldStyle} />

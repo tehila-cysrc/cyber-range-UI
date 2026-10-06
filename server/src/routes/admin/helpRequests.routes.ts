@@ -17,7 +17,7 @@ router.get('/help-requests', (req, res) => {
       hr.message AS message,
       t.id AS teamId, t.name AS teamName,
       cr.name AS cyberRangeName,
-      u.display_name AS requestedByName
+      u.display_name AS requestedByName, u.avatar AS requestedByAvatar
     FROM help_requests hr
     JOIN teams t ON t.id = hr.team_id
     JOIN cyber_ranges cr ON cr.id = hr.cyber_range_id

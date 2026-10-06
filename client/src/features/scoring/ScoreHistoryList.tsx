@@ -12,6 +12,7 @@ interface ScoreEntry {
   createdAt: string;
   studentUserId: number | null;
   studentName: string | null;
+  studentAvatar?: string | null;
   documentationExcerpt: string | null;
   cyberRangeName: string | null;
   source?: 'manual' | 'ttp';
@@ -20,7 +21,7 @@ interface ScoreEntry {
 interface ScoresResponse {
   entries: ScoreEntry[];
   teamTotal: number;
-  perStudent: { studentUserId: number; studentName: string; total: number }[];
+  perStudent: { studentUserId: number; studentName: string; studentAvatar?: string | null; total: number }[];
 }
 
 // US-007: student-facing progress view — individual + team scoring, no milestones entity.
@@ -67,7 +68,7 @@ export function ScoreHistoryList() {
             }}
           >
             <div style={{ fontSize: 13, color: 'var(--text-telemetry)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Avatar name={s.studentName} size={18} />
+              <Avatar name={s.studentName} avatar={s.studentAvatar} size={18} />
               {s.studentName}
             </div>
             <div className="tabular" style={{ fontSize: 20, color: 'var(--text-primary)' }}>
@@ -101,7 +102,7 @@ export function ScoreHistoryList() {
           >
             <span style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
               <span style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {entry.studentName && <Avatar name={entry.studentName} size={20} />}
+                {entry.studentName && <Avatar name={entry.studentName} avatar={entry.studentAvatar} size={20} />}
                 {entry.studentName ?? 'Whole team'}
                 {entry.isGamified ? <TelemetryBadge tone="tertiary">Celebrated</TelemetryBadge> : null}
                 {entry.source === 'ttp' ? <TelemetryBadge tone="secondary">ATT&amp;CK</TelemetryBadge> : null}

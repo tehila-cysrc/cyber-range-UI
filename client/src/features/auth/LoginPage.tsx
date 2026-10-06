@@ -4,6 +4,7 @@ import { apiFetch, ApiError, SIGNED_OUT_NOTE_KEY } from '../../lib/apiClient';
 import { useAuthStore, type AuthUser } from '../../stores/authStore';
 import { Button } from '../../components/Button';
 import logoGreenUrl from '../../assets/logo-wordmark-green.svg';
+import { AvatarPicker } from '../../components/AvatarPicker';
 
 interface AuthResponse {
   token: string;
@@ -29,6 +30,7 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<number | ''>('');
   const [teams, setTeams] = useState<Team[]>([]);
   // Self-registration is instructor-controlled: closed unless the instructor opened it and handed out
@@ -128,7 +130,7 @@ export function LoginPage() {
     try {
       const res = await apiFetch<AuthResponse>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ teamId, username, password, displayName, joinCode }),
+        body: JSON.stringify({ teamId, username, password, displayName, joinCode, avatar }),
       });
       setAuth(res.token, res.user);
       navigate('/');
@@ -289,6 +291,9 @@ export function LoginPage() {
             <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>Display name (optional)</span>
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={inputStyle} />
           </label>
+        )}
+        {mode === 'register' && (
+          <AvatarPicker name={displayName || username} value={avatar} onChange={setAvatar} collapsible />
         )}
 
         </>

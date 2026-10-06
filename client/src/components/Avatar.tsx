@@ -1,3 +1,5 @@
+import { avatarUrl } from '../lib/avatars';
+
 const ACCENT_COUNT = 8;
 
 // Deterministic — the same person always gets the same color, across every screen that renders
@@ -12,30 +14,48 @@ function accentIndex(seed: string): number {
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return '?';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) return [...words[0]].slice(0, 2).join('').toUpperCase();
+  return ([...words[0]][0] + [...words[1]][0]).toUpperCase();
 }
 
-export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
+// A user's optional preset character (users.avatar, see lib/avatars.ts), or by default a tinted
+// initials circle in their accent color.
+export function Avatar({ name, avatar, size = 28 }: { name: string; avatar?: string | null; size?: number }) {
+  const url = avatarUrl(avatar);
+  const base: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: size,
+    height: size,
+    minWidth: size,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    flexShrink: 0,
+  };
+
+  if (url) {
+    return (
+      <span title={name} style={{ ...base, boxShadow: '0 0 0 1px var(--surface-border-strong)' }}>
+        <img src={url} alt="" width={size} height={size} style={{ display: 'block', width: '100%', height: '100%' }} />
+      </span>
+    );
+  }
+
   const color = `var(--user-accent-${accentIndex(name) + 1})`;
   return (
     <span
       title={name}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: size,
-        height: size,
-        minWidth: size,
-        borderRadius: '50%',
-        border: `1px solid ${color}`,
-        background: 'var(--surface-1)',
-        color,
-        fontFamily: 'var(--font-mono)',
-        fontSize: Math.round(size * 0.38),
-        fontWeight: 500,
-        letterSpacing: '0.02em',
+        ...base,
+        background: `linear-gradient(135deg, color-mix(in srgb, ${color} 38%, var(--surface-2)), color-mix(in srgb, ${color} 14%, var(--surface-1)))`,
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 55%, transparent)`,
+        color: `color-mix(in srgb, ${color} 55%, #ffffff)`,
+        fontFamily: 'var(--font-sans)',
+        fontSize: Math.max(9, Math.round(size * 0.4)),
+        fontWeight: 600,
+        lineHeight: 1,
+        letterSpacing: '0.01em',
       }}
     >
       {initials(name)}

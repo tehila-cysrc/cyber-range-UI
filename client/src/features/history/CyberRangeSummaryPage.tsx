@@ -15,6 +15,7 @@ interface DocEntry {
   afterTimeLimit?: number;
   createdAt: string;
   authorName: string;
+  authorAvatar?: string | null;
   categoryLabel: string | null;
 }
 
@@ -125,7 +126,7 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
                   />
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Avatar name={entry.authorName} size={20} />
+                      <Avatar name={entry.authorName} avatar={entry.authorAvatar} size={20} />
                       <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{entry.authorName}</span>
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-telemetry)' }}>
                         {new Date(entry.createdAt).toLocaleString()}

@@ -45,6 +45,7 @@ interface DocEntry {
   body: string;
   authorUserId: number;
   authorName: string;
+  authorAvatar?: string | null;
   isImportantFinding: number;
   afterTimeLimit?: number;
   createdAt: string;
@@ -385,7 +386,7 @@ export function InstructorScoringPanel() {
                       gap: 8,
                     }}
                   >
-                    <Avatar name={entry.authorName} size={20} />
+                    <Avatar name={entry.authorName} avatar={entry.authorAvatar} size={20} />
                     {entry.authorName} ·{' '}
                     {new Date(entry.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     {entry.afterTimeLimit ? (

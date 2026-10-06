@@ -29,6 +29,7 @@ const ENTRY_COLUMNS = `
   e.created_at AS createdAt,
   u.id AS authorUserId,
   u.display_name AS authorName,
+  u.avatar AS authorAvatar,
   c.key AS categoryKey,
   c.label AS categoryLabel`;
 

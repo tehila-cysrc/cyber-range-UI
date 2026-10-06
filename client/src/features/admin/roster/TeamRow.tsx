@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Avatar } from '../../../components/Avatar';
+import { AvatarPicker } from '../../../components/AvatarPicker';
 import { Button } from '../../../components/Button';
 import { confirmAction } from '../../../components/ConfirmDialog';
 import { MoreMenu } from './MoreMenu';
@@ -27,6 +28,7 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
 
@@ -43,12 +45,13 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
   );
   const deleteUser = useRosterMutation((id: number) => postJson(`/admin/users/${id}`, {}, 'DELETE'), 'Could not delete the account');
   const addStudent = useRosterMutation(
-    () => postJson('/admin/users', { username, password, displayName, role: 'student', teamId: team.id }),
+    () => postJson('/admin/users', { username, password, displayName, avatar, role: 'student', teamId: team.id }),
     'Could not create the account',
     () => {
       setUsername('');
       setPassword('');
       setDisplayName('');
+      setAvatar(null);
       setFormError(null);
       usernameRef.current?.focus(); // ready for the next student
     },
@@ -174,7 +177,7 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
               style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', padding: '5px 0' }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <Avatar name={m.displayName} size={22} />
+                <Avatar name={m.displayName} avatar={m.avatar} size={22} />
                 <bdi>{m.displayName}</bdi> <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -217,6 +220,9 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
               <input ref={usernameRef} autoFocus value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={{ ...inputStyle, flex: '1 1 120px' }} />
               <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8)" aria-label="Password" autoComplete="new-password" style={{ ...inputStyle, flex: '1 1 120px' }} />
               <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={{ ...inputStyle, flex: '1 1 140px' }} />
+              <div style={{ flexBasis: '100%' }}>
+                <AvatarPicker name={displayName || username} value={avatar} onChange={setAvatar} collapsible />
+              </div>
               <Button type="submit" variant="ghost" disabled={addStudent.isPending}>Add</Button>
               <button type="button" onClick={() => { setAdding(false); setFormError(null); }} style={linkButtonStyle}>cancel</button>
               {formError && <div style={{ flexBasis: '100%', color: 'var(--signal-alert)', fontSize: 13 }}>{formError}</div>}
