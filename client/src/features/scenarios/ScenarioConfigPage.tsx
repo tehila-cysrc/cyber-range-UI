@@ -11,6 +11,7 @@ import { TechniquePicker } from '../../components/TechniquePicker';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { techniqueDisplayName, useMitreCatalog } from '../../lib/mitre';
 import { formatEntryTime } from '../documentation/InvestigationPage';
+import { ScenarioSideNav, useSelectedScenario } from './ScenarioSideNav';
 
 interface CyberRange {
   id: number;
@@ -88,7 +89,6 @@ function toLocalInputValue(date: Date) {
 export function ScenarioConfigPage() {
   const queryClient = useQueryClient();
   const { data: catalog } = useMitreCatalog();
-  const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
   const [creating, setCreating] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -97,6 +97,7 @@ export function ScenarioConfigPage() {
     queryKey: ['cyber-ranges'],
     queryFn: () => apiFetch<{ cyberRanges: CyberRange[] }>('/cyber-ranges'),
   });
+  const [cyberRangeId, setCyberRangeId] = useSelectedScenario(rangesData?.cyberRanges);
   const expectedKey = ['expected-ttps', cyberRangeId];
   const { data, error } = useQuery({
     queryKey: expectedKey,
@@ -144,41 +145,36 @@ export function ScenarioConfigPage() {
   });
   const selectedName = rangesData?.cyberRanges.find((cr) => cr.id === cyberRangeId)?.name;
 
+  function selectScenario(id: number) {
+    setCyberRangeId(id);
+    setCreating(false);
+    setEditingDetails(false);
+    setDeleteError(null);
+  }
+
   return (
-    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+    <div className="page side-layout" style={{ padding: 'var(--space-xl)' }}>
+      <aside>
+        <ScenarioSideNav
+          ranges={rangesData?.cyberRanges ?? []}
+          activeId={creating ? null : cyberRangeId}
+          onSelect={selectScenario}
+          onAdd={() => {
+            setCreating(true);
+            setEditingDetails(false);
+          }}
+        />
+      </aside>
+      <main style={{ minWidth: 0 }}>
       <div style={{ ...monoLabel, marginBottom: 4 }}>Scenario configuration</div>
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Scenarios</h1>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
-        <select
-          aria-label="Scenario"
-          value={cyberRangeId}
-          onChange={(e) => {
-            setCyberRangeId(e.target.value ? Number(e.target.value) : '');
-            setCreating(false);
-            setEditingDetails(false);
-            setDeleteError(null);
-          }}
-          style={{ ...fieldStyle, maxWidth: '100%' }}
-        >
-          <option value="">Select a scenario…</option>
-          {rangesData?.cyberRanges.map((cr) => (
-            <option key={cr.id} value={cr.id}>
-              {cr.dayLabel} — {cr.name}
-            </option>
-          ))}
-        </select>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            setCreating(true);
-            setCyberRangeId('');
-          }}
-          style={{ padding: '6px 14px', fontSize: 14 }}
-        >
-          + New scenario
-        </Button>
+        {!creating && selectedName && (
+          <h2 style={{ fontSize: 18, color: 'var(--text-primary)', margin: 0, marginInlineEnd: 'auto' }}>
+            <bdi>{selectedName}</bdi>
+          </h2>
+        )}
         {cyberRangeId !== '' && !creating && (
           <Button type="button" variant="ghost" onClick={() => setEditingDetails((v) => !v)} style={{ padding: '6px 14px', fontSize: 14 }}>
             {editingDetails ? 'Hide details' : 'Edit details & student briefing'}
@@ -219,6 +215,7 @@ export function ScenarioConfigPage() {
           onSaved={(id) => {
             setCreating(false);
             setCyberRangeId(id);
+            queryClient.invalidateQueries({ queryKey: ['cyber-ranges'] });
           }}
         />
       )}
@@ -293,6 +290,7 @@ export function ScenarioConfigPage() {
           />
         </section>
       )}
+      </main>
     </div>
   );
 }

@@ -102,32 +102,44 @@ input[type='file']::file-selector-button:hover {
   }
 }
 
-/* Roster: organization list beside the selected organization; a single picker on narrow screens. */
-.roster-layout {
+/* Side navigation (components/SideNav.tsx): a list of items beside the selected one — Roster,
+   Instructor dashboard, Scenarios, Topology Admin. Below 900px the list collapses into one picker. */
+.side-layout {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: var(--space-xl);
   align-items: start;
 }
-.roster-layout > aside {
+.side-layout > aside {
   position: sticky;
   top: var(--space-md);
+  max-height: calc(100vh - 2 * var(--space-md));
+  overflow-y: auto;
 }
-.roster-picker {
+/* Topology Admin's canvas needs the width: its list can be hidden. */
+.side-layout.side-layout--collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.side-layout.side-layout--collapsed > aside {
+  display: none;
+}
+.side-picker {
   display: none;
 }
 @media (max-width: 900px) {
-  .roster-layout {
+  .side-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-md);
   }
-  .roster-layout > aside {
+  .side-layout > aside {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
-  .roster-picker {
+  .side-picker {
     display: block;
   }
-  .roster-sidebar {
+  .side-list {
     display: none !important;
   }
 }

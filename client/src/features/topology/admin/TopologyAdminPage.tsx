@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ScenarioSideNav, useSelectedScenario } from '../../scenarios/ScenarioSideNav';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../../lib/apiClient';
@@ -65,10 +66,30 @@ const fieldStyle: React.CSSProperties = {
 
 type Selection = { type: 'node'; id: number } | { type: 'zone'; id: number } | null;
 
+// The scenario list can be hidden to give the canvas the full width; remembered per browser.
+const LIST_HIDDEN_KEY = 'topology-admin:list-hidden';
+function readListHidden() {
+  try {
+    return localStorage.getItem(LIST_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function TopologyAdminPage() {
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
-  const [cyberRangeId, setCyberRangeId] = useState<number | ''>('');
+  const [listHidden, setListHidden] = useState(readListHidden);
+  function toggleList() {
+    setListHidden((hidden) => {
+      try {
+        localStorage.setItem(LIST_HIDDEN_KEY, hidden ? '0' : '1');
+      } catch {
+        // private window / blocked storage — the toggle still works for this visit
+      }
+      return !hidden;
+    });
+  }
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
   // Bumped after Auto-arrange and after adding a node/zone so the graph remounts and re-runs fitView
@@ -85,6 +106,7 @@ export function TopologyAdminPage() {
     queryKey: ['cyber-ranges'],
     queryFn: () => apiFetch<{ cyberRanges: CyberRange[] }>('/cyber-ranges'),
   });
+  const [cyberRangeId, setCyberRangeId] = useSelectedScenario(rangesData?.cyberRanges);
 
   const { data: topologyData, dataUpdatedAt: topologyVersion } = useQuery({
     enabled: cyberRangeId !== '',
@@ -204,19 +226,45 @@ export function TopologyAdminPage() {
     addZone.mutate();
   }
 
+  const selectedRange = rangesData?.cyberRanges.find((cr) => cr.id === cyberRangeId);
+
   return (
-    <div style={{ padding: 'var(--space-xl)' }}>
-      <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>Topology Admin</h1>
+    <div className={`side-layout${listHidden ? ' side-layout--collapsed' : ''}`} style={{ padding: 'var(--space-xl)' }}>
+      <aside>
+        <ScenarioSideNav
+          ranges={rangesData?.cyberRanges ?? []}
+          activeId={cyberRangeId}
+          onSelect={(id) => {
+            setCyberRangeId(id);
+            setSelection(null);
+          }}
+        />
+      </aside>
+      <main style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-md)', flexWrap: 'wrap', margin: '0 0 var(--space-md)' }}>
+        <button
+          type="button"
+          onClick={toggleList}
+          aria-pressed={!listHidden}
+          title={listHidden ? 'Show the scenario list' : 'Hide the scenario list (wider canvas)'}
+          style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '4px 10px' }}
+        >
+          {listHidden ? '☰ Scenarios' : '⟨ Hide list'}
+        </button>
+        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Topology Admin</h1>
+        {selectedRange && (
+          <span style={{ fontSize: 15, color: 'var(--text-muted)' }}>
+            · <bdi>{selectedRange.dayLabel} — {selectedRange.name}</bdi>
+          </span>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
-        <select value={cyberRangeId} onChange={(e) => { setCyberRangeId(e.target.value ? Number(e.target.value) : ''); setSelection(null); }} style={fieldStyle}>
-          <option value="">Select a Cyber Range…</option>
-          {rangesData?.cyberRanges.map((cr) => (
-            <option key={cr.id} value={cr.id}>
-              {cr.dayLabel} — {cr.name}
-            </option>
-          ))}
-        </select>
+        {rangesData && rangesData.cyberRanges.length === 0 && (
+          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+            No scenarios yet — create one on the <Link to="/admin/scenarios" style={{ color: 'var(--signal-secondary)' }}>Scenarios</Link> page.
+          </span>
+        )}
 
         {cyberRangeId !== '' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)' }}>
@@ -369,6 +417,7 @@ export function TopologyAdminPage() {
 
         </>
       )}
+      </main>
     </div>
   );
 }

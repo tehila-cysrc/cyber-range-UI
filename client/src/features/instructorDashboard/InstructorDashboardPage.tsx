@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { Button } from '../../components/Button';
@@ -10,10 +10,13 @@ import { Avatar } from '../../components/Avatar';
 import { LifeBuoyIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { mttdSummaryLabel, type MttdSummary } from '../../lib/mitre';
+import { SideNav, type SideNavItem } from '../../components/SideNav';
 
 interface TeamStatus {
   teamId: number;
   teamName: string;
+  organizationId: number | null;
+  organizationName: string | null;
   active: {
     cyberRangeId: number;
     name: string;
@@ -58,6 +61,7 @@ interface CatalogCyberRange {
 
 interface ActiveAccessSession {
   id: number;
+  teamId: number | null;
   teamName: string | null; // null = an instructor's own Connect session, not tied to any team
   username: string;
   nodeLabel: string;
@@ -121,6 +125,13 @@ export function InstructorDashboardPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkRangeId, setBulkRangeId] = useState<number | ''>('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Organization filter (?org=all|none|<id>) — only offered once some team belongs to an organization.
+  const [params, setParams] = useSearchParams();
+  const rawOrgFilter = params.get('org') ?? 'all';
+  function selectOrg(key: string) {
+    setParams(key === 'all' ? {} : { org: key }, { replace: true });
+    setSelected(new Set()); // bulk actions never reach teams that are out of view
+  }
 
   const { data: dashboardData } = useQuery({
     queryKey: ['instructor-dashboard'],
@@ -295,15 +306,37 @@ export function InstructorDashboardPage() {
   useSocketEvent('access_session:started', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
   useSocketEvent('access_session:ended', () => queryClient.invalidateQueries({ queryKey: ['access-sessions'] }));
 
-  const sortedTeams = [...(dashboardData?.teams ?? [])].sort((a, b) =>
+  const allTeams = dashboardData?.teams ?? [];
+  const hasOrganizations = allTeams.some((t) => t.organizationId !== null);
+  // A stale ?org= (organization deleted, or its teams moved) falls back to all teams.
+  const orgFilter =
+    rawOrgFilter === 'all' ||
+    allTeams.some((t) => (rawOrgFilter === 'none' ? t.organizationId === null : String(t.organizationId) === rawOrgFilter))
+      ? rawOrgFilter
+      : 'all';
+  const inFilter = (t: TeamStatus) =>
+    !hasOrganizations || orgFilter === 'all' || (orgFilter === 'none' ? t.organizationId === null : String(t.organizationId) === orgFilter);
+  const visibleTeams = allTeams.filter(inFilter);
+  const visibleTeamIds = new Set(visibleTeams.map((t) => t.teamId));
+  const filtering = hasOrganizations && orgFilter !== 'all';
+  const visibleHelp = (helpData?.helpRequests ?? []).filter((hr) => !filtering || visibleTeamIds.has(hr.teamId));
+  // An instructor's own Connect session (teamId null) belongs to no organization — shown under All only.
+  const visibleSessions = (accessSessionsData?.sessions ?? []).filter((s) => !filtering || (s.teamId !== null && visibleTeamIds.has(s.teamId)));
+
+  const sortedTeams = [...visibleTeams].sort((a, b) =>
     sortBy === 'name' ? a.teamName.localeCompare(b.teamName) : attentionRank(b) - attentionRank(a) || a.teamName.localeCompare(b.teamName),
   );
 
-  return (
-    <div className="page" style={{ padding: 'var(--space-xl)' }}>
+  const content = (
+    <div style={{ minWidth: 0 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: '0 0 var(--space-md)' }}>
           Instructor Dashboard
+          {filtering && (
+            <span style={{ fontSize: 15, color: 'var(--text-muted)', fontWeight: 400 }}>
+              {' '}· <bdi>{orgFilter === 'none' ? 'No organization' : visibleTeams[0]?.organizationName ?? ''}</bdi>
+            </span>
+          )}
         </h1>
         <label style={{ fontSize: 14, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
@@ -315,7 +348,7 @@ export function InstructorDashboardPage() {
         </label>
       </div>
 
-      {helpData && helpData.helpRequests.length > 0 && (
+      {visibleHelp.length > 0 && (
         <div style={{ marginBottom: 'var(--space-xl)' }}>
           <h2
             style={{
@@ -331,7 +364,7 @@ export function InstructorDashboardPage() {
             Open help requests
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-            {helpData.helpRequests.map((hr) => (
+            {visibleHelp.map((hr) => (
               <div
                 key={hr.id}
                 style={{
@@ -369,13 +402,13 @@ export function InstructorDashboardPage() {
         </div>
       )}
 
-      {accessSessionsData && accessSessionsData.sessions.length > 0 && (
+      {visibleSessions.length > 0 && (
         <div style={{ marginBottom: 'var(--space-xl)' }}>
           <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: '0 0 var(--space-sm)' }}>
             Active access sessions
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-            {accessSessionsData.sessions.map((s) => (
+            {visibleSessions.map((s) => (
               <div
                 key={s.id}
                 style={{
@@ -433,7 +466,7 @@ export function InstructorDashboardPage() {
       )}
 
       {(() => {
-        const teams = dashboardData?.teams ?? [];
+        const teams = visibleTeams;
         const outOfTime = teams.filter(isOutOfTime);
         const selectedTeams = teams.filter((t) => selected.has(t.teamId));
         return (
@@ -572,7 +605,14 @@ export function InstructorDashboardPage() {
                     })
                   }
                 />
-                <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{team.teamName}</strong>
+                <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}><bdi>{team.teamName}</bdi></strong>
+                  {hasOrganizations && !filtering && (
+                    <span style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
+                      <bdi>{team.organizationName ?? 'No organization'}</bdi>
+                    </span>
+                  )}
+                </span>
               </label>
               <span style={{ display: 'flex', gap: 6 }}>
                 {team.openHelpCount > 0 && <TelemetryBadge tone="alert">{team.openHelpCount} help</TelemetryBadge>}
@@ -689,6 +729,61 @@ export function InstructorDashboardPage() {
           </div>
         ))}
       </div>
+      {filtering && sortedTeams.length === 0 && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>No teams in this organization.</div>
+      )}
+    </div>
+  );
+
+  if (!hasOrganizations) {
+    return (
+      <div className="page" style={{ padding: 'var(--space-xl)' }}>
+        {content}
+      </div>
+    );
+  }
+
+  // Sidebar: All + one entry per organization (+ unassigned teams), each with what needs the instructor
+  // right now — open help requests (red) and teams out of time (amber) — so trouble is visible without
+  // opening each organization.
+  const helpByTeam = new Map<number, number>();
+  for (const hr of helpData?.helpRequests ?? []) helpByTeam.set(hr.teamId, (helpByTeam.get(hr.teamId) ?? 0) + 1);
+  const navItem = (key: string, label: string, teams: TeamStatus[], muted = false): SideNavItem => ({
+    key,
+    label,
+    muted,
+    meta: String(teams.length),
+    metaTitle: `${teams.length} teams`,
+    badges: [
+      { count: teams.reduce((n, t) => n + (helpByTeam.get(t.teamId) ?? 0), 0), tone: 'alert', title: 'open help requests' },
+      { count: teams.filter(isOutOfTime).length, tone: 'warn', title: 'teams out of time' },
+    ],
+  });
+  const orgs = new Map<number, { name: string; teams: TeamStatus[] }>();
+  for (const t of allTeams) {
+    if (t.organizationId === null) continue;
+    const entry = orgs.get(t.organizationId) ?? { name: t.organizationName ?? '', teams: [] };
+    entry.teams.push(t);
+    orgs.set(t.organizationId, entry);
+  }
+  const unassigned = allTeams.filter((t) => t.organizationId === null);
+  const orgItems = [...orgs.entries()]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name))
+    .map(([id, o]) => navItem(String(id), o.name, o.teams));
+  if (unassigned.length > 0) orgItems.push(navItem('none', 'No organization', unassigned, true));
+
+  return (
+    <div className="page side-layout" style={{ padding: 'var(--space-xl)' }}>
+      <aside>
+        <SideNav
+          title="Organizations"
+          groups={[{ items: [navItem('all', 'All teams', allTeams)] }, { items: orgItems }]}
+          activeKey={orgFilter}
+          onSelect={selectOrg}
+          filterThreshold={12}
+        />
+      </aside>
+      {content}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { SideNav, type SideNavItem } from '../../components/SideNav';
 import { OrgDetail } from './roster/OrgDetail';
 import { InstructorsView } from './roster/InstructorsView';
 import {
@@ -34,7 +35,7 @@ export function TeamsAdminPage() {
   const selectedOrg = selection.kind === 'org' ? organizations.find((o) => o.id === selection.id) ?? null : null;
 
   return (
-    <div className="page roster-layout" style={{ padding: 'var(--space-xl)' }}>
+    <div className="page side-layout" style={{ padding: 'var(--space-xl)' }}>
       <aside style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', minWidth: 0 }}>
         <input
           value={search}
@@ -75,8 +76,13 @@ function resolveSelection(raw: string | null, organizations: Organization[], loa
   return organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' };
 }
 
-function sameSelection(a: Selection, b: Selection) {
-  return a.kind === b.kind && (a.kind !== 'org' || (b.kind === 'org' && a.id === b.id));
+function selectionKey(s: Selection) {
+  return s.kind === 'org' ? `org-${s.id}` : s.kind;
+}
+
+function keyToSelection(key: string): Selection {
+  if (key === 'none' || key === 'instructors') return { kind: key };
+  return { kind: 'org', id: Number(key.slice(4)) };
 }
 
 function Sidebar({
@@ -90,7 +96,47 @@ function Sidebar({
   selection: Selection;
   onSelect: (s: Selection) => void;
 }) {
-  const [creating, setCreating] = useState(false);
+  const students = (orgId: number | null) =>
+    teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
+  const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
+  const meta = (teamCount: number, studentCount: number) => ({
+    meta: `${teamCount} · ${studentCount}`,
+    metaTitle: `${teamCount} teams · ${studentCount} students`,
+  });
+
+  const orgItems: SideNavItem[] = [
+    ...organizations.map((o) => ({
+      key: `org-${o.id}`,
+      label: o.name,
+      ...meta(o.teamCount, students(o.id)),
+      dot: o.joinCode ? { title: 'Join code open' } : undefined,
+    })),
+    // Always offered when there are no organizations (it's then simply "Teams"); otherwise only when
+    // some team is actually unassigned.
+    ...(organizations.length === 0 || unassignedTeams > 0
+      ? [{
+          key: 'none',
+          label: organizations.length > 0 ? 'No organization' : 'Teams',
+          ...meta(unassignedTeams, students(null)),
+          muted: organizations.length > 0,
+        }]
+      : []),
+  ];
+
+  return (
+    <SideNav
+      title="Organizations"
+      groups={[{ items: orgItems }, { items: [{ key: 'instructors', label: 'Instructors' }] }]}
+      activeKey={selectionKey(selection)}
+      onSelect={(key) => onSelect(keyToSelection(key))}
+      addLabel="New organization"
+      renderAdd={(close) => <NewOrganizationForm onCreated={(id) => { close(); onSelect({ kind: 'org', id }); }} onCancel={close} />}
+      filterThreshold={12}
+    />
+  );
+}
+
+function NewOrganizationForm({ onCreated, onCancel }: { onCreated: (id: number) => void; onCancel: () => void }) {
   const [name, setName] = useState('');
   const create = useRosterMutation(
     () => postJson('/admin/organizations', { name }) as Promise<{ organization: Organization }>,
@@ -101,169 +147,23 @@ function Sidebar({
     e.preventDefault();
     if (!name.trim()) return;
     create.mutate(undefined, {
-      onSuccess: (res) => {
-        setName('');
-        setCreating(false);
-        onSelect({ kind: 'org', id: (res as { organization: Organization }).organization.id });
-      },
+      onSuccess: (res) => onCreated((res as { organization: Organization }).organization.id),
     });
   }
 
-  const students = (orgId: number | null) =>
-    teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
-  const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
-
-  const entries: { key: string; sel: Selection; label: string; teams: number; students: number; codeOpen: boolean }[] = [
-    ...organizations.map((o) => ({
-      key: `org-${o.id}`,
-      sel: { kind: 'org', id: o.id } as Selection,
-      label: o.name,
-      teams: o.teamCount,
-      students: students(o.id),
-      codeOpen: !!o.joinCode,
-    })),
-    // Always offered when there are no organizations (it's then simply "Teams"); otherwise only when
-    // some team is actually unassigned.
-    ...(organizations.length === 0 || unassignedTeams > 0
-      ? [{
-          key: 'none',
-          sel: { kind: 'none' } as Selection,
-          label: organizations.length > 0 ? 'No organization' : 'Teams',
-          teams: unassignedTeams,
-          students: students(null),
-          codeOpen: false,
-        }]
-      : []),
-  ];
-
   return (
-    <>
-      {/* Narrow screens: the list collapses into a single picker. */}
-      <select
-        className="roster-picker"
-        aria-label="Organization"
-        value={selection.kind === 'org' ? `org-${selection.id}` : selection.kind}
-        onChange={(e) => {
-          const v = e.target.value;
-          onSelect(v === 'none' ? { kind: 'none' } : v === 'instructors' ? { kind: 'instructors' } : { kind: 'org', id: Number(v.slice(4)) });
-        }}
-        style={{ ...inputStyle, width: '100%' }}
-      >
-        {entries.map((e) => (
-          <option key={e.key} value={e.key}>
-            {e.label} ({e.teams})
-          </option>
-        ))}
-        <option value="instructors">Instructors</option>
-      </select>
-
-      <nav aria-label="Organizations" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <span style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>
-            Organizations
-          </span>
-          <button
-            type="button"
-            onClick={() => setCreating((v) => !v)}
-            aria-label="New organization"
-            title="New organization"
-            style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', width: 26, height: 26, fontSize: 16, lineHeight: 1 }}
-          >
-            +
-          </button>
-        </div>
-        {creating && (
-          <form onSubmit={handleCreate} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && setCreating(false)}
-              placeholder="Organization name"
-              aria-label="Organization name"
-              style={{ ...inputStyle, flex: 1, padding: 6 }}
-            />
-            <button type="submit" disabled={create.isPending} style={{ ...inputStyle, cursor: 'pointer', padding: '6px 10px' }}>Add</button>
-          </form>
-        )}
-        {/* The header and "+" stay visible on narrow screens; only the list gives way to the picker. */}
-        <div className="roster-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {organizations.length === 0 && !creating && (
-          <div style={{ fontSize: 13, color: 'var(--text-telemetry)', padding: '2px 0 6px' }}>No organizations yet.</div>
-        )}
-        {entries.map((e) => (
-          <SidebarItem
-            key={e.key}
-            active={sameSelection(selection, e.sel)}
-            onClick={() => onSelect(e.sel)}
-            label={e.label}
-            muted={e.key === 'none' && organizations.length > 0}
-            meta={`${e.teams} · ${e.students}`}
-            metaTitle={`${e.teams} teams · ${e.students} students`}
-            codeOpen={e.codeOpen}
-          />
-        ))}
-        <div style={{ borderTop: '1px solid var(--surface-border)', margin: '8px 0' }} />
-        <SidebarItem active={selection.kind === 'instructors'} onClick={() => onSelect({ kind: 'instructors' })} label="Instructors" />
-        </div>
-      </nav>
-    </>
-  );
-}
-
-function SidebarItem({
-  active,
-  onClick,
-  label,
-  meta,
-  metaTitle,
-  codeOpen = false,
-  muted = false,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  meta?: string;
-  metaTitle?: string;
-  codeOpen?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? 'page' : undefined}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        width: '100%',
-        textAlign: 'start',
-        padding: '7px 10px',
-        borderRadius: 'var(--radius-control)',
-        border: 'none',
-        borderInlineStart: `2px solid ${active ? 'var(--signal-primary)' : 'transparent'}`,
-        background: active ? 'var(--surface-2)' : 'transparent',
-        color: muted ? 'var(--text-muted)' : 'var(--text-primary)',
-        fontStyle: muted ? 'italic' : 'normal',
-        cursor: 'pointer',
-        fontSize: 14,
-      }}
-    >
-      <span
-        aria-label={codeOpen ? 'registration open' : undefined}
-        title={codeOpen ? 'Join code open' : undefined}
-        style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: codeOpen ? 'var(--signal-primary)' : 'transparent' }}
+    <form onSubmit={handleCreate} style={{ display: 'flex', gap: 6 }}>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+        placeholder="Organization name"
+        aria-label="Organization name"
+        style={{ ...inputStyle, flex: 1, padding: 6 }}
       />
-      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        <bdi>{label}</bdi>
-      </span>
-      {meta && (
-        <span className="tabular" title={metaTitle} style={{ fontSize: 12, color: 'var(--text-telemetry)', flexShrink: 0 }}>
-          {meta}
-        </span>
-      )}
-    </button>
+      <button type="submit" disabled={create.isPending} style={{ ...inputStyle, cursor: 'pointer', padding: '6px 10px' }}>Add</button>
+    </form>
   );
 }
 

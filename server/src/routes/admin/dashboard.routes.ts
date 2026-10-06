@@ -11,6 +11,8 @@ router.use(requireAuth, requireRole('instructor'));
 interface TeamRow {
   id: number;
   name: string;
+  organizationId: number | null;
+  organizationName: string | null;
 }
 
 interface ActiveRow {
@@ -25,7 +27,13 @@ interface ActiveRow {
 // US-006: instructor sees every team from one view — day, active range, time remaining, progress
 // state, open help request count. Renders as an array so the client can grid N teams, not 2.
 router.get('/dashboard', (_req, res) => {
-  const teams = db.prepare('SELECT id, name FROM teams ORDER BY sort_order').all() as unknown as TeamRow[];
+  // Organization fields let the dashboard's sidebar filter/group teams by organization.
+  const teams = db
+    .prepare(
+      `SELECT t.id, t.name, t.organization_id AS organizationId, o.name AS organizationName
+       FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id ORDER BY t.sort_order`,
+    )
+    .all() as unknown as TeamRow[];
 
   const activeStmt = db.prepare(
     `SELECT
@@ -77,6 +85,8 @@ router.get('/dashboard', (_req, res) => {
     return {
       teamId: team.id,
       teamName: team.name,
+      organizationId: team.organizationId,
+      organizationName: team.organizationName,
       active: active
         ? {
             cyberRangeId: active.cyberRangeId,
