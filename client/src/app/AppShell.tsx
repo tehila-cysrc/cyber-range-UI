@@ -9,7 +9,8 @@ import { useSocketEvent } from '../hooks/useSocketEvent';
 import { Toaster } from '../components/Toaster';
 import { ConfirmDialogHost } from '../components/ConfirmDialog';
 import { GamifiedEffects } from '../features/leaderboard/GamifiedEffects';
-import { GearIcon, UserIcon } from '../components/icons';
+import { GearIcon } from '../components/icons';
+import { Avatar } from '../components/Avatar';
 import { ProfileDialog } from '../features/auth/ProfileDialog';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
@@ -268,9 +269,20 @@ function LiveStatusBadge() {
   );
 }
 
-// Collapsed to just a green identity icon per user request — the name/role/sign-out live in a
-// small menu revealed on click instead of sitting permanently in the nav bar.
-function UserMenu({ displayName, role, onLogout }: { displayName: string; role: string; onLogout: () => void }) {
+// Collapsed to just the user's own avatar (chosen character, or initials) in a green ring, per user
+// request — the name/role/sign-out live in a small menu revealed on click instead of sitting
+// permanently in the nav bar.
+function UserMenu({
+  displayName,
+  avatar,
+  role,
+  onLogout,
+}: {
+  displayName: string;
+  avatar?: string | null;
+  role: string;
+  onLogout: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -303,25 +315,23 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: 28,
-          height: 28,
+          padding: 1,
           borderRadius: '50%',
           border: '1px solid var(--signal-primary)',
-          background: 'var(--surface-1)',
-          color: 'var(--signal-primary)',
+          background: 'transparent',
           cursor: 'pointer',
         }}
       >
-        <UserIcon />
+        <Avatar name={displayName} avatar={avatar} size={30} />
       </button>
 
       {open && (
         <div
           style={{
             position: 'absolute',
-            top: 36,
+            top: 42,
             right: 0,
-            minWidth: 160,
+            minWidth: 200,
             padding: 'var(--space-sm)',
             border: '1px solid var(--surface-border)',
             borderRadius: 'var(--radius-container)',
@@ -333,8 +343,14 @@ function UserMenu({ displayName, role, onLogout }: { displayName: string; role: 
             zIndex: 10,
           }}
         >
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-telemetry)' }}>
-            {displayName} · {role}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 2px 6px' }}>
+            <Avatar name={displayName} avatar={avatar} size={40} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                <bdi>{displayName}</bdi>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-telemetry)' }}>{role}</div>
+            </div>
           </div>
           <button
             onClick={() => {
@@ -491,7 +507,7 @@ export function AppShell() {
 
         {user && <LiveStatusBadge />}
         {isInstructor && <NavDropdown group={INSTRUCTOR_SYSTEM} trigger={<GearIcon />} align="right" />}
-        {user && <UserMenu displayName={user.displayName} role={user.role} onLogout={handleLogout} />}
+        {user && <UserMenu displayName={user.displayName} avatar={user.avatar} role={user.role} onLogout={handleLogout} />}
       </nav>
 
       <main style={{ flex: 1, maxWidth: 'var(--layout-max-width)', width: '100%', margin: '0 auto' }}>
