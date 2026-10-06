@@ -64,9 +64,58 @@ interface ActiveCyberRange {
   studentBriefing?: string | null;
 }
 
+type ScenarioStatus = 'active' | 'paused' | 'completed';
+
+// A scenario the team is no longer on (finished, or paused by a switch) — shown read-only.
+interface PastCyberRange {
+  cyberRangeId: number;
+  name: string;
+  studentBriefing?: string | null;
+  status: ScenarioStatus;
+}
+
 interface TeamStatus {
   teamId: number;
   active: { cyberRangeId: number; name: string } | null;
+}
+
+const STATUS_LABEL: Record<ScenarioStatus, string> = { active: 'Live', paused: 'Paused', completed: 'Completed' };
+
+function ScenarioStatusBadge({ status }: { status: ScenarioStatus }) {
+  if (status === 'active') return null;
+  return <TelemetryBadge tone={status === 'completed' ? 'secondary' : 'tertiary'}>{STATUS_LABEL[status]}</TelemetryBadge>;
+}
+
+// Instructor: which of the selected team's scenarios to look at — the live one, or any earlier one.
+function ScenarioSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: { cyberRangeId: number; name: string; status: ScenarioStatus }[];
+  value: number | undefined;
+  onChange: (cyberRangeId: number) => void;
+}) {
+  return (
+    <select
+      aria-label="Scenario"
+      value={value ?? ''}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={{
+        background: 'var(--surface-1)',
+        border: '1px solid var(--surface-border)',
+        borderRadius: 'var(--radius-control)',
+        padding: 8,
+        color: 'var(--text-primary)',
+      }}
+    >
+      {options.map((o) => (
+        <option key={o.cyberRangeId} value={o.cyberRangeId}>
+          {o.name} — {STATUS_LABEL[o.status]}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 interface Category {
@@ -126,16 +175,19 @@ export function InvestigationPage() {
   const [techniqueIds, setTechniqueIds] = useState<string[]>([]);
   const { data: catalog } = useMitreCatalog();
 
-  // Student: own team's active range, resolved server-side from the auth token — never a
+  // Student: own team's active range (or, with none live, its latest one), resolved server-side from the auth token — never a
   // cross-team leak. Instructor: no team of their own, so this query stays off and they instead
   // pick a team below to view (US-002's "no exposure to another team's documentation", the flip
   // side — an instructor explicitly opting into ONE team's view, one at a time, never a merged one).
   const { data: activeData } = useQuery({
     queryKey: ['active-cyber-range'],
-    queryFn: () => apiFetch<{ active: ActiveCyberRange | null }>('/teams/me/active-cyber-range'),
+    queryFn: () =>
+      apiFetch<{ active: ActiveCyberRange | null; latest?: PastCyberRange | null }>('/teams/me/active-cyber-range'),
     enabled: !isInstructor,
   });
   const studentActive = activeData?.active;
+  // No live scenario: the team's most recent one stays viewable, read-only.
+  const studentLatest = studentActive ? null : activeData?.latest ?? null;
 
   const [selectedTeamId, setSelectedTeamId] = useInstructorTeam();
   const lockedTeam = useLockedTeam();
@@ -153,9 +205,38 @@ export function InvestigationPage() {
   const selectedTeamActive = isInstructor
     ? dashboardData?.teams.find((t) => t.teamId === selectedTeamId)?.active ?? null
     : null;
+  // The team's earlier scenarios (completed or paused by a switch), so the instructor can open any
+  // of them — not only the live one.
+  const { data: pastData } = useQuery({
+    queryKey: ['history', `?teamId=${selectedTeamId}`],
+    queryFn: () =>
+      apiFetch<{ scenarios: PastCyberRange[] }>(`/history?teamId=${selectedTeamId}`),
+    enabled: isInstructor && !!selectedTeamId,
+  });
+  const scenarioOptions: { cyberRangeId: number; name: string; status: ScenarioStatus }[] = [
+    ...(selectedTeamActive ? [{ ...selectedTeamActive, status: 'active' as const }] : []),
+    ...(pastData?.scenarios ?? []).filter((s) => s.cyberRangeId !== selectedTeamActive?.cyberRangeId),
+  ];
+  const rangeParam = Number(searchParams.get('range')) || null;
+  const instructorViewed = scenarioOptions.find((o) => o.cyberRangeId === rangeParam) ?? scenarioOptions[0] ?? null;
+  const setRange = (id: number) =>
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('range', String(id));
+        return p;
+      },
+      { replace: true },
+    );
 
-  const active = isInstructor ? selectedTeamActive : studentActive;
-  const cyberRangeId = active?.cyberRangeId;
+  // What the page shows: the instructor's pick, or the student's live scenario (else their latest).
+  const viewed: PastCyberRange | null = isInstructor
+    ? instructorViewed
+    : studentActive
+      ? { ...studentActive, status: 'active' as const }
+      : studentLatest;
+  const readOnly = !viewed || viewed.status !== 'active';
+  const cyberRangeId = viewed?.cyberRangeId;
   const teamIdParam = isInstructor && selectedTeamId ? selectedTeamId : null;
 
   // Draft text lives in a store keyed by cyber range, not local state, so it survives navigating
@@ -290,9 +371,12 @@ export function InvestigationPage() {
               >
                 Team investigation
               </div>
-              <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-                {view === 'canvas' ? 'Canvas' : 'Timeline'}{active ? ` — ${active.name}` : ''}
-              </h1>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
+                <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
+                  {view === 'canvas' ? 'Canvas' : 'Timeline'}{viewed ? ` — ${viewed.name}` : ''}
+                </h1>
+                {viewed && <ScenarioStatusBadge status={viewed.status} />}
+              </div>
             </div>
             <TeamSelect teams={teamsData?.teams} value={selectedTeamId} onChange={setSelectedTeamId} />
           </div>
@@ -300,17 +384,24 @@ export function InvestigationPage() {
 
         {!selectedTeamId ? (
           <EmptyState message="Pick a team above to view its timeline." />
-        ) : !active ? (
-          <EmptyState message="No active Cyber Range for this team." />
+        ) : !viewed ? (
+          <EmptyState message="This team hasn't started a Cyber Range yet." />
         ) : (
           <>
-            <InvestigationTabs view={view} onChange={setView} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center' }}>
+              <InvestigationTabs view={view} onChange={setView} />
+              {scenarioOptions.length > 1 && (
+                <div style={{ marginBottom: 'var(--space-md)' }}>
+                  <ScenarioSelect options={scenarioOptions} value={viewed.cyberRangeId} onChange={setRange} />
+                </div>
+              )}
+            </div>
             {view === 'timeline' ? (
               <Timeline entries={entriesData?.entries} catalog={catalog} />
             ) : (
               <Suspense fallback={<CanvasFallback />}>
                 <InvestigationCanvasContainer
-                  cyberRangeId={active.cyberRangeId}
+                  cyberRangeId={viewed.cyberRangeId}
                   teamId={Number(selectedTeamId)}
                   teamIdParam={Number(selectedTeamId)}
                   editable={false}
@@ -323,7 +414,7 @@ export function InvestigationPage() {
     );
   }
 
-  if (!active) {
+  if (!viewed) {
     return (
       <div className="page" style={{ padding: 'var(--space-xl)' }}>
         <EmptyState message="No active Cyber Range — documentation opens once your team's investigation starts." />
@@ -349,8 +440,9 @@ export function InvestigationPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-sm)' }}>
             <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>
-              {view === 'canvas' ? 'Canvas' : 'Timeline'} — {active.name}
+              {view === 'canvas' ? 'Canvas' : 'Timeline'} — {viewed.name}
             </h1>
+            <ScenarioStatusBadge status={viewed.status} />
             {entriesData && (
               <TelemetryBadge tone="secondary">
                 {entriesData.entries.length} {entriesData.entries.length === 1 ? 'entry' : 'entries'}
@@ -358,17 +450,42 @@ export function InvestigationPage() {
             )}
           </div>
         </div>
-        <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-          View topology →
-        </Link>
+        {readOnly ? (
+          <Link to="/debrief" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+            Open debrief →
+          </Link>
+        ) : (
+          <Link to="/topology" style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
+            View topology →
+          </Link>
+        )}
       </div>
 
-      {studentActive?.studentBriefing && (
+      {readOnly && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 'var(--space-md)',
+            padding: '8px 12px',
+            border: '1px solid var(--surface-border)',
+            borderRadius: 'var(--radius-control)',
+            background: 'var(--surface-1)',
+            fontSize: 14,
+            color: 'var(--text-muted)',
+          }}
+        >
+          {viewed.status === 'completed'
+            ? 'This scenario is completed — your team’s timeline and canvas stay here to review, but nothing new can be added.'
+            : 'Your instructor has paused this scenario — your team’s work is kept here to review until it continues.'}
+        </div>
+      )}
+
+      {viewed.studentBriefing && (
         // Collapsible so it's one click away mid-investigation without taking space (UX-08).
         <details style={{ marginBottom: 'var(--space-md)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', background: 'var(--surface-1)', padding: '8px 12px' }}>
           <summary style={{ cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)' }}>Mission briefing</summary>
           <div className="prose-pre" style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, color: 'var(--text-primary)' }}>
-            {studentActive.studentBriefing}
+            {viewed.studentBriefing}
           </div>
         </details>
       )}
@@ -377,15 +494,22 @@ export function InvestigationPage() {
 
       {view === 'canvas' ? (
         <Suspense fallback={<CanvasFallback />}>
-          <InvestigationCanvasContainer cyberRangeId={active.cyberRangeId} teamId={ownTeamId ?? 0} teamIdParam={null} editable />
+          <InvestigationCanvasContainer
+            cyberRangeId={viewed.cyberRangeId}
+            teamId={ownTeamId ?? 0}
+            teamIdParam={null}
+            editable={!readOnly}
+          />
         </Suspense>
+      ) : readOnly ? (
+        <Timeline entries={entriesData?.entries} catalog={catalog} />
       ) : (
         <div className="split-main-side">
           <div>
             <Timeline
               entries={entriesData?.entries}
               catalog={catalog}
-              editing={{ cyberRangeId: active.cyberRangeId, budget: ttpBudget, queryKey: documentationKey }}
+              editing={{ cyberRangeId: viewed.cyberRangeId, budget: ttpBudget, queryKey: documentationKey }}
             />
           </div>
 
@@ -421,7 +545,7 @@ export function InvestigationPage() {
         </h2>
         <textarea
           value={body}
-          onChange={(e) => active && setDraft(active.cyberRangeId, e.target.value)}
+          onChange={(e) => setDraft(viewed.cyberRangeId, e.target.value)}
           rows={5}
           aria-label="Entry text"
           placeholder="What did you find or do? (host, time, evidence, what it means)"

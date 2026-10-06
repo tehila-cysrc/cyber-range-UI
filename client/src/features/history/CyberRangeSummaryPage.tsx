@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
@@ -6,6 +7,12 @@ import { Avatar } from '../../components/Avatar';
 import { FlagIcon } from '../../components/icons';
 import { useDebriefTeam } from './useDebriefTeam';
 import { TtpDebriefSection } from './TtpDebriefSection';
+import { useAuthStore } from '../../stores/authStore';
+
+// Same code-split as the Investigation page — React Flow only loads when a debrief is opened.
+const InvestigationCanvasContainer = lazy(() =>
+  import('../documentation/canvas/InvestigationCanvasContainer').then((m) => ({ default: m.InvestigationCanvasContainer })),
+);
 
 interface DocEntry {
   id: number;
@@ -19,18 +26,75 @@ interface DocEntry {
   categoryLabel: string | null;
 }
 
+interface ScoreRow {
+  id: number;
+  points: number;
+  note: string | null;
+  source: 'manual' | 'ttp';
+  createdAt: string;
+  studentName: string | null;
+  studentAvatar?: string | null;
+}
+
+interface HelpRow {
+  id: number;
+  status: 'open' | 'resolved';
+  message: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  autoClosed: number;
+  requestedByName: string;
+  requestedByAvatar?: string | null;
+}
+
 interface SummaryResponse {
   cyberRange: { id: number; name: string; difficulty: string; dayLabel: string };
+  progress: { status: 'not_started' | 'active' | 'paused' | 'completed'; startedAt: string | null; completedAt: string | null };
   documentation: DocEntry[];
   scoreTotal: number;
+  scores: ScoreRow[];
+  helpRequests: HelpRow[];
 }
+
+function SectionHeader({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', margin: 'var(--space-xl) 0 var(--space-md)' }}>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--signal-primary)',
+        }}
+      >
+        {children}
+      </span>
+      <span style={{ flex: 1, height: 1, background: 'var(--surface-border)' }} />
+    </div>
+  );
+}
+
+const rowStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 'var(--space-sm)',
+  padding: 'var(--space-sm) var(--space-md)',
+  border: '1px solid var(--surface-border)',
+  borderRadius: 'var(--radius-control)',
+  background: 'var(--surface-1)',
+  fontSize: 14,
+} as const;
 
 // `cyberRangeIdOverride`: the Team Workspace's Debrief tab renders this page without a route param.
 export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOverride?: number } = {}) {
   const params = useParams();
   const cyberRangeId = cyberRangeIdOverride ?? params.cyberRangeId;
 
-  const { query, ready, links } = useDebriefTeam();
+  const { query, ready, links, isInstructor, teamId } = useDebriefTeam();
+  const ownTeamId = useAuthStore((s) => s.user?.teamId);
   const { data, isError } = useQuery({
     queryKey: ['history', cyberRangeId, query],
     queryFn: () => apiFetch<SummaryResponse>(`/history/${cyberRangeId}${query}`),
@@ -55,6 +119,14 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--text-primary)', margin: '8px 0' }}>
             {data.cyberRange.name}
           </h1>
+          {data.progress.status !== 'completed' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 'var(--space-md)', fontSize: 14, color: 'var(--text-muted)' }}>
+              <TelemetryBadge tone="tertiary">{data.progress.status === 'paused' ? 'Paused' : 'In progress'}</TelemetryBadge>
+              {data.progress.status === 'paused'
+                ? 'Not completed — the team was switched to another scenario. Everything recorded so far is below.'
+                : 'This scenario is still running.'}
+            </div>
+          )}
 
           <div
             style={{
@@ -162,6 +234,69 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
                       }}
                     />
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <SectionHeader>Investigation Canvas</SectionHeader>
+          <Suspense fallback={<div style={{ color: 'var(--text-muted)' }}>Loading canvas…</div>}>
+            <InvestigationCanvasContainer
+              cyberRangeId={data.cyberRange.id}
+              teamId={(isInstructor ? teamId : ownTeamId) ?? 0}
+              teamIdParam={isInstructor ? teamId : null}
+              editable={false}
+            />
+          </Suspense>
+
+          <SectionHeader>Scores awarded</SectionHeader>
+          {data.scores.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No points were awarded in this scenario.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+              {data.scores.map((s) => (
+                <div key={s.id} style={rowStyle}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <span className="tabular" style={{ fontWeight: 600, color: s.points < 0 ? 'var(--signal-alert)' : 'var(--signal-primary)' }}>
+                      {s.points > 0 ? `+${s.points}` : s.points}
+                    </span>
+                    {s.source === 'ttp' && <TelemetryBadge tone="secondary">ATT&amp;CK</TelemetryBadge>}
+                    {s.studentName ? (
+                      <>
+                        <Avatar name={s.studentName} avatar={s.studentAvatar} size={18} />
+                        <span style={{ color: 'var(--text-primary)' }}>{s.studentName}</span>
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>Team</span>
+                    )}
+                    {s.note && <span style={{ color: 'var(--text-muted)' }}>— {s.note}</span>}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-telemetry)' }}>
+                    {new Date(s.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <SectionHeader>Help requests</SectionHeader>
+          {data.helpRequests.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>The team didn't ask for help in this scenario.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
+              {data.helpRequests.map((h) => (
+                <div key={h.id} style={rowStyle}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <Avatar name={h.requestedByName} avatar={h.requestedByAvatar} size={18} />
+                    <span style={{ color: 'var(--text-primary)' }}>{h.requestedByName}</span>
+                    {h.message && <span style={{ color: 'var(--text-muted)' }}>— {h.message}</span>}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-telemetry)' }}>
+                    {new Date(h.createdAt).toLocaleString()}
+                    <TelemetryBadge tone={h.status === 'open' ? 'alert' : 'tertiary'}>
+                      {h.status === 'open' ? 'Open' : h.autoClosed ? 'Closed (scenario ended)' : 'Resolved'}
+                    </TelemetryBadge>
+                  </span>
                 </div>
               ))}
             </div>

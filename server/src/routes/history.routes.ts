@@ -40,7 +40,24 @@ router.get('/history', (req, res) => {
     )
     .all(teamId);
 
-  res.json({ completed });
+  // Every scenario the team worked on that isn't the live one — completed, or paused because the
+  // instructor switched the team to another scenario. A paused scenario used to be visible nowhere
+  // (not live, not "completed"), so its timeline, canvas and scores looked deleted.
+  const scenarios = db
+    .prepare(
+      `SELECT
+         cr.id AS cyberRangeId, cr.name AS name, cr.difficulty AS difficulty,
+         d.key AS dayKey, d.label AS dayLabel, p.status AS status,
+         p.started_at AS startedAt, p.completed_at AS completedAt
+       FROM team_cyber_range_progress p
+       JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
+       JOIN days d ON d.id = cr.day_id
+       WHERE p.team_id = ? AND p.status IN ('completed', 'paused')
+       ORDER BY COALESCE(p.completed_at, p.started_at) DESC`,
+    )
+    .all(teamId);
+
+  res.json({ completed, scenarios });
 });
 
 // US-010 + FR-8: cross-day (AI/Azure/AWS) summary for the whole event, real data only — a day with
@@ -71,7 +88,8 @@ router.get('/history/event-summary', (req, res) => {
   res.json({ days: rows });
 });
 
-// Summary of one completed Cyber Range: documentation + scoring actually recorded for it.
+// Summary of one Cyber Range the team worked on (completed, paused or still live): documentation,
+// each score awarded and the help requests actually recorded for it. The canvas has its own route.
 router.get('/history/:cyberRangeId', (req, res) => {
   const teamId = resolveTeamId(req, res);
   if (teamId === null) return;
@@ -83,6 +101,17 @@ router.get('/history/:cyberRangeId', (req, res) => {
        FROM cyber_ranges cr JOIN days d ON d.id = cr.day_id WHERE cr.id = ?`,
     )
     .get(cyberRangeId);
+
+  const progress = db
+    .prepare(
+      `SELECT status, started_at AS startedAt, completed_at AS completedAt
+       FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?`,
+    )
+    .get(teamId, cyberRangeId);
+  if (!cyberRange || !progress) {
+    res.status(404).json({ error: 'this team has no history for that Cyber Range' });
+    return;
+  }
 
   const documentation = db
     .prepare(
@@ -105,7 +134,32 @@ router.get('/history/:cyberRangeId', (req, res) => {
     )
     .get(teamId, cyberRangeId) as { total: number };
 
-  res.json({ cyberRange, documentation, scoreTotal: scoreTotal.total });
+  const scores = db
+    .prepare(
+      `SELECT
+         s.id AS id, s.points AS points, s.note AS note, s.source AS source, s.created_at AS createdAt,
+         st.display_name AS studentName, st.avatar AS studentAvatar
+       FROM scores s
+       LEFT JOIN users st ON st.id = s.student_user_id
+       WHERE s.team_id = ? AND s.cyber_range_id = ?
+       ORDER BY s.created_at ASC`,
+    )
+    .all(teamId, cyberRangeId);
+
+  const helpRequests = db
+    .prepare(
+      `SELECT
+         h.id AS id, h.status AS status, h.message AS message, h.created_at AS createdAt,
+         h.resolved_at AS resolvedAt, (h.resolved_at IS NOT NULL AND h.resolved_by_user_id IS NULL) AS autoClosed,
+         u.display_name AS requestedByName, u.avatar AS requestedByAvatar
+       FROM help_requests h
+       JOIN users u ON u.id = h.requested_by_user_id
+       WHERE h.team_id = ? AND h.cyber_range_id = ?
+       ORDER BY h.created_at ASC`,
+    )
+    .all(teamId, cyberRangeId);
+
+  res.json({ cyberRange, progress, documentation, scoreTotal: scoreTotal.total, scores, helpRequests });
 });
 
 export default router;

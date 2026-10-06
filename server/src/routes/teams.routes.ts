@@ -76,7 +76,21 @@ router.get('/me/active-cyber-range', (req, res) => {
     .get(teamId) as ActiveProgressRow | undefined;
 
   if (!row) {
-    res.json({ active: null });
+    // No live scenario: hand back the team's most recent one so the Investigation page can still show
+    // it read-only (writes to a non-active scenario are refused server-side regardless).
+    const latest = db
+      .prepare(
+        `SELECT
+           cr.id AS cyberRangeId, cr.name AS name, cr.student_briefing AS studentBriefing,
+           p.status AS status, p.completed_at AS completedAt
+         FROM team_cyber_range_progress p
+         JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
+         WHERE p.team_id = ? AND p.status IN ('completed', 'paused')
+         ORDER BY COALESCE(p.completed_at, p.started_at) DESC
+         LIMIT 1`,
+      )
+      .get(teamId);
+    res.json({ active: null, latest: latest ?? null });
     return;
   }
 

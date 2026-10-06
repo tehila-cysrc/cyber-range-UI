@@ -5,19 +5,22 @@ import { EmptyState } from '../../components/EmptyState';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useDebriefTeam } from './useDebriefTeam';
 
-interface CompletedRange {
+// Every scenario the team is no longer live on: completed, or paused by a switch to another one.
+interface PastRange {
   cyberRangeId: number;
   name: string;
   difficulty: string;
   dayLabel: string;
-  completedAt: string;
+  status: 'completed' | 'paused';
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 export function HistoryPage() {
   const { query, ready, picker, isInstructor, locked, links } = useDebriefTeam();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['history', query],
-    queryFn: () => apiFetch<{ completed: CompletedRange[] }>(`/history${query}`),
+    queryFn: () => apiFetch<{ scenarios: PastRange[] }>(`/history${query}`),
     enabled: ready,
   });
 
@@ -25,7 +28,7 @@ export function HistoryPage() {
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-md)' }}>
         <h1 style={{ fontSize: locked ? 17 : 22, color: 'var(--text-primary)', margin: 0 }}>
-          {locked ? 'Completed scenarios' : 'Debrief — completed scenarios'}
+          {locked ? 'Past scenarios' : 'Debrief — past scenarios'}
         </h1>
         <span style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
           {picker}
@@ -40,18 +43,18 @@ export function HistoryPage() {
       {!ready && <EmptyState message="Pick a team above to review its completed scenarios." />}
       {ready && isLoading && <div style={{ color: 'var(--text-muted)' }}>Loading…</div>}
       {isError && <EmptyState message="Couldn't load the debrief — try refreshing." />}
-      {data && data.completed.length === 0 && (
+      {data && data.scenarios.length === 0 && (
         <EmptyState
           message={
             isInstructor
-              ? 'This team has no completed scenarios yet. Use "Mark scenario completed" on the Instructor dashboard when a team finishes.'
-              : 'No scenarios completed yet — a scenario appears here once the instructor marks it complete.'
+              ? 'This team has no past scenarios yet. A scenario appears here once it is marked completed or the team is switched to another one.'
+              : 'No past scenarios yet — a scenario appears here once it is completed or your team moves on to another one.'
           }
         />
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-        {data?.completed.map((cr) => (
+        {data?.scenarios.map((cr) => (
           <Link
             key={cr.cyberRangeId}
             to={links.summary(cr.cyberRangeId)}
@@ -74,9 +77,14 @@ export function HistoryPage() {
                 {cr.difficulty}
               </TelemetryBadge>
               <span style={{ color: 'var(--text-primary)' }}>{cr.name}</span>
+              {cr.status === 'paused' && <TelemetryBadge tone="tertiary">Paused</TelemetryBadge>}
             </span>
             <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>
-              {new Date(cr.completedAt).toLocaleString()}
+              {cr.completedAt
+                ? `Completed ${new Date(cr.completedAt).toLocaleString()}`
+                : cr.startedAt
+                  ? `Started ${new Date(cr.startedAt).toLocaleString()}`
+                  : null}
             </span>
           </Link>
         ))}

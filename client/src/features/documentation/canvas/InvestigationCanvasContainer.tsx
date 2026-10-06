@@ -205,6 +205,11 @@ export function InvestigationCanvasContainer({ cyberRangeId, teamId, teamIdParam
     );
   }
 
+  // Read-only (instructor, finished scenario, debrief) and nothing drawn: a blank 560px board read as broken.
+  if (!editable && data.nodes.length === 0) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>No canvas items were recorded.</div>;
+  }
+
   // Self-healing: if the selected node was just deleted (by this client, a teammate, or a realtime
   // event), it simply stops being in `data.nodes` and the inspector disappears on its own — no
   // separate "clear selection on delete" bookkeeping needed anywhere else.
