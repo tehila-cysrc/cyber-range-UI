@@ -254,8 +254,10 @@ router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
     const reason = /not authorized and caller is not a trusted service/i.test(e.message ?? '')
       ? `the Key Vault firewall blocked this server's IP (${/Client address: (\S+)/.exec(e.message ?? '')?.[1] ?? 'unknown'}) — add it to the vault's network rules`
       : e.statusCode === 403
-        ? "the environment's Service Principal lacks Key Vault secret 'Set' permission"
-        : (e.code ?? 'unknown error');
+        ? "the environment's Service Principal lacks Key Vault secret 'Set'/'Recover' permission"
+        : e.statusCode === 409
+          ? `a previously deleted secret '${secretName}' could not be recovered — recover or purge it under the vault's "Manage deleted secrets", then retry`
+          : (e.code ?? 'unknown error');
     res.status(502).json({ error: `failed to store the credential in Key Vault: ${reason}` });
     return;
   }

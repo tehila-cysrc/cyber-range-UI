@@ -28,7 +28,33 @@ export async function storeVmLoginSecret(
   secretName: string,
   plaintextPassword: string,
 ): Promise<void> {
-  await client(credential, keyVaultUri).setSecret(secretName, plaintextPassword);
+  const secrets = client(credential, keyVaultUri);
+  try {
+    await secrets.setSecret(secretName, plaintextPassword);
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode !== 409) throw err;
+    // 409 = a secret with this (deterministic, per-node) name is soft-deleted — i.e. the node's access
+    // target was removed earlier and is now being configured again. Soft-delete is mandatory on Key
+    // Vault, so recover it (Secrets Officer allows Recover; purge may be blocked by purge protection)
+    // and write the new password as a fresh version on top.
+    await recoverDeletedSecret(secrets, secretName);
+    await secrets.setSecret(secretName, plaintextPassword);
+  }
+}
+
+// Recovery itself returns 409 while the delete is still in flight, so retry briefly until the secret
+// lands in the recoverable state.
+async function recoverDeletedSecret(secrets: SecretClient, secretName: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const poller = await secrets.beginRecoverDeletedSecret(secretName);
+      await poller.pollUntilDone();
+      return;
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode !== 409 || attempt >= 5) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
 }
 
 // The only function in this file that ever produces plaintext secret material — same rule as
