@@ -14,6 +14,12 @@ export function emitDocumentationUpdated(teamId: number, entry: unknown) {
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('documentation:updated', { entry, teamId });
 }
 
+// Team only: lets the team's clients raise a toast on any page ("the instructor commented on an entry").
+// The updated entry itself travels via documentation:updated.
+export function emitDocumentationFeedback(teamId: number, payload: { entryId: number; cyberRangeId: number }) {
+  getIo().to(teamRoom(teamId)).emit('documentation:feedback', payload);
+}
+
 // Also to the team's room, so every teammate's page shows the request as pending (not just the
 // student who clicked) — the payload is the team's own request, nothing instructor-only.
 export function emitHelpRequestNew(teamId: number, helpRequest: unknown) {

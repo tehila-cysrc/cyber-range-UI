@@ -8,6 +8,7 @@ import { FlagIcon } from '../../components/icons';
 import { useDebriefTeam } from './useDebriefTeam';
 import { TtpDebriefSection } from './TtpDebriefSection';
 import { useAuthStore } from '../../stores/authStore';
+import { EntryFeedbackList, type EntryFeedbackItem } from '../documentation/EntryFeedback';
 
 // Same code-split as the Investigation page — React Flow only loads when a debrief is opened.
 const InvestigationCanvasContainer = lazy(() =>
@@ -24,6 +25,7 @@ interface DocEntry {
   authorName: string;
   authorAvatar?: string | null;
   categoryLabel: string | null;
+  feedback?: EntryFeedbackItem[];
 }
 
 interface ScoreRow {
@@ -234,6 +236,7 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
                       }}
                     />
                   )}
+                  <EntryFeedbackList feedback={entry.feedback ?? []} />
                 </div>
               ))}
             </div>

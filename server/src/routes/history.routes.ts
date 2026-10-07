@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { feedbackByEntry } from '../services/documentationFeedback.service.js';
 
 const router = Router();
 
@@ -117,7 +118,7 @@ router.get('/history/:cyberRangeId', (req, res) => {
     return;
   }
 
-  const documentation = db
+  const documentationRows = db
     .prepare(
       `SELECT
          e.id AS id, e.body AS body, e.image_data_url AS imageDataUrl,
@@ -130,7 +131,9 @@ router.get('/history/:cyberRangeId', (req, res) => {
        WHERE e.team_id = ? AND e.cyber_range_id = ?
        ORDER BY e.created_at ASC`,
     )
-    .all(teamId, cyberRangeId);
+    .all(teamId, cyberRangeId) as { id: number }[];
+  const feedback = feedbackByEntry(teamId, cyberRangeId);
+  const documentation = documentationRows.map((row) => ({ ...row, feedback: feedback.get(row.id) ?? [] }));
 
   const scoreTotal = db
     .prepare(

@@ -15,6 +15,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
 import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
+import { EntryFeedbackForm, EntryFeedbackList, type EntryFeedbackItem } from './EntryFeedback';
 
 // React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
 // Timeline-only visit to /investigation never pays its bundle cost; it only loads the first time
@@ -136,6 +137,7 @@ interface DocEntry {
   categoryKey: string | null;
   categoryLabel: string | null;
   ttps: EntryTtp[];
+  feedback?: EntryFeedbackItem[];
 }
 
 interface EntriesResponse {
@@ -397,7 +399,11 @@ export function InvestigationPage() {
               )}
             </div>
             {view === 'timeline' ? (
-              <Timeline entries={entriesData?.entries} catalog={catalog} />
+              <Timeline
+                entries={entriesData?.entries}
+                catalog={catalog}
+                feedbackEditing={{ cyberRangeId: viewed.cyberRangeId, queryKey: documentationKey }}
+              />
             ) : (
               <Suspense fallback={<CanvasFallback />}>
                 <InvestigationCanvasContainer
@@ -643,6 +649,12 @@ interface TtpEditing {
   queryKey: unknown[];
 }
 
+// Instructor view: lets each entry take feedback (EntryFeedback.tsx).
+interface FeedbackEditing {
+  cyberRangeId: number;
+  queryKey: unknown[];
+}
+
 // The team's own technique budget (anti-guessing cap). null = the scenario scores no techniques.
 function TtpBudgetHint({ budget }: { budget: TtpBudget | null }) {
   if (!budget) return null;
@@ -660,10 +672,12 @@ function Timeline({
   entries,
   catalog,
   editing,
+  feedbackEditing,
 }: {
   entries: DocEntry[] | undefined;
   catalog: IndexedCatalog | undefined;
   editing?: TtpEditing;
+  feedbackEditing?: FeedbackEditing;
 }) {
   const [filter, setFilter] = useState<'all' | 'findings' | 'attack'>('all');
   if (!entries) return null;
@@ -741,7 +755,7 @@ function Timeline({
             )}
           </div>
           <div style={{ flex: 1, paddingBottom: 'var(--space-lg)', minWidth: 0 }}>
-            <TimelineEntry entry={entry} catalog={catalog} editing={editing} />
+            <TimelineEntry entry={entry} catalog={catalog} editing={editing} feedbackEditing={feedbackEditing} />
           </div>
         </div>
       ))}
@@ -758,10 +772,12 @@ function TimelineEntry({
   entry,
   catalog,
   editing,
+  feedbackEditing,
 }: {
   entry: DocEntry;
   catalog: IndexedCatalog | undefined;
   editing?: TtpEditing;
+  feedbackEditing?: FeedbackEditing;
 }) {
   const queryClient = useQueryClient();
   const [editingTtps, setEditingTtps] = useState(false);
@@ -781,6 +797,20 @@ function TimelineEntry({
       );
       setEditingTtps(false);
     },
+  });
+
+  function replaceEntry(updated: DocEntry) {
+    queryClient.setQueryData<EntriesResponse>(feedbackEditing!.queryKey, (current) =>
+      current ? { ...current, entries: current.entries.map((e) => (e.id === updated.id ? updated : e)) } : current,
+    );
+  }
+  const removeFeedback = useMutation({
+    mutationFn: (feedbackId: number) =>
+      apiFetch<{ entry: DocEntry }>(
+        `/cyber-ranges/${feedbackEditing!.cyberRangeId}/documentation/${entry.id}/feedback/${feedbackId}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: ({ entry: updated }) => replaceEntry(updated),
   });
 
   return (
@@ -891,6 +921,14 @@ function TimelineEntry({
             cursor: imageExpanded ? 'zoom-out' : 'zoom-in',
           }}
         />
+      )}
+      <EntryFeedbackList
+        feedback={entry.feedback ?? []}
+        onDelete={feedbackEditing ? (id) => removeFeedback.mutate(id) : undefined}
+        deletingId={removeFeedback.isPending ? removeFeedback.variables : null}
+      />
+      {feedbackEditing && (
+        <EntryFeedbackForm<DocEntry> cyberRangeId={feedbackEditing.cyberRangeId} entryId={entry.id} onSaved={replaceEntry} />
       )}
     </div>
   );

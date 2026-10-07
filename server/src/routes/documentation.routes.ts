@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
+import { emitDocumentationFeedback, emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
 import { activeCyberRangeIdForTeam, teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
 import { isValidTechniqueId } from '../services/mitreCatalog.js';
 import { budgetFor, checkBudget, inTransaction, MAX_TTPS_PER_ENTRY, setEntryTtps, tagsByEntry } from '../services/ttpScoring.service.js';
 import { reconcileAndAnnounce } from '../services/ttpAnnounce.js';
+import { addFeedback, deleteFeedback, feedbackByEntry } from '../services/documentationFeedback.service.js';
 
 // Optional ATT&CK tags on an entry: a list of catalog technique ids and nothing else — correctness,
 // points and timestamps are always decided server-side (ttpScoring.service.ts).
@@ -85,7 +86,8 @@ router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
     .all(teamId, cyberRangeId) as { id: number }[];
 
   const tags = tagsByEntry(teamId, cyberRangeId);
-  const entries = rows.map((row) => ({ ...row, ttps: tags.get(row.id) ?? [] }));
+  const feedback = feedbackByEntry(teamId, cyberRangeId);
+  const entries = rows.map((row) => ({ ...row, ttps: tags.get(row.id) ?? [], feedback: feedback.get(row.id) ?? [] }));
   // ttpBudget is the team's own technique budget (tiered, so it doesn't reveal the exact expected
   // count). Never the expected list or the points on offer — see CLAUDE/invariants.md.
   res.json({ entries, ttpBudget: budgetFor(teamId, cyberRangeId) });
@@ -101,7 +103,11 @@ function entryDTO(entryId: number, teamId: number, cyberRangeId: number) {
        WHERE e.id = ?`,
     )
     .get(entryId) as Record<string, unknown>;
-  return { ...entry, ttps: tagsByEntry(teamId, cyberRangeId).get(entryId) ?? [] };
+  return {
+    ...entry,
+    ttps: tagsByEntry(teamId, cyberRangeId).get(entryId) ?? [],
+    feedback: feedbackByEntry(teamId, cyberRangeId).get(entryId) ?? [],
+  };
 }
 
 // Free-text categories (e.g. a student typing "IOC" or something not in the seeded list) are
@@ -265,6 +271,42 @@ router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', (req, res)
   const entry = entryDTO(entryId, teamId, cyberRangeId);
   if (result.changed) emitDocumentationUpdated(teamId, entry);
   res.json({ entry, ttpBudget: budgetFor(teamId, cyberRangeId) });
+});
+
+// Instructor feedback on an entry ("on track" / "off track" / a comment) — see
+// documentationFeedback.service.ts. Allowed on any of the team's scenarios, not just the active one,
+// so an instructor can still comment during review. The entry itself is untouched.
+router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', (req, res) => {
+  if (req.user!.role !== 'instructor') {
+    res.status(403).json({ error: 'only an instructor can give feedback' });
+    return;
+  }
+  const entryId = Number(req.params.entryId);
+  const result = addFeedback(entryId, Number(req.params.cyberRangeId), req.user!.id, req.body ?? {});
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  const entry = entryDTO(entryId, result.teamId, result.cyberRangeId);
+  emitDocumentationUpdated(result.teamId, entry);
+  emitDocumentationFeedback(result.teamId, { entryId, cyberRangeId: result.cyberRangeId });
+  res.status(201).json({ entry });
+});
+
+router.delete('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback/:feedbackId', (req, res) => {
+  if (req.user!.role !== 'instructor') {
+    res.status(403).json({ error: 'only an instructor can remove feedback' });
+    return;
+  }
+  const entryId = Number(req.params.entryId);
+  const result = deleteFeedback(entryId, Number(req.params.cyberRangeId), Number(req.params.feedbackId));
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  const entry = entryDTO(entryId, result.teamId, result.cyberRangeId);
+  emitDocumentationUpdated(result.teamId, entry);
+  res.json({ entry });
 });
 
 export default router;

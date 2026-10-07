@@ -16,6 +16,7 @@ import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
 import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
 import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
+import { useEntryFeedbackToast } from '../features/documentation/useEntryFeedbackToast';
 import logoGreenUrl from '../assets/logo-wordmark-green.svg';
 import logoWhiteUrl from '../assets/logo-wordmark-white.svg';
 
@@ -430,6 +431,7 @@ export function AppShell() {
   const isInstructor = user?.role === 'instructor';
   useMissionClockSync(isStudent);
   useOwnHelpRequestSync(isStudent);
+  useEntryFeedbackToast(isStudent);
   const openHelpCount = useOpenHelpRequestCount(isInstructor);
   const { data: activeRange } = useActiveCyberRange(isStudent);
   // A student's board is their own organization's teams only; with no team to compete against

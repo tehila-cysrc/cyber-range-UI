@@ -261,3 +261,18 @@ CREATE TABLE IF NOT EXISTS organization_registrations (
   code TEXT NOT NULL,
   PRIMARY KEY (event_run_id, organization_id)
 );
+
+-- Instructor feedback on a student's Timeline entry ("on track" / "off track" / a plain comment), shown
+-- to the team under that entry. Entries stay student-authored and append-only — feedback is a separate
+-- row, never an edit. Unscored by design: points go through `scores`. team_id is denormalized off the
+-- entry (same precedent as documentation_entry_ttps) so team-scoped reads don't need the join.
+CREATE TABLE IF NOT EXISTS documentation_feedback (
+  id INTEGER PRIMARY KEY,
+  documentation_entry_id INTEGER NOT NULL REFERENCES documentation_entries(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  verdict TEXT NOT NULL CHECK (verdict IN ('on_track', 'off_track', 'comment')),
+  body TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_documentation_feedback_entry ON documentation_feedback (documentation_entry_id);
