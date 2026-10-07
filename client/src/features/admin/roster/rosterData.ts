@@ -24,8 +24,8 @@ export interface Organization {
   joinCode: string | null;
 }
 
-// What the main area shows: an organization, the unassigned teams, or the instructor accounts.
-export type Selection = { kind: 'org'; id: number } | { kind: 'none' } | { kind: 'instructors' };
+// What the main area shows: an organization, the unassigned teams, every student, or the instructor accounts.
+export type Selection = { kind: 'org'; id: number } | { kind: 'none' } | { kind: 'students' } | { kind: 'instructors' };
 
 export const inputStyle: React.CSSProperties = {
   background: 'var(--surface-1)',

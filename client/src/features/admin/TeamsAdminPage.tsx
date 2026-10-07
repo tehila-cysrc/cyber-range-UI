@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { SideNav, type SideNavItem } from '../../components/SideNav';
 import { OrgDetail } from './roster/OrgDetail';
 import { InstructorsView } from './roster/InstructorsView';
+import { StudentsView } from './roster/StudentsView';
 import {
   inputStyle,
   postJson,
@@ -16,7 +17,7 @@ import {
 // Roster: organizations on the side, the selected one in the main area (teams collapsed by default).
 // Scales to many organizations/teams — only one organization's teams are ever on screen, and a single
 // search box finds any organization, team or student. Selection lives in the URL (?org=<id>|none|
-// instructors, &team=<id>) so a refresh or a shared link reopens the same place.
+// instructors|students, &team=<id>) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
   const { teams, organizations, loaded } = useRosterData();
   const [params, setParams] = useSearchParams();
@@ -52,6 +53,8 @@ export function TeamsAdminPage() {
           <SearchResults query={search.trim()} organizations={organizations} teams={teams} onSelect={select} />
         ) : !loaded ? null : selection.kind === 'instructors' ? (
           <InstructorsView />
+        ) : selection.kind === 'students' ? (
+          <StudentsView teams={teams} onSelect={select} />
         ) : (
           <OrgDetail
             org={selectedOrg}
@@ -69,7 +72,7 @@ export function TeamsAdminPage() {
 // Default: the first organization, or the unassigned teams when there are none. A stale ?org= (e.g.
 // the organization was deleted in another tab) falls back the same way.
 function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
-  if (raw === 'instructors') return { kind: 'instructors' };
+  if (raw === 'instructors' || raw === 'students') return { kind: raw };
   if (raw === 'none') return { kind: 'none' };
   const id = Number(raw);
   if (raw && (!loaded || organizations.some((o) => o.id === id))) return { kind: 'org', id };
@@ -81,7 +84,7 @@ function selectionKey(s: Selection) {
 }
 
 function keyToSelection(key: string): Selection {
-  if (key === 'none' || key === 'instructors') return { kind: key };
+  if (key === 'none' || key === 'instructors' || key === 'students') return { kind: key };
   return { kind: 'org', id: Number(key.slice(4)) };
 }
 
@@ -99,6 +102,7 @@ function Sidebar({
   const students = (orgId: number | null) =>
     teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
   const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
+  const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
   const meta = (teamCount: number, studentCount: number) => ({
     meta: `${teamCount} · ${studentCount}`,
     metaTitle: `${teamCount} teams · ${studentCount} students`,
@@ -125,8 +129,17 @@ function Sidebar({
 
   return (
     <SideNav
-      title="Organizations"
-      groups={[{ items: orgItems }, { items: [{ key: 'instructors', label: 'Instructors' }] }]}
+      title="Roster"
+      groups={[
+        { label: 'Organizations', items: orgItems },
+        {
+          label: 'People',
+          items: [
+            { key: 'students', label: 'Students', meta: String(totalStudents), metaTitle: `${totalStudents} students` },
+            { key: 'instructors', label: 'Instructors' },
+          ],
+        },
+      ]}
       activeKey={selectionKey(selection)}
       onSelect={(key) => onSelect(keyToSelection(key))}
       addLabel="New organization"
