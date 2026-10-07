@@ -15,8 +15,6 @@ export interface SideNavItem {
   dot?: { title: string };
   badges?: SideNavBadge[];
   muted?: boolean;
-  // A child row under the item before it (e.g. an organization under "Organizations").
-  indent?: boolean;
   // Optional "+" at the end of the row. Also offered under the picker on narrow screens.
   onAdd?: () => void;
   addLabel?: string;
@@ -178,7 +176,6 @@ function PickerOption({ item }: { item: SideNavItem }) {
   const extra = (item.badges ?? []).filter((b) => b.count > 0).map((b) => `${b.count} ${b.title}`);
   return (
     <option value={item.key}>
-      {item.indent ? '   ' : ''}
       {item.label}
       {item.meta ? ` (${item.meta})` : ''}
       {extra.length ? ` · ${extra.join(' · ')}` : ''}
@@ -198,7 +195,7 @@ function SideNavButton({ item, active, onClick }: { item: SideNavItem; active: b
         gap: 8,
         width: '100%',
         textAlign: 'start',
-        padding: item.indent ? '5px 10px 5px 24px' : '7px 10px',
+        padding: '7px 10px',
         borderRadius: 'var(--radius-control)',
         border: 'none',
         borderInlineStart: `2px solid ${active ? 'var(--signal-primary)' : 'transparent'}`,
@@ -206,7 +203,7 @@ function SideNavButton({ item, active, onClick }: { item: SideNavItem; active: b
         color: item.muted ? 'var(--text-muted)' : 'var(--text-primary)',
         fontStyle: item.muted ? 'italic' : 'normal',
         cursor: 'pointer',
-        fontSize: item.indent ? 13 : 14,
+        fontSize: 14,
       }}
     >
       <span

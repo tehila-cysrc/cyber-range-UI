@@ -10,6 +10,7 @@ import { TeamsView } from './roster/TeamsView';
 import { OrganizationsView } from './roster/OrganizationsView';
 import {
   inputStyle,
+  linkButtonStyle,
   useRosterData,
   type Member,
   type Organization,
@@ -18,9 +19,9 @@ import {
 } from './roster/rosterData';
 
 // Roster: a side panel with four rows (Organizations / Teams / Students / Instructors), each opening a list
-// in the main area and with its own "+" that opens that list's "New …" card; the organizations themselves
-// sit indented under the Organizations row. Scales to many organizations/teams —
-// only one organization's teams are ever on screen, and a single search box finds any organization,
+// in the main area and with its own "+" that opens that list's "New …" card. An organization opens from
+// the Organizations list (with a breadcrumb back). Scales to many organizations/teams — only one
+// organization's teams are ever on screen, and a single search box finds any organization,
 // team or student. Selection lives in the URL (?org=<id>|none|orgs|teams|students|instructors, &team=<id>,
 // &add=1) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
@@ -33,7 +34,7 @@ export function TeamsAdminPage() {
   const adding = params.get('add') === '1';
 
   function select(next: Selection, teamId?: number, add = false) {
-    const p: Record<string, string> = { org: selectionKey(next).replace(/^org-/, '') };
+    const p: Record<string, string> = { org: selectionParam(next) };
     if (teamId) p.team = String(teamId);
     if (add) p.add = '1';
     setParams(p, { replace: true });
@@ -67,37 +68,48 @@ export function TeamsAdminPage() {
         ) : selection.kind === 'students' ? (
           <StudentsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : (
-          <OrgDetail
-            org={selectedOrg}
-            teams={teams}
-            organizations={organizations}
-            focusTeamId={focusTeamId}
-            onDeleted={() => select({ kind: 'none' })}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', minWidth: 0 }}>
+            <nav aria-label="Breadcrumb" style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
+              <button type="button" onClick={() => select({ kind: 'orgs' })} style={{ ...linkButtonStyle, color: 'var(--signal-primary)' }}>
+                Organizations
+              </button>
+              {' › '}
+              <bdi>{selectedOrg?.name ?? 'No organization'}</bdi>
+            </nav>
+            <OrgDetail
+              org={selectedOrg}
+              teams={teams}
+              organizations={organizations}
+              focusTeamId={focusTeamId}
+              onDeleted={() => select({ kind: 'orgs' })}
+            />
+          </div>
         )}
       </main>
     </div>
   );
 }
 
-// Default: the first organization, or the unassigned teams when there are none. A stale ?org= (e.g.
-// the organization was deleted in another tab) falls back the same way.
+// Default: the Organizations list. A stale ?org= (e.g. the organization was deleted in another tab)
+// falls back the same way.
 function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
   if (raw === 'orgs' || raw === 'teams' || raw === 'students' || raw === 'instructors') return { kind: raw };
   if (raw === 'none') return { kind: 'none' };
   const id = Number(raw);
   if (raw && (!loaded || organizations.some((o) => o.id === id))) return { kind: 'org', id };
-  return organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' };
+  return { kind: 'orgs' };
 }
 
-// The sidebar key; without its "org-" prefix it is also the ?org= value.
-function selectionKey(s: Selection) {
-  return s.kind === 'org' ? `org-${s.id}` : s.kind;
+// The ?org= value.
+function selectionParam(s: Selection) {
+  return s.kind === 'org' ? String(s.id) : s.kind;
 }
 
-function keyToSelection(key: string): Selection {
-  if (key === 'none' || key === 'orgs' || key === 'teams' || key === 'students' || key === 'instructors') return { kind: key };
-  return { kind: 'org', id: Number(key.slice(4)) };
+type ListKey = 'orgs' | 'teams' | 'students' | 'instructors';
+
+// The sidebar row to highlight: a single organization (or the unassigned teams) belongs to Organizations.
+function sidebarKey(s: Selection): ListKey {
+  return s.kind === 'org' || s.kind === 'none' ? 'orgs' : s.kind;
 }
 
 function Sidebar({
@@ -116,17 +128,10 @@ function Sidebar({
     queryFn: () => apiFetch<{ instructors: Member[] }>('/admin/instructors'),
   });
   const instructorCount = instructorData?.instructors.length ?? 0;
-  const students = (orgId: number | null) =>
-    teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
-  const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
   const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
-  const meta = (teamCount: number, studentCount: number) => ({
-    meta: `${teamCount} · ${studentCount}`,
-    metaTitle: `${teamCount} teams · ${studentCount} students`,
-  });
 
   // A top-level row: opens its list; "+" opens the same list with the "New …" card.
-  const row = (key: 'orgs' | 'teams' | 'students' | 'instructors', label: string, count: number, noun: string, addLabel: string): SideNavItem => ({
+  const row = (key: ListKey, label: string, count: number, noun: string, addLabel: string): SideNavItem => ({
     key,
     label,
     meta: String(count),
@@ -134,27 +139,6 @@ function Sidebar({
     onAdd: () => onSelect({ kind: key }, undefined, true),
     addLabel,
   });
-
-  const orgItems: SideNavItem[] = [
-    ...organizations.map((o) => ({
-      key: `org-${o.id}`,
-      label: o.name,
-      ...meta(o.teamCount, students(o.id)),
-      dot: o.joinCode ? { title: 'Join code open' } : undefined,
-      indent: true,
-    })),
-    // Always offered when there are no organizations (it's then simply "Teams"); otherwise only when
-    // some team is actually unassigned.
-    ...(organizations.length === 0 || unassignedTeams > 0
-      ? [{
-          key: 'none',
-          label: organizations.length > 0 ? 'No organization' : 'Teams',
-          ...meta(unassignedTeams, students(null)),
-          muted: organizations.length > 0,
-          indent: true,
-        }]
-      : []),
-  ];
 
   return (
     <SideNav
@@ -164,16 +148,14 @@ function Sidebar({
         {
           items: [
             row('orgs', 'Organizations', organizations.length, 'organizations', 'New organization'),
-            ...orgItems,
             row('teams', 'Teams', teams.length, 'teams', 'New team'),
             row('students', 'Students', totalStudents, 'students', 'New student'),
             row('instructors', 'Instructors', instructorCount, 'instructors', 'New instructor'),
           ],
         },
       ]}
-      activeKey={selectionKey(selection)}
-      onSelect={(key) => onSelect(keyToSelection(key))}
-      filterThreshold={12}
+      activeKey={sidebarKey(selection)}
+      onSelect={(key) => onSelect({ kind: key as ListKey })}
     />
   );
 }
