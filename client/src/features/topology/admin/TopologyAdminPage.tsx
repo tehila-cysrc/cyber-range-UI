@@ -529,6 +529,7 @@ function NodePanel({
   const queryClient = useQueryClient();
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
+  const [accessToggleError, setAccessToggleError] = useState<string | null>(null);
   const [showRunScript, setShowRunScript] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -556,6 +557,7 @@ function NodePanel({
       }),
     onSuccess: () => {
       setAccessPassword('');
+      setAccessToggleError(null);
       queryClient.invalidateQueries({ queryKey: ['access-target', node.id] });
       onAccessTargetChanged();
     },
@@ -682,22 +684,36 @@ function NodePanel({
                 alignItems: 'center',
                 gap: 6,
                 fontSize: 13,
-                color: accessTargetData?.accessTarget ? 'var(--text-muted)' : 'var(--text-telemetry)',
+                color: 'var(--text-muted)',
                 margin: '0 0 6px',
               }}
             >
               <input
                 type="checkbox"
                 checked={!!accessTargetData?.accessTarget?.isEnabled}
-                disabled={!accessTargetData?.accessTarget || setStudentAccess.isPending}
-                onChange={(e) => setStudentAccess.mutate(e.target.checked)}
+                disabled={setStudentAccess.isPending || saveAccessTarget.isPending}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setAccessToggleError(null);
+                  if (accessTargetData?.accessTarget) {
+                    setStudentAccess.mutate(on);
+                    return;
+                  }
+                  if (!on) return;
+                  if (!accessUsername.trim() || !accessPassword.trim()) {
+                    setAccessToggleError('Enter the VM login username and password below, then turn this on.');
+                    return;
+                  }
+                  saveAccessTarget.mutate();
+                }}
               />
               Allow students to connect
             </label>
-            <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 8 }}>
-              {accessTargetData?.accessTarget
-                ? 'Students see Connect when this is on. Turning it off hides Connect but keeps the saved login. You can still Connect yourself.'
-                : 'Save a login credential first, then you can turn student access on or off.'}
+            <div style={{ fontSize: 12, color: accessToggleError ? 'var(--signal-alert)' : 'var(--text-telemetry)', marginBottom: 8 }}>
+              {accessToggleError ??
+                (accessTargetData?.accessTarget
+                  ? 'Students see Connect when this is on. Turning it off hides Connect but keeps the saved login. You can still Connect yourself.'
+                  : 'Enter the VM login below, then turn this on. Students will see Connect.')}
             </div>
           </>
         )}
@@ -710,8 +726,25 @@ function NodePanel({
         )}
         {!!node.environmentId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={fieldStyle} />
-          <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password" type="password" style={fieldStyle} />
+          <input
+            value={accessUsername}
+            onChange={(e) => {
+              setAccessUsername(e.target.value);
+              setAccessToggleError(null);
+            }}
+            placeholder="Login username"
+            style={fieldStyle}
+          />
+          <input
+            value={accessPassword}
+            onChange={(e) => {
+              setAccessPassword(e.target.value);
+              setAccessToggleError(null);
+            }}
+            placeholder="Login password"
+            type="password"
+            style={fieldStyle}
+          />
           <div style={{ display: 'flex', gap: 8 }}>
             <Button
               variant="ghost"
