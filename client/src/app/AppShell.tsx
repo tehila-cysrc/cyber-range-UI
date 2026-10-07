@@ -15,7 +15,7 @@ import { ProfileDialog } from '../features/auth/ProfileDialog';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
 import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
-import { HeaderCertificateButton } from '../features/certificate/DownloadCertificateButton';
+import { HeaderCertificateButton } from '../features/certificate/CertificateDialog';
 import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
 import { useEntryFeedbackToast } from '../features/documentation/useEntryFeedbackToast';
 import logoGreenUrl from '../assets/logo-wordmark-green.svg';

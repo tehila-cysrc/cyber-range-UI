@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/apiClient';
 import { useToastStore } from '../../../stores/toastStore';
-import { CertificateDialog } from '../../certificate/DownloadCertificateButton';
+import { CertificateDialog } from '../../certificate/CertificateDialog';
 import { Avatar } from '../../../components/Avatar';
 import { AvatarPicker } from '../../../components/AvatarPicker';
 import { AddCard, SectionHeader, SectionView } from './RosterSection';

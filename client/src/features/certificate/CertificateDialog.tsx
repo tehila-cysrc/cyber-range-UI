@@ -3,9 +3,9 @@ import { Button } from '../../components/Button';
 import { useAuthStore } from '../../stores/authStore';
 import { Certificate } from './Certificate';
 
-// Students download their completion certificate once a scenario is completed: they type the name to
-// print and pick the date, see a live preview, and get a PDF or PNG. Rendered entirely in the browser —
-// the server has no record of issued certificates.
+// Students download their completion certificate from the header button — the only entry point for
+// them. They type the name to print and pick the date, see a live preview, and get a PDF or PNG.
+// Rendered entirely in the browser — the server has no record of issued certificates.
 
 const PREVIEW_SCALE = 0.56; // 1123px-wide certificate → ~630px preview
 const CERT_PX = { width: 1123, height: 794 }; // 297x210mm at 96 dpi
@@ -45,18 +45,6 @@ const fieldStyle: React.CSSProperties = {
   fontSize: 14,
   colorScheme: 'dark',
 };
-
-export function DownloadCertificateButton({ style }: { style?: React.CSSProperties }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button type="button" onClick={() => setOpen(true)} style={style}>
-        Download certificate
-      </Button>
-      {open && <CertificateDialog onClose={() => setOpen(false)} />}
-    </>
-  );
-}
 
 // Students' header button — shown on every page once they're eligible (GET /teams/me/certificate:
 // a completed scenario, or an instructor grant), so it can't be missed.

@@ -16,7 +16,6 @@ import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
 import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
 import { EntryFeedbackForm, EntryFeedbackList, type EntryFeedbackItem } from './EntryFeedback';
-import { DownloadCertificateButton } from '../certificate/DownloadCertificateButton';
 
 // React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
 // Timeline-only visit to /investigation never pays its bundle cost; it only loads the first time
@@ -479,19 +478,11 @@ export function InvestigationPage() {
             background: 'var(--surface-1)',
             fontSize: 14,
             color: 'var(--text-muted)',
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-sm)',
           }}
         >
-          <span>
-            {viewed.status === 'completed'
-              ? 'This scenario is completed — your team’s timeline and canvas stay here to review, but nothing new can be added.'
-              : 'Your instructor has paused this scenario — your team’s work is kept here to review until it continues.'}
-          </span>
-          {!isInstructor && viewed.status === 'completed' && <DownloadCertificateButton style={{ fontSize: 14, padding: '6px 12px', flex: 'none' }} />}
+          {viewed.status === 'completed'
+            ? 'This scenario is completed — your team’s timeline and canvas stay here to review, but nothing new can be added.'
+            : 'Your instructor has paused this scenario — your team’s work is kept here to review until it continues.'}
         </div>
       )}
 
