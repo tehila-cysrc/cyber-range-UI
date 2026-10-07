@@ -11,6 +11,7 @@ import { OrganizationsView } from './roster/OrganizationsView';
 import {
   inputStyle,
   linkButtonStyle,
+  noOrgLabel,
   useRosterData,
   type Member,
   type Organization,
@@ -74,7 +75,7 @@ export function TeamsAdminPage() {
                 Organizations
               </button>
               {' › '}
-              <bdi>{selectedOrg?.name ?? 'No organization'}</bdi>
+              <bdi>{selectedOrg?.name ?? noOrgLabel(organizations)}</bdi>
             </nav>
             <OrgDetail
               org={selectedOrg}

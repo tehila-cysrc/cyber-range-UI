@@ -94,3 +94,8 @@ export function useRosterMutation<TVars>(mutationFn: (vars: TVars) => Promise<un
 export function postJson(path: string, body: unknown, method = 'POST') {
   return apiFetch(path, { method, body: JSON.stringify(body) });
 }
+
+// Same wording as the unassigned-teams page's own heading (OrgDetail): with no organizations it's simply "Teams".
+export function noOrgLabel(organizations: Organization[]) {
+  return organizations.length > 0 ? 'No organization' : 'Teams';
+}

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { AddCard, SectionHeader, SectionView } from './RosterSection';
-import { inputStyle, postJson, useRosterMutation, type Organization, type Selection, type Team } from './rosterData';
+import { inputStyle, noOrgLabel, postJson, useRosterMutation, type Organization, type Selection, type Team } from './rosterData';
 
 // Every organization in one list (plus the unassigned teams, when there are any). Clicking a row opens
 // that organization — its join code and teams live there.
@@ -31,8 +31,10 @@ export function OrganizationsView({
       muted: false,
       go: () => onSelect({ kind: 'org', id: o.id }),
     })),
-    ...(unassigned > 0
-      ? [{ key: 'none', name: 'No organization', teamCount: unassigned, studentCount: studentsOf(null), joinOpen: false, muted: true, go: () => onSelect({ kind: 'none' }) }]
+    // Always offered when there are no organizations — that page holds the general join code (the only
+    // one then); otherwise only when some team is actually unassigned.
+    ...(organizations.length === 0 || unassigned > 0
+      ? [{ key: 'none', name: noOrgLabel(organizations), teamCount: unassigned, studentCount: studentsOf(null), joinOpen: false, muted: organizations.length > 0, go: () => onSelect({ kind: 'none' }) }]
       : []),
   ];
 
