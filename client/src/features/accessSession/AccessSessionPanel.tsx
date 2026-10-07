@@ -25,11 +25,13 @@ export function AccessSessionPanel({
   credentialPath,
   onDisconnect,
   disconnecting,
+  onClose,
 }: {
   session: ActiveAccessSession;
   credentialPath: string;
   onDisconnect: () => void;
   disconnecting: boolean;
+  onClose?: () => void;
 }) {
   const [revealed, setRevealed] = useState<RevealedCredential | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -68,7 +70,18 @@ export function AccessSessionPanel({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <strong style={{ color: 'var(--text-primary)', fontSize: 15 }}>Session — {session.nodeLabel}</strong>
-        <TelemetryBadge tone="primary">Ready</TelemetryBadge>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <TelemetryBadge tone="primary">Ready</TelemetryBadge>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16, padding: 0 }}
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>

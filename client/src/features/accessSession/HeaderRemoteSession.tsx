@@ -32,7 +32,6 @@ export function remoteSessionEndpoints(role: 'student' | 'instructor') {
 export function HeaderRemoteSession({ role }: { role: 'student' | 'instructor' }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const endpoints = remoteSessionEndpoints(role);
 
   const { data } = useQuery({
@@ -62,18 +61,41 @@ export function HeaderRemoteSession({ role }: { role: 'student' | 'instructor' }
     },
   });
 
+  // The box floats at the centre of the screen and can be dragged anywhere by its non-interactive
+  // parts; it stays open while the student works on the page (closed via × or the pill), and keeps
+  // its position for the rest of the page session.
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, []);
+    if (!open || pos || !boxRef.current) return;
+    const { width, height } = boxRef.current.getBoundingClientRect();
+    setPos({ x: Math.max(8, (window.innerWidth - width) / 2), y: Math.max(8, (window.innerHeight - height) / 2) });
+  }, [open, pos, session]);
+
+  function startDrag(e: React.MouseEvent) {
+    if ((e.target as HTMLElement).closest('button, a, input') || !boxRef.current) return;
+    e.preventDefault();
+    const rect = boxRef.current.getBoundingClientRect();
+    const dx = e.clientX - rect.left;
+    const dy = e.clientY - rect.top;
+    const onMove = (ev: MouseEvent) =>
+      setPos({
+        x: Math.min(Math.max(0, ev.clientX - dx), window.innerWidth - rect.width),
+        y: Math.min(Math.max(0, ev.clientY - dy), window.innerHeight - rect.height),
+      });
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
 
   if (!session) return null;
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
@@ -93,12 +115,27 @@ export function HeaderRemoteSession({ role }: { role: 'student' | 'instructor' }
         Connected: {session.nodeLabel}
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 36, right: 0, width: 340, zIndex: 20 }}>
+        <div
+          ref={boxRef}
+          onMouseDown={startDrag}
+          style={{
+            position: 'fixed',
+            left: pos?.x ?? 0,
+            top: pos?.y ?? 0,
+            visibility: pos ? 'visible' : 'hidden',
+            width: 340,
+            zIndex: 50,
+            cursor: 'move',
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+            borderRadius: 'var(--radius-container)',
+          }}
+        >
           <AccessSessionPanel
             session={session}
             credentialPath={endpoints.credential(session.accessSessionId)}
             onDisconnect={() => disconnect.mutate(session.accessSessionId)}
             disconnecting={disconnect.isPending}
+            onClose={() => setOpen(false)}
           />
         </div>
       )}
