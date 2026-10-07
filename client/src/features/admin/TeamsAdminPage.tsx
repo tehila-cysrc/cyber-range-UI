@@ -6,6 +6,7 @@ import { SideNav, type SideNavItem } from '../../components/SideNav';
 import { OrgDetail } from './roster/OrgDetail';
 import { InstructorsView } from './roster/InstructorsView';
 import { StudentsView } from './roster/StudentsView';
+import { TeamsView } from './roster/TeamsView';
 import { AddCard, SectionHeader, SectionView } from './roster/RosterSection';
 import {
   inputStyle,
@@ -18,10 +19,10 @@ import {
   type Team,
 } from './roster/rosterData';
 
-// Roster: a side panel with three sections (Organizations / Students / Instructors), each with its own
+// Roster: a side panel with four sections (Organizations / Teams / Students / Instructors), each with its own
 // "+" that opens that section's "New …" card in the main area. Scales to many organizations/teams —
 // only one organization's teams are ever on screen, and a single search box finds any organization,
-// team or student. Selection lives in the URL (?org=<id>|none|new|students|instructors, &team=<id>,
+// team or student. Selection lives in the URL (?org=<id>|none|new|teams|students|instructors, &team=<id>,
 // &add=1) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
   const { teams, organizations, loaded } = useRosterData();
@@ -65,6 +66,8 @@ export function TeamsAdminPage() {
             onCreated={(id) => select({ kind: 'org', id })}
             onClose={() => select(organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' })}
           />
+        ) : selection.kind === 'teams' ? (
+          <TeamsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : selection.kind === 'instructors' ? (
           <InstructorsView adding={adding} onCloseAdd={() => select(selection)} />
         ) : selection.kind === 'students' ? (
@@ -86,7 +89,7 @@ export function TeamsAdminPage() {
 // Default: the first organization, or the unassigned teams when there are none. A stale ?org= (e.g.
 // the organization was deleted in another tab) falls back the same way.
 function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
-  if (raw === 'instructors' || raw === 'students') return { kind: raw };
+  if (raw === 'instructors' || raw === 'students' || raw === 'teams') return { kind: raw };
   if (raw === 'new') return { kind: 'new-org' };
   if (raw === 'none') return { kind: 'none' };
   const id = Number(raw);
@@ -100,7 +103,7 @@ function selectionKey(s: Selection) {
 }
 
 function keyToSelection(key: string): Selection {
-  if (key === 'none' || key === 'instructors' || key === 'students') return { kind: key };
+  if (key === 'none' || key === 'instructors' || key === 'students' || key === 'teams') return { kind: key };
   if (key === 'new') return { kind: 'new-org' };
   return { kind: 'org', id: Number(key.slice(4)) };
 }
@@ -155,6 +158,12 @@ function Sidebar({
       hideTitle
       groups={[
         { label: 'Organizations', items: orgItems, onAdd: () => onSelect({ kind: 'new-org' }), addLabel: 'New organization' },
+        {
+          label: 'Teams',
+          items: [{ key: 'teams', label: 'All teams', meta: String(teams.length), metaTitle: `${teams.length} teams` }],
+          onAdd: () => onSelect({ kind: 'teams' }, undefined, true),
+          addLabel: 'New team',
+        },
         {
           label: 'Students',
           items: [{ key: 'students', label: 'All students', meta: String(totalStudents), metaTitle: `${totalStudents} students` }],

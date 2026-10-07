@@ -25,11 +25,12 @@ export interface Organization {
 }
 
 // What the main area shows: an organization, the unassigned teams, the "New organization" card, every
-// student, or the instructor accounts.
+// team, every student, or the instructor accounts.
 export type Selection =
   | { kind: 'org'; id: number }
   | { kind: 'none' }
   | { kind: 'new-org' }
+  | { kind: 'teams' }
   | { kind: 'students' }
   | { kind: 'instructors' };
 
