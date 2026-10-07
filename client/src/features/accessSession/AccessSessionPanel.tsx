@@ -22,10 +22,12 @@ interface RevealedCredential {
 // an explicit "Show" click (design doc §11.5), never bundled into the initial session response.
 export function AccessSessionPanel({
   session,
+  credentialPath,
   onDisconnect,
   disconnecting,
 }: {
   session: ActiveAccessSession;
+  credentialPath: string;
   onDisconnect: () => void;
   disconnecting: boolean;
 }) {
@@ -35,7 +37,7 @@ export function AccessSessionPanel({
 
   const { refetch: fetchCredential, isFetching } = useQuery({
     queryKey: ['access-session-credential', session.accessSessionId],
-    queryFn: () => apiFetch<RevealedCredential>(`/teams/me/access-sessions/${session.accessSessionId}/credential`),
+    queryFn: () => apiFetch<RevealedCredential>(credentialPath),
     enabled: false,
   });
 

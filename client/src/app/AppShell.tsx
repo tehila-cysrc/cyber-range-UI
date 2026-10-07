@@ -504,7 +504,8 @@ export function AppShell() {
           )}
         </div>
 
-        {isStudent && activeRange?.active && <HeaderRemoteSession />}
+        {isStudent && activeRange?.active && <HeaderRemoteSession role="student" />}
+        {isInstructor && <HeaderRemoteSession role="instructor" />}
         {isStudent && <MissionClockBadge />}
         {isStudent && activeRange?.active && <HeaderHelp />}
 

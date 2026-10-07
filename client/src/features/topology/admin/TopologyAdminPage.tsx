@@ -16,6 +16,8 @@ import {
 } from '../TopologyGraph';
 import { RunScriptDrawer } from './RunScriptDrawer';
 import { PublicationBar } from './PublicationBar';
+import { type ActiveAccessSession } from '../../accessSession/AccessSessionPanel';
+import { openRemoteSessionBox } from '../../accessSession/HeaderRemoteSession';
 
 interface CyberRange {
   id: number;
@@ -527,8 +529,16 @@ function NodePanel({
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [showRunScript, setShowRunScript] = useState(false);
-  const [connectSession, setConnectSession] = useState<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+
+  // The instructor's own Connect session comes from the server (same source as the header's
+  // "Connected" pill), so it survives closing this panel or refreshing the page.
+  const { data: mineData } = useQuery({
+    queryKey: ['access-session-active', 'header', 'instructor'],
+    queryFn: () => apiFetch<{ session: ActiveAccessSession | null }>('/admin/access-sessions/mine'),
+  });
+  const mySession = mineData?.session ?? null;
+  const connectSession = mySession?.topologyNodeId === node.id ? mySession : null;
 
   const { data: accessTargetData } = useQuery({
     queryKey: ['access-target', node.id],
@@ -562,13 +572,18 @@ function NodePanel({
     mutationFn: () =>
       apiFetch<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string }>(`/admin/topology/nodes/${node.id}/connect`, { method: 'POST' }),
     onMutate: () => setConnectError(null),
-    onSuccess: setConnectSession,
+    onSuccess: (res) => {
+      queryClient.setQueryData(['access-session-active', 'header', 'instructor'], {
+        session: { ...res, nodeLabel: node.label, topologyNodeId: node.id },
+      });
+      openRemoteSessionBox();
+    },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
   });
 
   const disconnect = useMutation({
     mutationFn: (accessSessionId: number) => apiFetch(`/admin/access-sessions/${accessSessionId}/force-close`, { method: 'POST' }),
-    onSuccess: () => setConnectSession(null),
+    onSuccess: () => queryClient.setQueryData(['access-session-active', 'header', 'instructor'], { session: null }),
   });
 
   return (
@@ -681,22 +696,29 @@ function NodePanel({
       <div style={{ borderTop: '1px solid var(--surface-border)', margin: '10px 0', paddingTop: 10 }}>
         {connectSession ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            <Button variant="destructive" disabled={disconnect.isPending} onClick={() => disconnect.mutate(connectSession.accessSessionId)} style={{ width: '100%' }}>
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
             <a href={connectSession.shareableLinkUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
               <Button variant="primary" style={{ width: '100%' }}>
                 Open connection
               </Button>
             </a>
-            <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>Expires {new Date(connectSession.expiresAt).toLocaleTimeString()}</div>
-            <Button variant="destructive" disabled={disconnect.isPending} onClick={() => disconnect.mutate(connectSession.accessSessionId)} style={{ width: '100%' }}>
-              Disconnect
-            </Button>
           </div>
         ) : (
           <Button
             variant="ghost"
             disabled={connect.isPending || !node.environmentId || !accessTargetData?.accessTarget}
             title={node.environmentId ? undefined : 'Connect needs an Azure-discovered VM'}
-            onClick={() => connect.mutate()}
+            onClick={() => {
+              // One own session at a time — same rule as the student Topology page; the header box
+              // only tracks the latest one.
+              if (mySession) {
+                setConnectError(`Disconnect from ${mySession.nodeLabel} first.`);
+                return;
+              }
+              connect.mutate();
+            }}
             style={{ width: '100%', marginBottom: 8 }}
           >
             {connect.isPending ? 'Connecting…' : 'Connect'}

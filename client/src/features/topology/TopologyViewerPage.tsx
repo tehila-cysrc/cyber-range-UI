@@ -14,7 +14,8 @@ import {
   type TopologyNodeData,
   type TopologyZoneData,
 } from './TopologyGraph';
-import { AccessSessionPanel, type ActiveAccessSession } from '../accessSession/AccessSessionPanel';
+import { type ActiveAccessSession } from '../accessSession/AccessSessionPanel';
+import { openRemoteSessionBox } from '../accessSession/HeaderRemoteSession';
 
 interface ActiveCyberRange {
   cyberRangeId: number;
@@ -86,6 +87,8 @@ export function TopologyViewerPage() {
     },
     onSuccess: ({ res, node }) => {
       setSession({ accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label, topologyNodeId: node.id });
+      // The session box (login + Open connection) lives under the header's "Connected" pill.
+      openRemoteSessionBox();
     },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
     onSettled: () => setConnectingNodeId(null),
@@ -296,7 +299,6 @@ export function TopologyViewerPage() {
       {!session && restoring && (
         <div style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: 14 }}>Checking for your open remote session…</div>
       )}
-      {session && <AccessSessionPanel session={session} onDisconnect={() => disconnect.mutate(session.accessSessionId)} disconnecting={disconnect.isPending} />}
     </div>
   );
 }

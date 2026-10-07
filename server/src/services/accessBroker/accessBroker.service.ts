@@ -541,6 +541,87 @@ export async function restoreOwnSession(user: RequestingUser): Promise<RestoredS
   return { accessSessionId: s.id, shareableLinkUrl: url, expiresAt: s.expiresAt, topologyNodeId: s.topologyNodeId, nodeLabel: s.nodeLabel, protocol: s.protocol };
 }
 
+// Instructor counterpart of restoreOwnSession for their own diagnostic Connect sessions (team_id NULL)
+// — feeds the header "Connected: X" pill/session box. No team/visibility re-checks (an instructor can
+// connect to any node); still requires the session unexpired, the access target present and the link
+// alive in Bastion.
+export async function restoreInstructorSession(actor: { id: number; username: string }): Promise<RestoredSession | null> {
+  const s = db
+    .prepare(
+      `SELECT s.id AS id, s.topology_node_id AS topologyNodeId, s.protocol AS protocol, s.expires_at AS expiresAt,
+              tn.label AS nodeLabel, tn.external_key AS externalKey, tn.environment_id AS environmentId,
+              ce.bastion_host_id AS bastionHostId, (at.id IS NOT NULL) AS hasTarget
+       FROM access_sessions s
+       JOIN topology_nodes tn ON tn.id = s.topology_node_id
+       LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
+       LEFT JOIN access_targets at ON at.topology_node_id = tn.id
+       WHERE s.user_id = ? AND s.team_id IS NULL AND s.outcome = 'active'
+       ORDER BY s.started_at DESC LIMIT 1`,
+    )
+    .get(actor.id) as
+    | {
+        id: number; topologyNodeId: number; protocol: string; expiresAt: string; nodeLabel: string;
+        externalKey: string; environmentId: number | null; bastionHostId: string | null; hasTarget: number;
+      }
+    | undefined;
+  if (!s) return null;
+
+  if (new Date(s.expiresAt).getTime() <= Date.now()) {
+    expireSession(s.id, null);
+    return null;
+  }
+  if (s.hasTarget !== 1 || !s.environmentId || !s.bastionHostId) {
+    finishSession(s.id, null, 'force_closed');
+    writeAudit(actor.username, 'access_session.ended', 'access_session', s.id, { outcome: 'force_closed', reason: 'no_longer_connectable_on_restore' });
+    return null;
+  }
+
+  const credential = getResolvedCredential(s.environmentId);
+  if (!credential) return null;
+  let url: string | undefined;
+  try {
+    const links = await listShareableLinks(credential, s.bastionHostId, [s.externalKey]);
+    url = links.find((l) => l.vmId.toLowerCase() === s.externalKey.toLowerCase())?.url;
+  } catch (err) {
+    console.error('[accessBroker] instructor restore: could not read shareable link:', (err as Error).message);
+    return null;
+  }
+  if (!url) {
+    finishSession(s.id, null, 'completed');
+    writeAudit(actor.username, 'access_session.ended', 'access_session', s.id, { outcome: 'completed', reason: 'link_gone_on_restore' });
+    return null;
+  }
+
+  return { accessSessionId: s.id, shareableLinkUrl: url, expiresAt: s.expiresAt, topologyNodeId: s.topologyNodeId, nodeLabel: s.nodeLabel, protocol: s.protocol };
+}
+
+// Instructor counterpart of revealSessionCredential — only for the instructor's OWN active Connect
+// session, same separate audit event.
+export async function revealInstructorSessionCredential(
+  accessSessionId: number,
+  actor: { id: number; username: string },
+): Promise<{ username: string; password: string } | null> {
+  const row = db
+    .prepare(`SELECT topology_node_id AS topologyNodeId, team_id AS teamId, user_id AS userId, outcome FROM access_sessions WHERE id = ?`)
+    .get(accessSessionId) as { topologyNodeId: number; teamId: number | null; userId: number; outcome: string } | undefined;
+  if (!row || row.teamId !== null || row.userId !== actor.id || row.outcome !== 'active') return null;
+
+  const target = db
+    .prepare('SELECT credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
+    .get(row.topologyNodeId) as { credentialId: number | null; keyVaultSecretName: string | null; username: string | null } | undefined;
+  const environmentId = (db.prepare('SELECT environment_id AS environmentId FROM topology_nodes WHERE id = ?').get(row.topologyNodeId) as { environmentId: number | null } | undefined)
+    ?.environmentId;
+  if (!target || !environmentId) return null;
+
+  try {
+    const resolved = await resolveNodeCredential(target, environmentId);
+    writeAudit(actor.username, 'access_session.credential_revealed', 'access_session', accessSessionId, { instructor: true });
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
 export interface EnvironmentRevocation {
   environmentId: number;
   environmentName: string;
