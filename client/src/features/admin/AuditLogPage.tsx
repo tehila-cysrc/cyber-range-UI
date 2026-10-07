@@ -23,6 +23,8 @@ const ACTION_LABELS: Record<string, string> = {
   'access_session.restored': 'Remote session restored',
   'access_target.configured': 'Configured VM login',
   'access_target.removed': 'Removed VM login',
+  'access_target.student_access_disabled': 'Disabled student remote access',
+  'access_target.student_access_enabled': 'Enabled student remote access',
   'environment.connectivity_checked': 'Checked environment connection',
   'environment.credential_rotated': 'Rotated environment credential',
   'environment.deleted': 'Deleted environment',

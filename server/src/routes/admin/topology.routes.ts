@@ -6,7 +6,7 @@ import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
 import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
-import { requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
+import { endActiveSessions, requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
 import { TopologyLayoutPlanner } from '../../services/discovery/topologyLayout.js';
 import { publicationStatus, publishTopology } from '../../services/topologyPublication.service.js';
 import { emitTopologyPublished } from '../../sockets/emitters.js';
@@ -277,10 +277,20 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const target = db
     .prepare(
-      'SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName FROM access_targets WHERE topology_node_id = ?',
+      `SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName,
+              is_enabled AS isEnabled
+       FROM access_targets WHERE topology_node_id = ?`,
     )
     .get(nodeId) as
-    | { protocol: string; host: string; port: number; username: string | null; credentialId: number | null; keyVaultSecretName: string | null }
+    | {
+        protocol: string;
+        host: string;
+        port: number;
+        username: string | null;
+        credentialId: number | null;
+        keyVaultSecretName: string | null;
+        isEnabled: number;
+      }
     | undefined;
 
   if (!target) {
@@ -294,8 +304,37 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
       port: target.port,
       username: target.username,
       hasCredential: target.credentialId != null || target.keyVaultSecretName != null,
+      isEnabled: target.isEnabled === 1,
     },
   });
+});
+
+// Soft on/off for student Connect — keeps the Key Vault login so the instructor can flip a JUMP box
+// back on without re-entering the password. The instructor's own Connect is unaffected.
+router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const { isEnabled } = req.body ?? {};
+  if (typeof isEnabled !== 'boolean') {
+    res.status(400).json({ error: 'isEnabled (boolean) is required' });
+    return;
+  }
+
+  const existing = db.prepare('SELECT id FROM access_targets WHERE topology_node_id = ?').get(nodeId);
+  if (!existing) {
+    res.status(400).json({ error: 'save a login credential before turning student access on or off' });
+    return;
+  }
+
+  db.prepare('UPDATE access_targets SET is_enabled = ? WHERE topology_node_id = ?').run(isEnabled ? 1 : 0, nodeId);
+
+  if (!isEnabled) {
+    endActiveSessions({ topologyNodeId: nodeId, studentsOnly: true }, 'force_closed', req.user!.username, 'student_access_disabled');
+  }
+
+  writeAudit(req.user!.username, isEnabled ? 'access_target.student_access_enabled' : 'access_target.student_access_disabled', 'topology_node', nodeId, {
+    enabled: isEnabled,
+  });
+  res.json({ ok: true, isEnabled });
 });
 
 router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
@@ -315,6 +354,8 @@ router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
     res.status(404).json({ error: 'no access target configured for this node' });
     return;
   }
+
+  endActiveSessions({ topologyNodeId: nodeId, studentsOnly: true }, 'force_closed', req.user!.username, 'access_target_removed');
 
   if (existing?.keyVaultSecretName && existing.environmentId && existing.keyVaultUri) {
     try {

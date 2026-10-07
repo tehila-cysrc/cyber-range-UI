@@ -77,13 +77,18 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
   }
 
   const target = db
-    .prepare('SELECT protocol, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
+    .prepare(
+      'SELECT protocol, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username, is_enabled AS isEnabled FROM access_targets WHERE topology_node_id = ?',
+    )
     .get(topologyNodeId) as
-    | { protocol: 'rdp' | 'ssh'; credentialId: number | null; keyVaultSecretName: string | null; username: string | null }
+    | { protocol: 'rdp' | 'ssh'; credentialId: number | null; keyVaultSecretName: string | null; username: string | null; isEnabled: number }
     | undefined;
 
   if (!target) {
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'not_connectable', 400, 'this node has no configured access target');
+  }
+  if (!target.isEnabled) {
+    return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'student_access_disabled', 403, 'remote access is disabled for this machine');
   }
 
   if (!node.environmentId || !node.bastionHostId) {
@@ -420,6 +425,9 @@ export function listActiveSessions(): ActiveSessionSummary[] {
 interface EndFilter {
   teamId?: number;
   userId?: number;
+  topologyNodeId?: number;
+  // Instructor diagnostic Connect uses team_id NULL — keep those when turning student access off.
+  studentsOnly?: boolean;
   // Scenario switch: sessions on the (still-)active range stay valid, everything else ends.
   exceptCyberRangeId?: number;
   all?: boolean;
@@ -444,11 +452,18 @@ export function endActiveSessions(
     where.push('user_id = ?');
     params.push(filter.userId);
   }
+  if (filter.topologyNodeId != null) {
+    where.push('topology_node_id = ?');
+    params.push(filter.topologyNodeId);
+  }
+  if (filter.studentsOnly) {
+    where.push('team_id IS NOT NULL');
+  }
   if (filter.exceptCyberRangeId != null) {
     where.push('cyber_range_id != ?');
     params.push(filter.exceptCyberRangeId);
   }
-  if (!filter.all && filter.teamId == null && filter.userId == null) return 0;
+  if (!filter.all && filter.teamId == null && filter.userId == null && filter.topologyNodeId == null) return 0;
 
   const rows = db
     .prepare(`SELECT id, team_id AS teamId FROM access_sessions WHERE ${where.join(' AND ')}`)
@@ -481,7 +496,7 @@ export async function restoreOwnSession(user: RequestingUser): Promise<RestoredS
       `SELECT s.id AS id, s.cyber_range_id AS cyberRangeId, s.topology_node_id AS topologyNodeId, s.protocol AS protocol,
               s.expires_at AS expiresAt, tn.label AS nodeLabel, tn.cyber_range_id AS nodeRangeId,
               tn.is_visible_to_students AS visible, tn.external_key AS externalKey, tn.environment_id AS environmentId,
-              ce.bastion_host_id AS bastionHostId, (at.id IS NOT NULL) AS hasTarget
+              ce.bastion_host_id AS bastionHostId, (at.id IS NOT NULL AND COALESCE(at.is_enabled, 1) = 1) AS hasTarget
        FROM access_sessions s
        JOIN topology_nodes tn ON tn.id = s.topology_node_id
        LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id

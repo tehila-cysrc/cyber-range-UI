@@ -37,6 +37,7 @@ interface AccessTarget {
   port: number;
   username: string | null;
   hasCredential: boolean;
+  isEnabled: boolean;
 }
 
 const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -568,6 +569,18 @@ function NodePanel({
     },
   });
 
+  const setStudentAccess = useMutation({
+    mutationFn: (isEnabled: boolean) =>
+      apiFetch(`/admin/topology/nodes/${node.id}/access-target`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isEnabled }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['access-target', node.id] });
+      onAccessTargetChanged();
+    },
+  });
+
   const connect = useMutation({
     mutationFn: () =>
       apiFetch<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string }>(`/admin/topology/nodes/${node.id}/connect`, { method: 'POST' }),
@@ -660,6 +673,33 @@ function NodePanel({
           <div style={{ fontSize: 12, color: 'var(--signal-tertiary)', marginBottom: 6 }}>
             This node isn't Azure-discovered — browser access needs a real VM behind Azure Bastion, so it can't be configured here.
           </div>
+        )}
+        {!!node.environmentId && (
+          <>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 13,
+                color: accessTargetData?.accessTarget ? 'var(--text-muted)' : 'var(--text-telemetry)',
+                margin: '0 0 6px',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={!!accessTargetData?.accessTarget?.isEnabled}
+                disabled={!accessTargetData?.accessTarget || setStudentAccess.isPending}
+                onChange={(e) => setStudentAccess.mutate(e.target.checked)}
+              />
+              Allow students to connect
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 8 }}>
+              {accessTargetData?.accessTarget
+                ? 'Students see Connect when this is on. Turning it off hides Connect but keeps the saved login. You can still Connect yourself.'
+                : 'Save a login credential first, then you can turn student access on or off.'}
+            </div>
+          </>
         )}
         {accessTargetData?.accessTarget && (
           <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 6 }}>
