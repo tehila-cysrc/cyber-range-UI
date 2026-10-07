@@ -107,15 +107,8 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
     return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'credential_error', 500, 'platform permissions do not allow this action — contact an administrator');
   }
 
-  // Resolving the VM login credential isn't actually needed to open the Bastion connection itself
-  // (the shareable link never carries it), but confirms one is configured before we hand the student
-  // a link that will just fail at their own login prompt — see revealSessionCredential for the
-  // separate, explicitly-audited "Show" action that actually returns it to the client.
-  try {
-    await resolveNodeCredential(target, node.environmentId);
-  } catch {
-    return deny(user, topologyNodeId, activeProgress.cyberRangeId, 'no_credential_configured', 400, 'no login credential is configured for this node');
-  }
+  // The Bastion shareable link does not carry the VM login — students type it at the prompt (or use
+  // the optional Show/Copy action if an instructor saved one). Missing credentials must not block Connect.
 
   let shareableLinkUrl: string;
   try {
@@ -159,12 +152,19 @@ export async function requestInstructorAccessSession(
   const node = db
     .prepare(
       `SELECT tn.id AS id, tn.cyber_range_id AS cyberRangeId, tn.external_key AS externalKey, tn.environment_id AS environmentId,
-              ce.bastion_host_id AS bastionHostId
+              tn.metadata_json AS metadataJson, ce.bastion_host_id AS bastionHostId
        FROM topology_nodes tn LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
        WHERE tn.id = ?`,
     )
     .get(topologyNodeId) as
-    | { id: number; cyberRangeId: number; externalKey: string; environmentId: number | null; bastionHostId: string | null }
+    | {
+        id: number;
+        cyberRangeId: number;
+        externalKey: string;
+        environmentId: number | null;
+        metadataJson: string | null;
+        bastionHostId: string | null;
+      }
     | undefined;
 
   if (!node) {
@@ -175,14 +175,9 @@ export async function requestInstructorAccessSession(
   }
 
   const target = db
-    .prepare('SELECT protocol, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName, username FROM access_targets WHERE topology_node_id = ?')
-    .get(topologyNodeId) as
-    | { protocol: 'rdp' | 'ssh'; credentialId: number | null; keyVaultSecretName: string | null; username: string | null }
-    | undefined;
-
-  if (!target) {
-    return denyInstructor(actor, node, 'not_connectable', 400, 'this node has no configured access target');
-  }
+    .prepare('SELECT protocol FROM access_targets WHERE topology_node_id = ?')
+    .get(topologyNodeId) as { protocol: 'rdp' | 'ssh' } | undefined;
+  const protocol: 'rdp' | 'ssh' = target?.protocol ?? protocolFromMetadata(node.metadataJson);
 
   if (!node.environmentId || !node.bastionHostId) {
     return denyInstructor(actor, node, 'bastion_unavailable', 400, 'remote connection is temporarily unavailable for this machine');
@@ -191,12 +186,6 @@ export async function requestInstructorAccessSession(
   const credential = getResolvedCredential(node.environmentId);
   if (!credential) {
     return denyInstructor(actor, node, 'credential_error', 500, 'platform permissions do not allow this action — contact an administrator');
-  }
-
-  try {
-    await resolveNodeCredential(target, node.environmentId);
-  } catch {
-    return denyInstructor(actor, node, 'no_credential_configured', 400, 'no login credential is configured for this node');
   }
 
   let shareableLinkUrl: string;
@@ -217,11 +206,11 @@ export async function requestInstructorAccessSession(
          (team_id, user_id, cyber_range_id, topology_node_id, protocol, requested_at, started_at, expires_at, outcome, client_ip)
        VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
     )
-    .run(actor.id, node.cyberRangeId, topologyNodeId, target.protocol, now.toISOString(), now.toISOString(), expiresAt, clientIp);
+    .run(actor.id, node.cyberRangeId, topologyNodeId, protocol, now.toISOString(), now.toISOString(), expiresAt, clientIp);
   const accessSessionId = result.lastInsertRowid as number;
 
   writeAudit(actor.username, 'access_session.requested', 'access_session', accessSessionId, { teamId: null, topologyNodeId, instructor: true });
-  emitAccessSessionStarted(null, { id: accessSessionId, topologyNodeId, protocol: target.protocol, expiresAt });
+  emitAccessSessionStarted(null, { id: accessSessionId, topologyNodeId, protocol, expiresAt });
 
   return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
 }
@@ -240,6 +229,11 @@ function denyInstructor(
   ).run(actor.id, node.cyberRangeId, node.id, now, now, reason);
   writeAudit(actor.username, 'access_session.denied', 'topology_node', node.id, { reason, instructor: true });
   return { ok: false, status, reason, message };
+}
+
+function protocolFromMetadata(metadataJson: string | null): 'rdp' | 'ssh' {
+  const metadata = metadataJson ? (JSON.parse(metadataJson) as { osType?: string }) : {};
+  return metadata.osType === 'Linux' ? 'ssh' : 'rdp';
 }
 
 async function resolveNodeCredential(
@@ -565,18 +559,17 @@ export async function restoreInstructorSession(actor: { id: number; username: st
     .prepare(
       `SELECT s.id AS id, s.topology_node_id AS topologyNodeId, s.protocol AS protocol, s.expires_at AS expiresAt,
               tn.label AS nodeLabel, tn.external_key AS externalKey, tn.environment_id AS environmentId,
-              ce.bastion_host_id AS bastionHostId, (at.id IS NOT NULL) AS hasTarget
+              ce.bastion_host_id AS bastionHostId
        FROM access_sessions s
        JOIN topology_nodes tn ON tn.id = s.topology_node_id
        LEFT JOIN cloud_environments ce ON ce.id = tn.environment_id
-       LEFT JOIN access_targets at ON at.topology_node_id = tn.id
        WHERE s.user_id = ? AND s.team_id IS NULL AND s.outcome = 'active'
        ORDER BY s.started_at DESC LIMIT 1`,
     )
     .get(actor.id) as
     | {
         id: number; topologyNodeId: number; protocol: string; expiresAt: string; nodeLabel: string;
-        externalKey: string; environmentId: number | null; bastionHostId: string | null; hasTarget: number;
+        externalKey: string; environmentId: number | null; bastionHostId: string | null;
       }
     | undefined;
   if (!s) return null;
@@ -585,7 +578,7 @@ export async function restoreInstructorSession(actor: { id: number; username: st
     expireSession(s.id, null);
     return null;
   }
-  if (s.hasTarget !== 1 || !s.environmentId || !s.bastionHostId) {
+  if (!s.environmentId || !s.bastionHostId) {
     finishSession(s.id, null, 'force_closed');
     writeAudit(actor.username, 'access_session.ended', 'access_session', s.id, { outcome: 'force_closed', reason: 'no_longer_connectable_on_restore' });
     return null;

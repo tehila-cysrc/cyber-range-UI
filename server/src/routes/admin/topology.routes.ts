@@ -238,10 +238,7 @@ router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
     return;
   }
 
-  const metadata = node.metadataJson ? JSON.parse(node.metadataJson) : {};
-  const protocol: 'rdp' | 'ssh' = metadata.osType === 'Linux' ? 'ssh' : 'rdp';
-  const host = typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : 'unknown';
-  const port = protocol === 'ssh' ? 22 : 3389;
+  const { protocol, host, port } = accessDetailsFromMetadata(node.metadataJson);
   const secretName = vmLoginSecretName(nodeId);
 
   try {
@@ -309,8 +306,8 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
   });
 });
 
-// Soft on/off for student Connect — keeps the Key Vault login so the instructor can flip a JUMP box
-// back on without re-entering the password. The instructor's own Connect is unaffected.
+// Soft on/off for student Connect. A login in Key Vault is optional (Show/Copy in the session box);
+// Bastion does not need it to open the browser session, so turning this on must not require one.
 router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const { isEnabled } = req.body ?? {};
@@ -319,13 +316,37 @@ router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
     return;
   }
 
-  const existing = db.prepare('SELECT id FROM access_targets WHERE topology_node_id = ?').get(nodeId);
-  if (!existing) {
-    res.status(400).json({ error: 'save a login credential before turning student access on or off' });
+  const node = db
+    .prepare(
+      `SELECT tn.metadata_json AS metadataJson, tn.environment_id AS environmentId
+       FROM topology_nodes tn WHERE tn.id = ?`,
+    )
+    .get(nodeId) as { metadataJson: string | null; environmentId: number | null } | undefined;
+  if (!node) {
+    res.status(404).json({ error: 'node not found' });
+    return;
+  }
+  if (!node.environmentId) {
+    res.status(400).json({ error: 'this node has no Azure environment — browser access requires an Azure-discovered VM' });
     return;
   }
 
-  db.prepare('UPDATE access_targets SET is_enabled = ? WHERE topology_node_id = ?').run(isEnabled ? 1 : 0, nodeId);
+  const existing = db.prepare('SELECT id FROM access_targets WHERE topology_node_id = ?').get(nodeId);
+  if (!existing) {
+    if (!isEnabled) {
+      res.json({ ok: true, isEnabled: false });
+      return;
+    }
+    const { protocol, host, port } = accessDetailsFromMetadata(node.metadataJson);
+    db.prepare('INSERT INTO access_targets (topology_node_id, protocol, host, port, is_enabled) VALUES (?, ?, ?, ?, 1)').run(
+      nodeId,
+      protocol,
+      host,
+      port,
+    );
+  } else {
+    db.prepare('UPDATE access_targets SET is_enabled = ? WHERE topology_node_id = ?').run(isEnabled ? 1 : 0, nodeId);
+  }
 
   if (!isEnabled) {
     endActiveSessions({ topologyNodeId: nodeId, studentsOnly: true }, 'force_closed', req.user!.username, 'student_access_disabled');
@@ -531,5 +552,12 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) =
   db.prepare('DELETE FROM topology_zones WHERE id = ?').run(zoneId);
   res.json({ ok: true });
 });
+
+function accessDetailsFromMetadata(metadataJson: string | null): { protocol: 'rdp' | 'ssh'; host: string; port: number } {
+  const metadata = metadataJson ? (JSON.parse(metadataJson) as { osType?: string; privateIpAddress?: string }) : {};
+  const protocol: 'rdp' | 'ssh' = metadata.osType === 'Linux' ? 'ssh' : 'rdp';
+  const host = typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : 'unknown';
+  return { protocol, host, port: protocol === 'ssh' ? 22 : 3389 };
+}
 
 export default router;
