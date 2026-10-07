@@ -1,6 +1,14 @@
 /* CySource brand typeface (licensed for web use, purchased with the brand kit — docs/brand/).
    No Medium cut ships, so 500 falls back to Regular; SemiBold also covers 700 so default <h*> bold
    doesn't jump to ExtraBold. Latin-only — non-Latin text falls through to the next --font-sans entry. */
+/* Book (300) is used only by the student certificate (features/certificate). */
+@font-face {
+  font-family: 'PP Mori';
+  src: url('../assets/fonts/PPMori-Book.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
 @font-face {
   font-family: 'PP Mori';
   src: url('../assets/fonts/PPMori-Regular.woff2') format('woff2');

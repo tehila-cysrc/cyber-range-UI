@@ -9,6 +9,7 @@ import { useDebriefTeam } from './useDebriefTeam';
 import { TtpDebriefSection } from './TtpDebriefSection';
 import { useAuthStore } from '../../stores/authStore';
 import { EntryFeedbackList, type EntryFeedbackItem } from '../documentation/EntryFeedback';
+import { DownloadCertificateButton } from '../certificate/DownloadCertificateButton';
 
 // Same code-split as the Investigation page — React Flow only loads when a debrief is opened.
 const InvestigationCanvasContainer = lazy(() =>
@@ -121,6 +122,13 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
           <h1 style={{ fontSize: 28, fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--text-primary)', margin: '8px 0' }}>
             {data.cyberRange.name}
           </h1>
+          {!isInstructor && data.progress.status === 'completed' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center', marginBottom: 'var(--space-md)', fontSize: 14, color: 'var(--text-muted)' }}>
+              <TelemetryBadge tone="secondary">Completed</TelemetryBadge>
+              Well done — your certificate is ready.
+              <DownloadCertificateButton style={{ fontSize: 14, padding: '6px 12px' }} />
+            </div>
+          )}
           {data.progress.status !== 'completed' && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 'var(--space-md)', fontSize: 14, color: 'var(--text-muted)' }}>
               <TelemetryBadge tone="tertiary">{data.progress.status === 'paused' ? 'Paused' : 'In progress'}</TelemetryBadge>

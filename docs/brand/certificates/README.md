@@ -11,4 +11,6 @@ Student completion certificates in the CySource brand (PP Mori, Eerie Black / Gr
 - `output/` — rendered PDF (vector, real text) + PNG (3x, 3369×2382 ≈ 290 dpi).
 
 Render: `node docs/brand/certificates/render.mjs` (headless Chrome, falls back to Edge; `CHROME_PATH` overrides).
-Sample text only (name "Alex Morgan", "Instructor Name", date) — edit the HTML and re-render. Not wired into the app.
+Sample text only (name, date) — edit the HTML and re-render.
+
+**In the app:** design 1 is ported to React at `client/src/features/certificate/` (`Certificate.tsx` + `certificate.css`). Students get a "Download certificate" button on a completed scenario (Investigation read-only banner, Debrief summary); they type the name and pick the date, and the PDF/PNG is generated in the browser (`html-to-image` + `jspdf`, lazy-loaded) — nothing is stored server-side. Keep the HTML design and the React port in sync when the copy changes.

@@ -1,0 +1,48 @@
+/* Student completion certificate — port of docs/brand/certificates/designs/1-obsidian.html (the chosen
+   design). Fixed A4-landscape canvas in mm; everything is scoped under .cert so the export captures it as-is. */
+.cert {
+  position: relative;
+  width: 297mm;
+  height: 210mm;
+  overflow: hidden;
+  font-family: 'PP Mori', Inter, Arial, sans-serif;
+  color: #f1f1f1;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(241, 241, 241, 0.06) 1px, transparent 1.4px) 0 0 / 22px 22px,
+    #151c22;
+  text-align: left;
+  line-height: normal;
+}
+.cert * { box-sizing: border-box; margin: 0; padding: 0; }
+.cert .abs { position: absolute; }
+.cert .frame { inset: 12mm; border: 1px solid rgba(64, 78, 90, 0.8); }
+.cert .corner { width: 14mm; height: 14mm; border-color: #53b464; border-style: solid; border-width: 0; }
+.cert .c-tl { top: 10mm; left: 10mm; border-top-width: 2px; border-left-width: 2px; }
+.cert .c-tr { top: 10mm; right: 10mm; border-top-width: 2px; border-right-width: 2px; }
+.cert .c-bl { bottom: 10mm; left: 10mm; border-bottom-width: 2px; border-left-width: 2px; }
+.cert .c-br { bottom: 10mm; right: 10mm; border-bottom-width: 2px; border-right-width: 2px; }
+
+.cert .logo { top: 24mm; left: 26mm; height: 7mm; }
+.cert .meta { top: 25mm; right: 26mm; font-size: 8.5pt; letter-spacing: 0.22em; color: #9aa6b0; text-transform: uppercase; text-align: right; line-height: 1.7; }
+.cert .meta b { color: #53b464; font-weight: 600; }
+
+.cert .content { left: 26mm; top: 46mm; width: 172mm; }
+.cert .label { font-size: 10pt; font-weight: 600; letter-spacing: 0.32em; text-transform: uppercase; color: #53b464; }
+.cert .title { margin-top: 4mm; font-size: 30pt; font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; }
+.cert .lead { margin-top: 9mm; font-size: 9pt; letter-spacing: 0.26em; text-transform: uppercase; color: #9aa6b0; }
+.cert .name { margin-top: 3mm; font-size: 34pt; font-weight: 300; letter-spacing: -0.01em; line-height: 1.1; white-space: nowrap; }
+.cert .rule { margin-top: 6mm; width: 22mm; height: 2px; background: #53b464; }
+.cert .body { margin-top: 6mm; font-size: 11pt; line-height: 1.6; color: #c9d1d7; max-width: 160mm; }
+.cert .skills { left: 26mm; right: 26mm; top: 146mm; display: flex; justify-content: space-between; align-items: center; white-space: nowrap; font-size: 7pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9aa6b0; padding-top: 4mm; border-top: 1px solid rgba(64, 78, 90, 0.7); }
+.cert .skills i { width: 1.3mm; height: 1.3mm; border-radius: 50%; background: #53b464; display: block; flex: none; }
+
+.cert .sigs { left: 26mm; bottom: 26mm; display: flex; gap: 16mm; }
+.cert .sig { width: 62mm; }
+.cert .sig .val { font-size: 12pt; font-weight: 400; font-style: italic; color: #f1f1f1; padding-bottom: 2mm; border-bottom: 1px solid #404e5a; white-space: nowrap; }
+.cert .sig .key { margin-top: 2.5mm; font-size: 7.5pt; letter-spacing: 0.26em; text-transform: uppercase; color: #717e89; }
+
+.cert .seal { right: 26mm; top: 56mm; width: 66mm; height: 66mm; }
+.cert .seal svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cert .seal img { position: absolute; left: 35%; top: 37%; width: 30%; }
+.cert .status { right: 26mm; bottom: 26mm; display: flex; align-items: center; gap: 2.5mm; font-size: 8pt; letter-spacing: 0.24em; text-transform: uppercase; color: #53b464; border: 1px solid rgba(83, 180, 100, 0.5); padding: 2.5mm 4mm; }
+.cert .status i { width: 2mm; height: 2mm; border-radius: 50%; background: #53b464; display: block; }
