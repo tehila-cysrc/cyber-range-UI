@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Certificate — Ice Minimal</title>
+<link rel="stylesheet" href="base.css">
+<!-- Based on source/White and Black Minimalist Completion Certificate -->
+<style>
+  body { background: #fbfbfa; color: var(--eerie); }
+  .outer { inset: 9mm; border: 1px solid var(--eerie); }
+  .inner { inset: 11.5mm; border: 0.6px solid var(--eerie); }
+  .cross { width: 8mm; height: 8mm; }
+  .cross::before, .cross::after { content: ''; position: absolute; background: var(--green); }
+  .cross::before { left: 50%; top: 0; bottom: 0; width: 1.4px; transform: translateX(-50%); }
+  .cross::after { top: 50%; left: 0; right: 0; height: 1.4px; transform: translateY(-50%); }
+  .x-tl { top: 6.5mm; left: 6.5mm; } .x-tr { top: 6.5mm; right: 6.5mm; }
+  .x-bl { bottom: 6.5mm; left: 6.5mm; } .x-br { bottom: 6.5mm; right: 6.5mm; }
+
+  .center { left: 0; right: 0; text-align: center; }
+  .logo { top: 24mm; left: 50%; transform: translateX(-50%); height: 7.5mm; }
+  .title { top: 42mm; font-size: 62pt; font-weight: 200; letter-spacing: 0.06em; line-height: 1; }
+  .sub { top: 70mm; display: flex; align-items: center; justify-content: center; gap: 8mm; font-size: 13pt; font-weight: 400; letter-spacing: 0.5em; color: var(--green); text-transform: uppercase; }
+  .sub span.l { display: block; width: 40mm; height: 1px; background: var(--green); }
+  .lead { top: 88mm; font-size: 9pt; letter-spacing: 0.4em; text-transform: uppercase; }
+  .lead-rule { top: 94mm; left: 50%; width: 14mm; height: 1px; background: var(--green); transform: translateX(-50%); }
+  .name { top: 99mm; font-size: 30pt; font-weight: 300; letter-spacing: 0.22em; text-transform: uppercase; }
+  .name-rule { top: 117mm; left: 50%; width: 180mm; height: 1px; background: var(--eerie); transform: translateX(-50%); }
+  .body { top: 123mm; left: 50%; width: 170mm; transform: translateX(-50%); font-size: 11pt; line-height: 1.65; color: #3a454e; text-align: center; }
+
+  .sig { bottom: 28mm; width: 64mm; text-align: center; }
+  .sig .val { font-size: 12pt; font-style: italic; padding-bottom: 2mm; border-bottom: 1px solid var(--eerie); }
+  .sig .key { margin-top: 3mm; font-size: 7.5pt; letter-spacing: 0.34em; text-transform: uppercase; color: var(--green); font-weight: 600; }
+  .sig-l { left: 44mm; } .sig-r { right: 44mm; }
+  .stamp { bottom: 27mm; left: 50%; transform: translateX(-50%); width: 18mm; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="abs outer"></div><div class="abs inner"></div>
+  <div class="abs cross x-tl"></div><div class="abs cross x-tr"></div>
+  <div class="abs cross x-bl"></div><div class="abs cross x-br"></div>
+
+  <img class="abs logo" src="../../logo/logo-wordmark-black.svg" alt="CySource">
+  <div class="abs center title">CERTIFICATE</div>
+  <div class="abs center sub"><span class="l"></span>Of Completion<span class="l"></span></div>
+  <div class="abs center lead">Presented to</div>
+  <div class="abs lead-rule"></div>
+  <div class="abs center name">Alex Morgan</div>
+  <div class="abs name-rule"></div>
+  <p class="abs body">For participating in the company-sponsored SOC Training Day and successfully completing the Cyber Range attack-simulation scenario. Your focus and dedication are highly appreciated.</p>
+
+  <div class="abs sig sig-l"><div class="val">Instructor Name</div><div class="key">Signature</div></div>
+  <img class="abs stamp" src="../../logo/logo-mark-green.svg" alt="">
+  <div class="abs sig sig-r"><div class="val">October 7, 2026</div><div class="key">Date</div></div>
+</div>
+</body>
+</html>

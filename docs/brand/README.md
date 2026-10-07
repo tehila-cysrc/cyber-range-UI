@@ -6,6 +6,7 @@ Reference only; the app does not load files from here.
 - `cysource-brandbook-v1.0.pdf` — logo rules (clear space, don'ts), colors, typography, grids.
 - `logo/` — wordmark (green/black SVG+PNG) and the "S" mark (green SVG; black/white PDF+PNG only).
 - `fonts/` — PP Mori TTFs. **Web license purchased with the brand kit** (confirmed 2026-10-06).
+- `certificates/` — student certificate designs (HTML → PDF/PNG); see its README.
 
 Web-ready copies used by the client:
 - `client/src/assets/logo-wordmark-green.svg`, `logo-wordmark-white.svg` (white = black SVG with fill swapped; the brandbook defines a white logo).
