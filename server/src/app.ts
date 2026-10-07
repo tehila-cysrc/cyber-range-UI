@@ -22,6 +22,7 @@ import leaderboardRoutes from './routes/leaderboard.routes.js';
 import historyRoutes from './routes/history.routes.js';
 import adminEventRoutes, { resetJobsPublicRouter } from './routes/admin/event.routes.js';
 import adminUsersRoutes from './routes/admin/users.routes.js';
+import adminCertificatesRoutes from './routes/admin/certificates.routes.js';
 import adminEnvironmentsRoutes from './routes/admin/environments.routes.js';
 import accessSessionsRoutes from './routes/accessSessions.routes.js';
 import adminAccessSessionsRoutes from './routes/admin/accessSessions.routes.js';
@@ -70,6 +71,7 @@ export function createApp() {
   app.use('/api', historyRoutes);
   app.use('/api/admin', adminEventRoutes);
   app.use('/api/admin', adminUsersRoutes);
+  app.use('/api/admin', adminCertificatesRoutes);
   app.use('/api/admin', adminEnvironmentsRoutes);
   app.use('/api/teams', accessSessionsRoutes);
   app.use('/api/admin', adminAccessSessionsRoutes);

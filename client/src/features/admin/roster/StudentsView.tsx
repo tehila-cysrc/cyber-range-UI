@@ -1,8 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../../../lib/apiClient';
+import { useToastStore } from '../../../stores/toastStore';
+import { CertificateDialog } from '../../certificate/DownloadCertificateButton';
 import { Avatar } from '../../../components/Avatar';
 import { AvatarPicker } from '../../../components/AvatarPicker';
 import { AddCard, SectionHeader, SectionView } from './RosterSection';
-import { inputStyle, postJson, useRosterMutation, type Organization, type Selection, type Team } from './rosterData';
+import { inputStyle, linkButtonStyle, postJson, useRosterMutation, type Member, type Organization, type Selection, type Team } from './rosterData';
 
 // Every student of the run in one list, sorted by name. Each row says which team and organization
 // they're in; clicking it opens that organization with the team expanded (where moving/deleting lives).
@@ -22,6 +26,12 @@ export function StudentsView({
   const students = teams
     .flatMap((t) => t.members.map((m) => ({ m, t })))
     .sort((a, b) => a.m.displayName.localeCompare(b.m.displayName));
+  const { data: grants } = useQuery({
+    queryKey: ['certificate-grants'],
+    queryFn: () => apiFetch<{ grants: Array<{ userId: number }>; completedTeamIds: number[] }>('/admin/certificate-grants'),
+  });
+  const grantedIds = new Set(grants?.grants.map((g) => g.userId));
+  const completedTeams = new Set(grants?.completedTeamIds);
 
   return (
     <SectionView>
@@ -37,26 +47,64 @@ export function StudentsView({
       ) : (
         <div style={{ border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-container)', background: 'var(--surface-1)', padding: '6px 12px' }}>
           {students.map(({ m, t }) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onSelect(t.organizationId === null ? { kind: 'none' } : { kind: 'org', id: t.organizationId }, t.id)}
-              title={`Open ${t.name}`}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%', textAlign: 'start', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <Avatar name={m.displayName} avatar={m.avatar} size={22} />
-                <bdi style={{ color: 'var(--text-primary)' }}>{m.displayName}</bdi>
-                <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
-              </span>
-              <bdi style={{ fontSize: 13, color: 'var(--text-telemetry)', flexShrink: 0 }}>
-                {t.name} · {t.organizationName ?? 'No organization'}
-              </bdi>
-            </button>
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => onSelect(t.organizationId === null ? { kind: 'none' } : { kind: 'org', id: t.organizationId }, t.id)}
+                title={`Open ${t.name}`}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, textAlign: 'start', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <Avatar name={m.displayName} avatar={m.avatar} size={22} />
+                  <bdi style={{ color: 'var(--text-primary)' }}>{m.displayName}</bdi>
+                  <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
+                </span>
+                <bdi style={{ fontSize: 13, color: 'var(--text-telemetry)', flexShrink: 0 }}>
+                  {t.name} · {t.organizationName ?? 'No organization'}
+                </bdi>
+              </button>
+              <CertificateControls member={m} granted={grantedIds.has(m.id)} earned={completedTeams.has(t.id)} />
+            </div>
           ))}
         </div>
       )}
     </SectionView>
+  );
+}
+
+// Certificate fallback when completion wasn't recorded or the student's download fails: "Grant" lets the
+// student download it themselves (header button); "Download" issues it here, pre-filled with their name.
+function CertificateControls({ member, granted, earned }: { member: Member; granted: boolean; earned: boolean }) {
+  const [issuing, setIssuing] = useState(false);
+  const queryClient = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
+  const toggle = useMutation({
+    mutationFn: () => apiFetch(`/admin/users/${member.id}/certificate-grant`, { method: granted ? 'DELETE' : 'PUT' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['certificate-grants'] }),
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Couldn’t update the certificate'),
+  });
+  return (
+    <span style={{ display: 'flex', gap: 12, flexShrink: 0, fontSize: 13 }}>
+      {earned && !granted ? (
+        <span title="Their team completed a scenario — the Certificate button is already in their header" style={{ color: 'var(--signal-primary)' }}>
+          ✓ Earned
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => toggle.mutate()}
+          disabled={toggle.isPending}
+          title={granted ? 'Click to take the certificate back' : 'Let this student download the certificate even without a completed scenario'}
+          style={{ ...linkButtonStyle, color: granted ? 'var(--signal-primary)' : 'var(--signal-secondary)' }}
+        >
+          {granted ? '✓ Certificate granted' : 'Grant certificate'}
+        </button>
+      )}
+      <button type="button" onClick={() => setIssuing(true)} aria-label={`Download a certificate for ${member.displayName}`} style={linkButtonStyle}>
+        Download
+      </button>
+      {issuing && <CertificateDialog initialName={member.displayName} onClose={() => setIssuing(false)} />}
+    </span>
   );
 }
 

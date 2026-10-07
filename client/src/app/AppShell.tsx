@@ -15,6 +15,7 @@ import { ProfileDialog } from '../features/auth/ProfileDialog';
 import { MissionClockBadge, useActiveCyberRange, useMissionClockSync } from '../features/clock/MissionClock';
 import { HelpRequestButton } from '../features/helpRequests/HelpRequestButton';
 import { HeaderRemoteSession } from '../features/accessSession/HeaderRemoteSession';
+import { HeaderCertificateButton } from '../features/certificate/DownloadCertificateButton';
 import { useOpenHelpRequestCount, useOwnHelpRequestSync } from '../features/helpRequests/HelpNotifiers';
 import { useEntryFeedbackToast } from '../features/documentation/useEntryFeedbackToast';
 import logoGreenUrl from '../assets/logo-wordmark-green.svg';
@@ -445,6 +446,15 @@ export function AppShell() {
   useSocketEvent('leaderboard:update', () => {
     queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
   });
+  // Header "Certificate" button: a completed scenario or an instructor grant (refetched on either).
+  const { data: certificate } = useQuery({
+    queryKey: ['certificate'],
+    queryFn: () => apiFetch<{ eligible: boolean }>('/teams/me/certificate'),
+    enabled: isStudent,
+  });
+  useSocketEvent('certificate:changed', () => {
+    queryClient.invalidateQueries({ queryKey: ['certificate'] });
+  });
 
   // Mounted once for every page: when the instructor assigns/switches/completes this team's
   // scenario, every open view (Home clock, Investigation, Topology, Debrief) must follow — without it
@@ -455,6 +465,7 @@ export function AppShell() {
     queryClient.invalidateQueries({ queryKey: ['history'] });
     queryClient.invalidateQueries({ queryKey: ['event-summary'] });
     queryClient.invalidateQueries({ queryKey: ['instructor-dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['certificate'] });
   });
 
   async function handleLogout() {
@@ -506,6 +517,7 @@ export function AppShell() {
 
         {isStudent && activeRange?.active && <HeaderRemoteSession role="student" />}
         {isInstructor && <HeaderRemoteSession role="instructor" />}
+        {isStudent && certificate?.eligible && <HeaderCertificateButton />}
         {isStudent && <MissionClockBadge />}
         {isStudent && activeRange?.active && <HeaderHelp />}
 

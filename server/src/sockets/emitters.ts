@@ -130,3 +130,9 @@ export function emitInvestigationCanvasEdgeCreated(teamId: number, edge: unknown
 export function emitInvestigationCanvasEdgeDeleted(teamId: number, edgeId: number) {
   getIo().to([teamRoom(teamId), INSTRUCTOR_ROOM]).emit('investigation_canvas:edge_deleted', { edgeId, teamId });
 }
+
+// An instructor granted/revoked a student's certificate. A bare signal to the team's room — each
+// student refetches their own GET /teams/me/certificate (the grant is per student, not per team).
+export function emitCertificateChanged(teamId: number) {
+  getIo().to(teamRoom(teamId)).emit('certificate:changed', {});
+}

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { budgetFor, buildTeamTtpReport } from '../services/ttpScoring.service.js';
+import { certificateStatus } from '../services/certificate.service.js';
 
 const router = Router();
 
@@ -32,6 +33,13 @@ router.get('/me', (req, res) => {
     .all(teamId);
 
   res.json({ team, members });
+});
+
+// Whether the student may download the completion certificate (header button) — see certificate.service.ts.
+router.get('/me/certificate', (req, res) => {
+  const teamId = requireTeam(req, res);
+  if (teamId === null) return;
+  res.json(certificateStatus(req.user!.id, teamId));
 });
 
 interface ActiveProgressRow {

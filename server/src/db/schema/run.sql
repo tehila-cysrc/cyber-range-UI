@@ -276,3 +276,14 @@ CREATE TABLE IF NOT EXISTS documentation_feedback (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_documentation_feedback_entry ON documentation_feedback (documentation_entry_id);
+
+-- Instructor override: a student may download the completion certificate even without a completed
+-- scenario (e.g. the instructor never marked it completed, or something broke). RUN — cascades with
+-- the student. A student is otherwise eligible once any of their team's scenarios is completed
+-- (certificate.service.ts); the certificate itself is generated in the browser, never stored.
+CREATE TABLE IF NOT EXISTS certificate_grants (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  granted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  granted_at TEXT NOT NULL
+);

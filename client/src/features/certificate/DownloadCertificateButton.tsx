@@ -58,9 +58,46 @@ export function DownloadCertificateButton({ style }: { style?: React.CSSProperti
   );
 }
 
-function CertificateDialog({ onClose }: { onClose: () => void }) {
+// Students' header button — shown on every page once they're eligible (GET /teams/me/certificate:
+// a completed scenario, or an instructor grant), so it can't be missed.
+export function HeaderCertificateButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          background: 'var(--signal-primary)',
+          color: 'var(--surface-floor)',
+          border: '1px solid var(--signal-primary)',
+          borderRadius: 'var(--radius-control)',
+          padding: '3px 12px',
+          fontFamily: 'inherit',
+          fontSize: 14,
+          fontWeight: 600,
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="9" r="6" />
+          <path d="M8.5 14 7 22l5-3 5 3-1.5-8" />
+        </svg>
+        Certificate
+      </button>
+      {open && <CertificateDialog onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** Opens the dialog; `initialName` pre-fills the name (an instructor issuing it for a student). */
+export function CertificateDialog({ onClose, initialName }: { onClose: () => void; initialName?: string }) {
   const displayName = useAuthStore((s) => s.user?.displayName ?? '');
-  const [name, setName] = useState(displayName);
+  const [name, setName] = useState(initialName ?? displayName);
   const [date, setDate] = useState(todayIso());
   const [busy, setBusy] = useState<'pdf' | 'png' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +180,7 @@ function CertificateDialog({ onClose }: { onClose: () => void }) {
         }}
       >
         <h2 id="certificate-dialog-title" style={{ margin: 0, fontSize: 17, color: 'var(--text-primary)' }}>
-          Download your certificate
+          {initialName !== undefined ? 'Download certificate' : 'Download your certificate'}
         </h2>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
