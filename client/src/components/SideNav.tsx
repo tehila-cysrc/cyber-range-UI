@@ -21,10 +21,15 @@ export interface SideNavGroup {
   // A labelled group gets a small header; an unlabelled one after the first is set off by a divider.
   label?: string;
   items: SideNavItem[];
+  // Optional "+" on the group header (labelled groups only). Also offered under the picker on narrow screens.
+  onAdd?: () => void;
+  addLabel?: string;
 }
 
 interface Props {
+  // Always the nav's accessible name; hideTitle drops the visible heading when the group labels say enough.
   title: string;
+  hideTitle?: boolean;
   groups: SideNavGroup[];
   activeKey: string | null;
   onSelect: (key: string) => void;
@@ -45,7 +50,7 @@ const BADGE_COLORS: Record<SideNavBadge['tone'], string> = {
 // Left-hand navigation for pages whose main area shows one selected item out of many (Roster,
 // Instructor dashboard, Scenarios, Topology Admin). Must sit inside a `.side-layout` container: below
 // 900px the list collapses into a single <select> picker (index.css) — the title and "+" stay visible.
-export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAdd, onAdd, filterThreshold, emptyText }: Props) {
+export function SideNav({ title, hideTitle, groups, activeKey, onSelect, addLabel, renderAdd, onAdd, filterThreshold, emptyText }: Props) {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState('');
   const allItems = groups.flatMap((g) => g.items);
@@ -57,20 +62,14 @@ export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAd
 
   return (
     <nav aria-label={title} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>{title}</span>
-        {(renderAdd || onAdd) && (
-          <button
-            type="button"
-            onClick={() => (onAdd ? onAdd() : setAdding((v) => !v))}
-            aria-label={addLabel}
-            title={addLabel}
-            style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', width: 26, height: 26, fontSize: 16, lineHeight: 1 }}
-          >
-            +
-          </button>
-        )}
-      </div>
+      {!hideTitle && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>{title}</span>
+          {(renderAdd || onAdd) && (
+            <AddButton label={addLabel} onClick={() => (onAdd ? onAdd() : setAdding((v) => !v))} />
+          )}
+        </div>
+      )}
       {adding && renderAdd?.(() => setAdding(false))}
 
       <select
@@ -87,7 +86,7 @@ export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAd
           color: 'var(--text-primary)',
         }}
       >
-        {activeKey === null && <option value="">Select…</option>}
+        {(activeKey === null || !allItems.some((i) => i.key === activeKey)) && <option value={activeKey ?? ''}>Select…</option>}
         {groups.map((g, i) =>
           g.label ? (
             <optgroup key={g.label} label={g.label}>
@@ -98,6 +97,17 @@ export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAd
           ),
         )}
       </select>
+      {groups.some((g) => g.onAdd) && (
+        <div className="side-picker">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {groups.filter((g) => g.onAdd).map((g) => (
+              <button key={g.label ?? g.addLabel} type="button" onClick={g.onAdd} style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', padding: '4px 10px', fontSize: 13 }}>
+                + {g.addLabel ?? g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {showFilter && (
@@ -125,8 +135,9 @@ export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAd
         {visibleGroups.map((g, i) => (
           <div key={g.label ?? `group-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {g.label ? (
-              <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-telemetry)', padding: i === 0 ? '0 10px 2px' : '10px 10px 2px' }}>
-                {g.label}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 26, padding: i === 0 ? '0 0 2px 10px' : '12px 0 2px 10px' }}>
+                <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>{g.label}</span>
+                {g.onAdd && <AddButton label={g.addLabel} onClick={g.onAdd} />}
               </div>
             ) : (
               i > 0 && <div style={{ borderTop: '1px solid var(--surface-border)', margin: '8px 0' }} />
@@ -138,6 +149,20 @@ export function SideNav({ title, groups, activeKey, onSelect, addLabel, renderAd
         ))}
       </div>
     </nav>
+  );
+}
+
+function AddButton({ label, onClick }: { label?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', width: 26, height: 26, fontSize: 16, lineHeight: 1, flexShrink: 0 }}
+    >
+      +
+    </button>
   );
 }
 

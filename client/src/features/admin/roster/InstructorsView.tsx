@@ -3,12 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/apiClient';
 import { Avatar } from '../../../components/Avatar';
 import { AvatarPicker } from '../../../components/AvatarPicker';
-import { Button } from '../../../components/Button';
 import { confirmAction } from '../../../components/ConfirmDialog';
 import { useAuthStore } from '../../../stores/authStore';
+import { AddCard, SectionHeader, SectionView } from './RosterSection';
 import { inputStyle, linkButtonStyle, postJson, useRosterMutation, type Member } from './rosterData';
 
-export function InstructorsView() {
+export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onCloseAdd: () => void }) {
   const me = useAuthStore((s) => s.user);
   const { data } = useQuery({
     queryKey: ['admin-instructors'],
@@ -53,13 +53,17 @@ export function InstructorsView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', minWidth: 0 }}>
-      <div>
-        <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Instructors</h1>
-        <div className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)', marginTop: 4 }}>
-          {instructors.length} account{instructors.length === 1 ? '' : 's'}
-        </div>
-      </div>
+    <SectionView>
+      <SectionHeader title="Instructors" subtitle={`${instructors.length} account${instructors.length === 1 ? '' : 's'}`} />
+
+      {adding && (
+        <AddCard title="New instructor" submitLabel="Create instructor" pending={create.isPending} error={formError} onSubmit={handleCreate} onClose={onCloseAdd}>
+          <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8 characters)" aria-label="Password" autoComplete="new-password" style={inputStyle} />
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
+          <AvatarPicker name={displayName || username} value={avatar} onChange={setAvatar} collapsible />
+        </AddCard>
+      )}
 
       <div style={{ border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-container)', background: 'var(--surface-1)', padding: '6px 12px' }}>
         {instructors.map((m) => (
@@ -77,16 +81,6 @@ export function InstructorsView() {
           </div>
         ))}
       </div>
-
-      <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', maxWidth: 420 }}>
-        <h2 style={{ fontSize: 15, color: 'var(--text-muted)', margin: 0 }}>New instructor account</h2>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" aria-label="Username" autoComplete="off" style={inputStyle} />
-        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min. 8 characters)" aria-label="Password" autoComplete="new-password" style={inputStyle} />
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name (optional)" aria-label="Display name" style={inputStyle} />
-        <AvatarPicker name={displayName || username} value={avatar} onChange={setAvatar} collapsible />
-        {formError && <div style={{ color: 'var(--signal-alert)', fontSize: 14 }}>{formError}</div>}
-        <Button type="submit" variant="ghost" disabled={create.isPending}>Create instructor</Button>
-      </form>
-    </div>
+    </SectionView>
   );
 }

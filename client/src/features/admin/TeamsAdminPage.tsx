@@ -1,23 +1,28 @@
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '../../lib/apiClient';
 import { SideNav, type SideNavItem } from '../../components/SideNav';
 import { OrgDetail } from './roster/OrgDetail';
 import { InstructorsView } from './roster/InstructorsView';
 import { StudentsView } from './roster/StudentsView';
+import { AddCard, SectionHeader, SectionView } from './roster/RosterSection';
 import {
   inputStyle,
   postJson,
   useRosterData,
   useRosterMutation,
+  type Member,
   type Organization,
   type Selection,
   type Team,
 } from './roster/rosterData';
 
-// Roster: organizations on the side, the selected one in the main area (teams collapsed by default).
-// Scales to many organizations/teams — only one organization's teams are ever on screen, and a single
-// search box finds any organization, team or student. Selection lives in the URL (?org=<id>|none|
-// instructors|students, &team=<id>) so a refresh or a shared link reopens the same place.
+// Roster: a side panel with three sections (Organizations / Students / Instructors), each with its own
+// "+" that opens that section's "New …" card in the main area. Scales to many organizations/teams —
+// only one organization's teams are ever on screen, and a single search box finds any organization,
+// team or student. Selection lives in the URL (?org=<id>|none|new|students|instructors, &team=<id>,
+// &add=1) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
   const { teams, organizations, loaded } = useRosterData();
   const [params, setParams] = useSearchParams();
@@ -25,10 +30,12 @@ export function TeamsAdminPage() {
 
   const selection = resolveSelection(params.get('org'), organizations, loaded);
   const focusTeamId = params.get('team') ? Number(params.get('team')) : null;
+  const adding = params.get('add') === '1';
 
-  function select(next: Selection, teamId?: number) {
-    const p: Record<string, string> = { org: next.kind === 'org' ? String(next.id) : next.kind };
+  function select(next: Selection, teamId?: number, add = false) {
+    const p: Record<string, string> = { org: selectionKey(next).replace(/^org-/, '') };
     if (teamId) p.team = String(teamId);
+    if (add) p.add = '1';
     setParams(p, { replace: true });
     setSearch('');
   }
@@ -51,10 +58,17 @@ export function TeamsAdminPage() {
       <main style={{ minWidth: 0 }}>
         {search.trim() ? (
           <SearchResults query={search.trim()} organizations={organizations} teams={teams} onSelect={select} />
-        ) : !loaded ? null : selection.kind === 'instructors' ? (
-          <InstructorsView />
+        ) : !loaded ? null : selection.kind === 'new-org' ? (
+          <NewOrganizationView
+            organizations={organizations}
+            teams={teams}
+            onCreated={(id) => select({ kind: 'org', id })}
+            onClose={() => select(organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' })}
+          />
+        ) : selection.kind === 'instructors' ? (
+          <InstructorsView adding={adding} onCloseAdd={() => select(selection)} />
         ) : selection.kind === 'students' ? (
-          <StudentsView teams={teams} onSelect={select} />
+          <StudentsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : (
           <OrgDetail
             org={selectedOrg}
@@ -73,18 +87,21 @@ export function TeamsAdminPage() {
 // the organization was deleted in another tab) falls back the same way.
 function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
   if (raw === 'instructors' || raw === 'students') return { kind: raw };
+  if (raw === 'new') return { kind: 'new-org' };
   if (raw === 'none') return { kind: 'none' };
   const id = Number(raw);
   if (raw && (!loaded || organizations.some((o) => o.id === id))) return { kind: 'org', id };
   return organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' };
 }
 
+// The sidebar key; without its "org-" prefix it is also the ?org= value.
 function selectionKey(s: Selection) {
-  return s.kind === 'org' ? `org-${s.id}` : s.kind;
+  return s.kind === 'org' ? `org-${s.id}` : s.kind === 'new-org' ? 'new' : s.kind;
 }
 
 function keyToSelection(key: string): Selection {
   if (key === 'none' || key === 'instructors' || key === 'students') return { kind: key };
+  if (key === 'new') return { kind: 'new-org' };
   return { kind: 'org', id: Number(key.slice(4)) };
 }
 
@@ -97,9 +114,14 @@ function Sidebar({
   organizations: Organization[];
   teams: Team[];
   selection: Selection;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, teamId?: number, add?: boolean) => void;
 }) {
-  const students = (orgId: number | null) =>
+  const { data: instructorData } = useQuery({
+    queryKey: ['admin-instructors'],
+    queryFn: () => apiFetch<{ instructors: Member[] }>('/admin/instructors'),
+  });
+  const instructorCount = instructorData?.instructors.length ?? 0;
+  const students =(orgId: number | null) =>
     teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
   const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
   const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
@@ -130,27 +152,43 @@ function Sidebar({
   return (
     <SideNav
       title="Roster"
+      hideTitle
       groups={[
-        { label: 'Organizations', items: orgItems },
+        { label: 'Organizations', items: orgItems, onAdd: () => onSelect({ kind: 'new-org' }), addLabel: 'New organization' },
         {
-          label: 'People',
-          items: [
-            { key: 'students', label: 'Students', meta: String(totalStudents), metaTitle: `${totalStudents} students` },
-            { key: 'instructors', label: 'Instructors' },
-          ],
+          label: 'Students',
+          items: [{ key: 'students', label: 'All students', meta: String(totalStudents), metaTitle: `${totalStudents} students` }],
+          onAdd: () => onSelect({ kind: 'students' }, undefined, true),
+          addLabel: 'New student',
+        },
+        {
+          label: 'Instructors',
+          items: [{ key: 'instructors', label: 'All instructors', meta: String(instructorCount), metaTitle: `${instructorCount} instructors` }],
+          onAdd: () => onSelect({ kind: 'instructors' }, undefined, true),
+          addLabel: 'New instructor',
         },
       ]}
       activeKey={selectionKey(selection)}
       onSelect={(key) => onSelect(keyToSelection(key))}
-      addLabel="New organization"
-      renderAdd={(close) => <NewOrganizationForm onCreated={(id) => { close(); onSelect({ kind: 'org', id }); }} onCancel={close} />}
       filterThreshold={12}
     />
   );
 }
 
-function NewOrganizationForm({ onCreated, onCancel }: { onCreated: (id: number) => void; onCancel: () => void }) {
+// "+" on the Organizations section: the same header + "New …" card as the Students/Instructors sections.
+function NewOrganizationView({
+  organizations,
+  teams,
+  onCreated,
+  onClose,
+}: {
+  organizations: Organization[];
+  teams: Team[];
+  onCreated: (id: number) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const create = useRosterMutation(
     () => postJson('/admin/organizations', { name }) as Promise<{ organization: Organization }>,
     'Could not create the organization',
@@ -158,25 +196,22 @@ function NewOrganizationForm({ onCreated, onCancel }: { onCreated: (id: number) 
 
   function handleCreate(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) return setFormError('Name is required');
     create.mutate(undefined, {
       onSuccess: (res) => onCreated((res as { organization: Organization }).organization.id),
     });
   }
 
   return (
-    <form onSubmit={handleCreate} style={{ display: 'flex', gap: 6 }}>
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
-        placeholder="Organization name"
-        aria-label="Organization name"
-        style={{ ...inputStyle, flex: 1, padding: 6 }}
+    <SectionView>
+      <SectionHeader
+        title="Organizations"
+        subtitle={`${organizations.length} organization${organizations.length === 1 ? '' : 's'} · ${teams.length} team${teams.length === 1 ? '' : 's'}`}
       />
-      <button type="submit" disabled={create.isPending} style={{ ...inputStyle, cursor: 'pointer', padding: '6px 10px' }}>Add</button>
-    </form>
+      <AddCard title="New organization" submitLabel="Create organization" pending={create.isPending} error={formError} onSubmit={handleCreate} onClose={onClose}>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Organization name" aria-label="Organization name" style={inputStyle} />
+      </AddCard>
+    </SectionView>
   );
 }
 
