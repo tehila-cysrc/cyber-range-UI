@@ -22,20 +22,22 @@
   .meta { top: 25mm; right: 26mm; font-size: 8.5pt; letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; text-align: right; line-height: 1.7; }
   .meta b { color: var(--green); font-weight: 600; }
 
-  .content { left: 26mm; top: 54mm; width: 165mm; }
+  .content { left: 26mm; top: 46mm; width: 172mm; }
   .label { font-size: 10pt; font-weight: 600; letter-spacing: 0.32em; text-transform: uppercase; color: var(--green); }
-  .title { margin-top: 4mm; font-size: 40pt; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
-  .lead { margin-top: 12mm; font-size: 9pt; letter-spacing: 0.26em; text-transform: uppercase; color: var(--muted); }
+  .title { margin-top: 4mm; font-size: 30pt; font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; }
+  .lead { margin-top: 9mm; font-size: 9pt; letter-spacing: 0.26em; text-transform: uppercase; color: var(--muted); }
   .name { margin-top: 3mm; font-size: 34pt; font-weight: 300; letter-spacing: -0.01em; line-height: 1.1; }
   .rule { margin-top: 6mm; width: 22mm; height: 2px; background: var(--green); }
-  .body { margin-top: 6mm; font-size: 11.5pt; line-height: 1.6; color: #c9d1d7; max-width: 150mm; }
+  .body { margin-top: 6mm; font-size: 11pt; line-height: 1.6; color: #c9d1d7; max-width: 160mm; }
+  .skills { left: 26mm; right: 26mm; top: 146mm; display: flex; justify-content: space-between; align-items: center; white-space: nowrap; font-size: 7pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); padding-top: 4mm; border-top: 1px solid rgba(64,78,90,0.7); }
+  .skills i { width: 1.3mm; height: 1.3mm; border-radius: 50%; background: var(--green); display: block; flex: none; }
 
   .sigs { left: 26mm; bottom: 26mm; display: flex; gap: 16mm; }
   .sig { width: 62mm; }
   .sig .val { font-size: 12pt; font-weight: 400; font-style: italic; color: var(--ice); padding-bottom: 2mm; border-bottom: 1px solid var(--border); }
   .sig .key { margin-top: 2.5mm; font-size: 7.5pt; letter-spacing: 0.26em; text-transform: uppercase; color: var(--telemetry); }
 
-  .seal { right: 26mm; top: 62mm; width: 66mm; height: 66mm; }
+  .seal { right: 26mm; top: 56mm; width: 66mm; height: 66mm; }
   .status { right: 26mm; bottom: 26mm; display: flex; align-items: center; gap: 2.5mm; font-size: 8pt; letter-spacing: 0.24em; text-transform: uppercase; color: var(--green); border: 1px solid rgba(83,180,100,0.5); padding: 2.5mm 4mm; }
   .status i { width: 2mm; height: 2mm; border-radius: 50%; background: var(--green); display: block; }
 </style>
@@ -47,30 +49,32 @@
   <div class="abs corner c-bl"></div><div class="abs corner c-br"></div>
 
   <img class="abs logo" src="../../../../client/src/assets/logo-wordmark-white.svg" alt="CySource">
-  <div class="abs meta">SOC Training Day<br><b>Cyber Range</b></div>
+  <div class="abs meta">Advanced SOC Training<br><b>Cyber Range</b></div>
 
   <div class="abs content">
     <div class="label">Certificate of Completion</div>
-    <div class="title">Scenario Completed</div>
+    <div class="title">AI Agent Compromise<br>&amp; Hybrid Incident Response</div>
     <div class="lead">Presented to</div>
     <div class="name">Alex Morgan</div>
     <div class="rule"></div>
-    <p class="body">For participating in the company-sponsored SOC Training Day and successfully completing the Cyber Range attack-simulation scenario.</p>
+    <p class="body">For successfully completing an advanced CySource Cyber Range exercise in AI-driven cyber incident investigation and response across hybrid Microsoft environments.</p>
   </div>
+
+  <div class="abs skills"><span>AI Agent Compromise</span><i></i><span>C2 Investigation</span><i></i><span>Identity &amp; Credential Abuse</span><i></i><span>Hybrid Pivoting</span><i></i><span>Attack Reconstruction</span><i></i><span>Containment &amp; Remediation</span></div>
 
   <svg class="abs seal" viewBox="0 0 200 200" aria-hidden="true">
     <defs><path id="ring" d="M100,100 m-78,0 a78,78 0 1,1 156,0 a78,78 0 1,1 -156,0"/></defs>
     <circle cx="100" cy="100" r="96" fill="none" stroke="#53b464" stroke-width="1"/>
     <circle cx="100" cy="100" r="64" fill="none" stroke="#404e5a" stroke-width="1"/>
     <circle cx="100" cy="100" r="92" fill="none" stroke="#404e5a" stroke-width="0.6" stroke-dasharray="1 3"/>
-    <text font-family="PP Mori" font-weight="600" font-size="10.5" letter-spacing="4.2" fill="#9aa6b0">
-      <textPath href="#ring">VERIFIED · CYBER RANGE · SOC TRAINING DAY ·</textPath>
+    <text font-family="PP Mori" font-weight="600" font-size="9.2" fill="#9aa6b0">
+      <textPath href="#ring" textLength="486" lengthAdjust="spacing">VERIFIED · CYSOURCE CYBER RANGE · ADVANCED SOC ·</textPath>
     </text>
     <image href="../../logo/logo-mark-green.svg" x="70" y="74" width="60" height="52"/>
   </svg>
 
   <div class="sigs abs">
-    <div class="sig"><div class="val">Instructor Name</div><div class="key">Training Instructor</div></div>
+    <div class="sig"><div class="val">Amir Bar-El</div><div class="key">CySource Founder</div></div>
     <div class="sig"><div class="val">October 7, 2026</div><div class="key">Date</div></div>
   </div>
   <div class="abs status"><i></i>Mission Complete</div>

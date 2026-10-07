@@ -4,7 +4,7 @@ Student completion certificates in the CySource brand (PP Mori, Eerie Black / Gr
 
 - `source/` — original Canva templates as received (PDF + SVG), reference only.
 - `designs/*.html` — the brand redesigns (A4 landscape), shared setup in `designs/base.css`:
-  1. `1-obsidian` — dark, matches the platform UI; "verified" seal with the S mark.
+  1. `1-obsidian` — **chosen design**, final copy (AI Agent Compromise & Hybrid Incident Response; signed Amir Bar-El, CySource Founder). Dark, matches the platform UI.
   2. `2-ice-minimal` — light minimalist (from *White and Black Minimalist*).
   3. `3-signal-bands` — angled corner bands + ribbon (from *Green and Gold*).
   4. `4-arc-seal` — curved left panel + rosette seal (from *Black and Gold*).
