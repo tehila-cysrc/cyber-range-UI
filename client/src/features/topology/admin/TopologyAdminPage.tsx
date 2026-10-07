@@ -573,10 +573,7 @@ function NodePanel({
       apiFetch<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string }>(`/admin/topology/nodes/${node.id}/connect`, { method: 'POST' }),
     onMutate: () => setConnectError(null),
     onSuccess: (res) => {
-      queryClient.setQueryData(['access-session-active', 'header', 'instructor'], {
-        session: { ...res, nodeLabel: node.label, topologyNodeId: node.id },
-      });
-      openRemoteSessionBox();
+      openRemoteSessionBox({ ...res, nodeLabel: node.label, topologyNodeId: node.id });
     },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
   });

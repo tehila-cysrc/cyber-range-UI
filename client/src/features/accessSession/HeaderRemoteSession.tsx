@@ -11,8 +11,10 @@ import { AccessSessionPanel, type ActiveAccessSession } from './AccessSessionPan
 // diagnostic Connect session.
 const OPEN_EVENT = 'remote-session:open';
 
-export function openRemoteSessionBox() {
-  window.dispatchEvent(new Event(OPEN_EVENT));
+// Pass the session that Connect just returned: the header shows it straight away instead of
+// re-fetching /active, which re-reads the link from Bastion and took several seconds.
+export function openRemoteSessionBox(session: ActiveAccessSession) {
+  window.dispatchEvent(new CustomEvent<ActiveAccessSession>(OPEN_EVENT, { detail: session }));
 }
 
 export function remoteSessionEndpoints(role: 'student' | 'instructor') {
@@ -45,13 +47,13 @@ export function HeaderRemoteSession({ role }: { role: 'student' | 'instructor' }
   useSocketEvent('access_session:ended', refresh);
 
   useEffect(() => {
-    const onOpen = () => {
+    const onOpen = (e: Event) => {
+      queryClient.setQueryData(['access-session-active', 'header', role], { session: (e as CustomEvent<ActiveAccessSession>).detail });
       setOpen(true);
-      queryClient.invalidateQueries({ queryKey: ['access-session-active'] });
     };
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
-  }, [queryClient]);
+  }, [queryClient, role]);
 
   const disconnect = useMutation({
     mutationFn: (id: number) => apiFetch(endpoints.end(id), { method: 'POST' }),

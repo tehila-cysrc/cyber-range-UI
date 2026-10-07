@@ -86,9 +86,10 @@ export function TopologyViewerPage() {
       setConnectError(null);
     },
     onSuccess: ({ res, node }) => {
-      setSession({ accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label, topologyNodeId: node.id });
+      const created = { accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label, topologyNodeId: node.id };
+      setSession(created);
       // The session box (login + Open connection) lives under the header's "Connected" pill.
-      openRemoteSessionBox();
+      openRemoteSessionBox(created);
     },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
     onSettled: () => setConnectingNodeId(null),
