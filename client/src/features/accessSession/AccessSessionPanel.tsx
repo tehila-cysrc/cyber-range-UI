@@ -9,6 +9,7 @@ export interface ActiveAccessSession {
   shareableLinkUrl: string;
   expiresAt: string;
   nodeLabel: string;
+  topologyNodeId?: number;
 }
 
 interface RevealedCredential {

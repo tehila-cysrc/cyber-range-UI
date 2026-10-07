@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
+import { Button } from '../../components/Button';
 import {
   TopologyGraph,
   formatMetadataValue,
@@ -84,7 +85,7 @@ export function TopologyViewerPage() {
       setConnectError(null);
     },
     onSuccess: ({ res, node }) => {
-      setSession({ accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label });
+      setSession({ accessSessionId: res.accessSessionId, shareableLinkUrl: res.shareableLinkUrl, expiresAt: res.expiresAt, nodeLabel: node.label, topologyNodeId: node.id });
     },
     onError: (err) => setConnectError(err instanceof ApiError ? err.message : 'Failed to start a session'),
     onSettled: () => setConnectingNodeId(null),
@@ -244,7 +245,21 @@ export function TopologyViewerPage() {
                   Remote access isn't available for this machine.
                 </div>
               )}
-              {!!selectedNode.hasAccessTarget && (
+              {!!selectedNode.hasAccessTarget && session?.topologyNodeId === selectedNode.id && (
+                // Connected to this machine: Connect becomes Disconnect and the link sits right here,
+                // instead of only in the session panel below the graph.
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Button variant="destructive" onClick={() => disconnect.mutate(session.accessSessionId)} disabled={disconnect.isPending} style={{ width: '100%' }}>
+                    {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+                  </Button>
+                  <a href={session.shareableLinkUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+                    <Button variant="primary" style={{ width: '100%' }}>
+                      Open connection
+                    </Button>
+                  </a>
+                </div>
+              )}
+              {!!selectedNode.hasAccessTarget && session?.topologyNodeId !== selectedNode.id && (
                 <button
                   onClick={() => {
                     // One session at a time: a second Connect used to replace the panel while the
