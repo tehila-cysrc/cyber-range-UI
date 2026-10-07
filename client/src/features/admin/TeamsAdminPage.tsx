@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
@@ -7,22 +7,21 @@ import { OrgDetail } from './roster/OrgDetail';
 import { InstructorsView } from './roster/InstructorsView';
 import { StudentsView } from './roster/StudentsView';
 import { TeamsView } from './roster/TeamsView';
-import { AddCard, SectionHeader, SectionView } from './roster/RosterSection';
+import { OrganizationsView } from './roster/OrganizationsView';
 import {
   inputStyle,
-  postJson,
   useRosterData,
-  useRosterMutation,
   type Member,
   type Organization,
   type Selection,
   type Team,
 } from './roster/rosterData';
 
-// Roster: a side panel with four sections (Organizations / Teams / Students / Instructors), each with its own
-// "+" that opens that section's "New …" card in the main area. Scales to many organizations/teams —
+// Roster: a side panel with four rows (Organizations / Teams / Students / Instructors), each opening a list
+// in the main area and with its own "+" that opens that list's "New …" card; the organizations themselves
+// sit indented under the Organizations row. Scales to many organizations/teams —
 // only one organization's teams are ever on screen, and a single search box finds any organization,
-// team or student. Selection lives in the URL (?org=<id>|none|new|teams|students|instructors, &team=<id>,
+// team or student. Selection lives in the URL (?org=<id>|none|orgs|teams|students|instructors, &team=<id>,
 // &add=1) so a refresh or a shared link reopens the same place.
 export function TeamsAdminPage() {
   const { teams, organizations, loaded } = useRosterData();
@@ -59,13 +58,8 @@ export function TeamsAdminPage() {
       <main style={{ minWidth: 0 }}>
         {search.trim() ? (
           <SearchResults query={search.trim()} organizations={organizations} teams={teams} onSelect={select} />
-        ) : !loaded ? null : selection.kind === 'new-org' ? (
-          <NewOrganizationView
-            organizations={organizations}
-            teams={teams}
-            onCreated={(id) => select({ kind: 'org', id })}
-            onClose={() => select(organizations.length > 0 ? { kind: 'org', id: organizations[0].id } : { kind: 'none' })}
-          />
+        ) : !loaded ? null : selection.kind === 'orgs' ? (
+          <OrganizationsView organizations={organizations} teams={teams} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : selection.kind === 'teams' ? (
           <TeamsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : selection.kind === 'instructors' ? (
@@ -89,8 +83,7 @@ export function TeamsAdminPage() {
 // Default: the first organization, or the unassigned teams when there are none. A stale ?org= (e.g.
 // the organization was deleted in another tab) falls back the same way.
 function resolveSelection(raw: string | null, organizations: Organization[], loaded: boolean): Selection {
-  if (raw === 'instructors' || raw === 'students' || raw === 'teams') return { kind: raw };
-  if (raw === 'new') return { kind: 'new-org' };
+  if (raw === 'orgs' || raw === 'teams' || raw === 'students' || raw === 'instructors') return { kind: raw };
   if (raw === 'none') return { kind: 'none' };
   const id = Number(raw);
   if (raw && (!loaded || organizations.some((o) => o.id === id))) return { kind: 'org', id };
@@ -99,12 +92,11 @@ function resolveSelection(raw: string | null, organizations: Organization[], loa
 
 // The sidebar key; without its "org-" prefix it is also the ?org= value.
 function selectionKey(s: Selection) {
-  return s.kind === 'org' ? `org-${s.id}` : s.kind === 'new-org' ? 'new' : s.kind;
+  return s.kind === 'org' ? `org-${s.id}` : s.kind;
 }
 
 function keyToSelection(key: string): Selection {
-  if (key === 'none' || key === 'instructors' || key === 'students' || key === 'teams') return { kind: key };
-  if (key === 'new') return { kind: 'new-org' };
+  if (key === 'none' || key === 'orgs' || key === 'teams' || key === 'students' || key === 'instructors') return { kind: key };
   return { kind: 'org', id: Number(key.slice(4)) };
 }
 
@@ -124,7 +116,7 @@ function Sidebar({
     queryFn: () => apiFetch<{ instructors: Member[] }>('/admin/instructors'),
   });
   const instructorCount = instructorData?.instructors.length ?? 0;
-  const students =(orgId: number | null) =>
+  const students = (orgId: number | null) =>
     teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
   const unassignedTeams = teams.filter((t) => t.organizationId === null).length;
   const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
@@ -133,12 +125,23 @@ function Sidebar({
     metaTitle: `${teamCount} teams · ${studentCount} students`,
   });
 
+  // A top-level row: opens its list; "+" opens the same list with the "New …" card.
+  const row = (key: 'orgs' | 'teams' | 'students' | 'instructors', label: string, count: number, noun: string, addLabel: string): SideNavItem => ({
+    key,
+    label,
+    meta: String(count),
+    metaTitle: `${count} ${noun}`,
+    onAdd: () => onSelect({ kind: key }, undefined, true),
+    addLabel,
+  });
+
   const orgItems: SideNavItem[] = [
     ...organizations.map((o) => ({
       key: `org-${o.id}`,
       label: o.name,
       ...meta(o.teamCount, students(o.id)),
       dot: o.joinCode ? { title: 'Join code open' } : undefined,
+      indent: true,
     })),
     // Always offered when there are no organizations (it's then simply "Teams"); otherwise only when
     // some team is actually unassigned.
@@ -148,6 +151,7 @@ function Sidebar({
           label: organizations.length > 0 ? 'No organization' : 'Teams',
           ...meta(unassignedTeams, students(null)),
           muted: organizations.length > 0,
+          indent: true,
         }]
       : []),
   ];
@@ -157,70 +161,20 @@ function Sidebar({
       title="Roster"
       hideTitle
       groups={[
-        { label: 'Organizations', items: orgItems, onAdd: () => onSelect({ kind: 'new-org' }), addLabel: 'New organization' },
         {
-          label: 'Teams',
-          items: [{ key: 'teams', label: 'All teams', meta: String(teams.length), metaTitle: `${teams.length} teams` }],
-          onAdd: () => onSelect({ kind: 'teams' }, undefined, true),
-          addLabel: 'New team',
-        },
-        {
-          label: 'Students',
-          items: [{ key: 'students', label: 'All students', meta: String(totalStudents), metaTitle: `${totalStudents} students` }],
-          onAdd: () => onSelect({ kind: 'students' }, undefined, true),
-          addLabel: 'New student',
-        },
-        {
-          label: 'Instructors',
-          items: [{ key: 'instructors', label: 'All instructors', meta: String(instructorCount), metaTitle: `${instructorCount} instructors` }],
-          onAdd: () => onSelect({ kind: 'instructors' }, undefined, true),
-          addLabel: 'New instructor',
+          items: [
+            row('orgs', 'Organizations', organizations.length, 'organizations', 'New organization'),
+            ...orgItems,
+            row('teams', 'Teams', teams.length, 'teams', 'New team'),
+            row('students', 'Students', totalStudents, 'students', 'New student'),
+            row('instructors', 'Instructors', instructorCount, 'instructors', 'New instructor'),
+          ],
         },
       ]}
       activeKey={selectionKey(selection)}
       onSelect={(key) => onSelect(keyToSelection(key))}
       filterThreshold={12}
     />
-  );
-}
-
-// "+" on the Organizations section: the same header + "New …" card as the Students/Instructors sections.
-function NewOrganizationView({
-  organizations,
-  teams,
-  onCreated,
-  onClose,
-}: {
-  organizations: Organization[];
-  teams: Team[];
-  onCreated: (id: number) => void;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-  const create = useRosterMutation(
-    () => postJson('/admin/organizations', { name }) as Promise<{ organization: Organization }>,
-    'Could not create the organization',
-  );
-
-  function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return setFormError('Name is required');
-    create.mutate(undefined, {
-      onSuccess: (res) => onCreated((res as { organization: Organization }).organization.id),
-    });
-  }
-
-  return (
-    <SectionView>
-      <SectionHeader
-        title="Organizations"
-        subtitle={`${organizations.length} organization${organizations.length === 1 ? '' : 's'} · ${teams.length} team${teams.length === 1 ? '' : 's'}`}
-      />
-      <AddCard title="New organization" submitLabel="Create organization" pending={create.isPending} error={formError} onSubmit={handleCreate} onClose={onClose}>
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Organization name" aria-label="Organization name" style={inputStyle} />
-      </AddCard>
-    </SectionView>
   );
 }
 

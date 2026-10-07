@@ -15,15 +15,17 @@ export interface SideNavItem {
   dot?: { title: string };
   badges?: SideNavBadge[];
   muted?: boolean;
+  // A child row under the item before it (e.g. an organization under "Organizations").
+  indent?: boolean;
+  // Optional "+" at the end of the row. Also offered under the picker on narrow screens.
+  onAdd?: () => void;
+  addLabel?: string;
 }
 
 export interface SideNavGroup {
   // A labelled group gets a small header; an unlabelled one after the first is set off by a divider.
   label?: string;
   items: SideNavItem[];
-  // Optional "+" on the group header (labelled groups only). Also offered under the picker on narrow screens.
-  onAdd?: () => void;
-  addLabel?: string;
 }
 
 interface Props {
@@ -97,12 +99,12 @@ export function SideNav({ title, hideTitle, groups, activeKey, onSelect, addLabe
           ),
         )}
       </select>
-      {groups.some((g) => g.onAdd) && (
+      {allItems.some((i) => i.onAdd) && (
         <div className="side-picker">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {groups.filter((g) => g.onAdd).map((g) => (
-              <button key={g.label ?? g.addLabel} type="button" onClick={g.onAdd} style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', padding: '4px 10px', fontSize: 13 }}>
-                + {g.addLabel ?? g.label}
+            {allItems.filter((i) => i.onAdd).map((i) => (
+              <button key={i.key} type="button" onClick={i.onAdd} style={{ background: 'none', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', color: 'var(--text-primary)', cursor: 'pointer', padding: '4px 10px', fontSize: 13 }}>
+                + {i.addLabel ?? i.label}
               </button>
             ))}
           </div>
@@ -135,16 +137,22 @@ export function SideNav({ title, hideTitle, groups, activeKey, onSelect, addLabe
         {visibleGroups.map((g, i) => (
           <div key={g.label ?? `group-${i}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {g.label ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 26, padding: i === 0 ? '0 0 2px 10px' : '12px 0 2px 10px' }}>
-                <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-telemetry)' }}>{g.label}</span>
-                {g.onAdd && <AddButton label={g.addLabel} onClick={g.onAdd} />}
+              <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-telemetry)', padding: i === 0 ? '0 10px 2px' : '10px 10px 2px' }}>
+                {g.label}
               </div>
             ) : (
               i > 0 && <div style={{ borderTop: '1px solid var(--surface-border)', margin: '8px 0' }} />
             )}
-            {g.items.map((item) => (
-              <SideNavButton key={item.key} item={item} active={item.key === activeKey} onClick={() => onSelect(item.key)} />
-            ))}
+            {g.items.map((item) =>
+              item.onAdd ? (
+                <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <SideNavButton item={item} active={item.key === activeKey} onClick={() => onSelect(item.key)} />
+                  <AddButton label={item.addLabel} onClick={item.onAdd} />
+                </div>
+              ) : (
+                <SideNavButton key={item.key} item={item} active={item.key === activeKey} onClick={() => onSelect(item.key)} />
+              ),
+            )}
           </div>
         ))}
       </div>
@@ -170,6 +178,7 @@ function PickerOption({ item }: { item: SideNavItem }) {
   const extra = (item.badges ?? []).filter((b) => b.count > 0).map((b) => `${b.count} ${b.title}`);
   return (
     <option value={item.key}>
+      {item.indent ? '   ' : ''}
       {item.label}
       {item.meta ? ` (${item.meta})` : ''}
       {extra.length ? ` · ${extra.join(' · ')}` : ''}
@@ -189,7 +198,7 @@ function SideNavButton({ item, active, onClick }: { item: SideNavItem; active: b
         gap: 8,
         width: '100%',
         textAlign: 'start',
-        padding: '7px 10px',
+        padding: item.indent ? '5px 10px 5px 24px' : '7px 10px',
         borderRadius: 'var(--radius-control)',
         border: 'none',
         borderInlineStart: `2px solid ${active ? 'var(--signal-primary)' : 'transparent'}`,
@@ -197,7 +206,7 @@ function SideNavButton({ item, active, onClick }: { item: SideNavItem; active: b
         color: item.muted ? 'var(--text-muted)' : 'var(--text-primary)',
         fontStyle: item.muted ? 'italic' : 'normal',
         cursor: 'pointer',
-        fontSize: 14,
+        fontSize: item.indent ? 13 : 14,
       }}
     >
       <span

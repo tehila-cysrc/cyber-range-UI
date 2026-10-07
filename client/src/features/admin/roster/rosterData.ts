@@ -24,12 +24,12 @@ export interface Organization {
   joinCode: string | null;
 }
 
-// What the main area shows: an organization, the unassigned teams, the "New organization" card, every
-// team, every student, or the instructor accounts.
+// What the main area shows: one organization, the unassigned teams, or one of the four lists
+// (organizations, teams, students, instructors).
 export type Selection =
   | { kind: 'org'; id: number }
   | { kind: 'none' }
-  | { kind: 'new-org' }
+  | { kind: 'orgs' }
   | { kind: 'teams' }
   | { kind: 'students' }
   | { kind: 'instructors' };
