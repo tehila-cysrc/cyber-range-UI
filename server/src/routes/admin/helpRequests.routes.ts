@@ -54,7 +54,7 @@ router.post('/help-requests/:id/resolve', requirePermission('help.manage'), (req
   ).run(resolvedAt, req.user!.id, id);
 
   writeAudit(req.user!.username, 'help_request.resolved', 'help_request', id, { teamId: existing.teamId }, { cyberRangeId: existing.cyberRangeId });
-  emitHelpRequestResolved(existing.teamId, id, 'instructor');
+  emitHelpRequestResolved(existing.teamId, existing.cyberRangeId, id, 'instructor');
 
   res.json({ ok: true });
 });

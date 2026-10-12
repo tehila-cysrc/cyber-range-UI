@@ -78,7 +78,7 @@ router.post('/help-requests', requirePermission('help.request'), (req, res) => {
 
   const helpRequest = db.prepare(`${HELP_REQUEST_SELECT} WHERE hr.id = ?`).get(result.lastInsertRowid);
 
-  emitHelpRequestNew(req.user!.teamId, helpRequest);
+  emitHelpRequestNew(req.user!.teamId, activeProgress.cyberRangeId, helpRequest);
 
   res.status(201).json({ helpRequest });
 });

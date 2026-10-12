@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { authenticateToken, type Principal } from '../authz/principal.js';
-import { isAdmin } from '../authz/roles.js';
-import { teamRoom, INSTRUCTOR_ROOM } from './rooms.js';
+import { isAdmin, isInstructor } from '../authz/roles.js';
+import { ADMIN_ROOM, STAFF_ROOM, teamRoom, userRoom } from './rooms.js';
 import { getIo } from './io.js';
 
 type AuthedUser = Principal;
@@ -56,9 +56,13 @@ export function setupSockets(io: Server) {
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user as AuthedUser;
 
-    // Admin only until scoped delivery exists for instructors (RBAC stage 4) — fail closed.
+    // Rooms are joined here only — there are no client "join" handlers. Instructors never receive a
+    // room-wide event: scopedEmit.ts picks their sockets one by one by scope.
+    socket.join(userRoom(user.id));
     if (isAdmin(user.role)) {
-      socket.join(INSTRUCTOR_ROOM);
+      socket.join(ADMIN_ROOM);
+    } else if (isInstructor(user.role)) {
+      socket.join(STAFF_ROOM);
     } else if (user.teamId != null) {
       socket.join(teamRoom(user.teamId));
     }

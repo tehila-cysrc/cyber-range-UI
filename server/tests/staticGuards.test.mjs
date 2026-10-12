@@ -39,3 +39,10 @@ test('no requireRole() — routes declare a permission instead', () => {
   assert.deepEqual(offenders(/requireRole\(/), []);
 });
 
+
+test('socket events leave only through sockets/ (scoped delivery), never a raw getIo() emit', () => {
+  const raw = outsideAuthz.filter((f) => !f.path.startsWith('sockets/') && /getIo\(\)|INSTRUCTOR_ROOM/.test(f.text)).map((f) => f.path);
+  assert.deepEqual(raw, []);
+  const sockets = files.filter((f) => f.path.startsWith('sockets/'));
+  assert.ok(!sockets.some((f) => /INSTRUCTOR_ROOM|\.to\(STAFF_ROOM\)/.test(f.text)), 'nothing may emit to the whole staff room');
+});

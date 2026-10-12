@@ -395,7 +395,7 @@ router.post('/ttp-detections', requirePermission('ttp.manage'), (req, res) => {
     // Instructor-private: never copied into the student-visible scores.note.
     note: typeof note === 'string' && note.trim() ? note.trim() : null,
   }, { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId: result.cyberRangeId });
-  announceCredits([{ scoreId: result.scoreId!, teamId, creditedUserId: result.creditedUserId ?? null }]);
+  announceCredits([{ scoreId: result.scoreId!, teamId, cyberRangeId: result.cyberRangeId, creditedUserId: result.creditedUserId ?? null }]);
   announceLeaderboard();
   emitTtpChanged(teamId, result.cyberRangeId);
   res.status(201).json({ ok: true, detectionId: result.detectionId });

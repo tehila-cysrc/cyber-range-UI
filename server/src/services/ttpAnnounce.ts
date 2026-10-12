@@ -19,9 +19,9 @@ function scoreDTO(scoreId: number) {
     .get(scoreId);
 }
 
-export function announceCredits(credits: Pick<Credit, 'scoreId' | 'teamId' | 'creditedUserId'>[]) {
+export function announceCredits(credits: Pick<Credit, 'scoreId' | 'teamId' | 'cyberRangeId' | 'creditedUserId'>[]) {
   for (const credit of credits) {
-    emitScoreAwarded(credit.teamId, {
+    emitScoreAwarded(credit.teamId, credit.cyberRangeId, {
       score: scoreDTO(credit.scoreId),
       isGamified: false,
       teamTotal: teamTotal(credit.teamId),

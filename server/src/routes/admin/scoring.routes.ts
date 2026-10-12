@@ -118,7 +118,7 @@ router.post('/scores', requirePermission('score.award'), (req, res) => {
     )
     .get(result.lastInsertRowid);
 
-  emitScoreAwarded(teamId, {
+  emitScoreAwarded(teamId, resolvedCyberRangeId, {
     score,
     isGamified: !!isGamified,
     teamTotal: teamTotal(teamId),

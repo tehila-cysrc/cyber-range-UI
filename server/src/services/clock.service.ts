@@ -41,7 +41,7 @@ function tick() {
     const elapsed = Math.floor((Date.now() - new Date(row.startedAt).getTime()) / 1000);
     const remaining = Math.max(0, row.timeLimitSeconds - elapsed);
 
-    emitClockTick(row.teamId, row.id, remaining);
+    emitClockTick(row.teamId, row.cyberRangeId, row.id, remaining);
 
     // The reached stage with the smallest threshold is the most urgent one still "active".
     const stage = db
@@ -59,12 +59,12 @@ function tick() {
         stage.id,
         row.id,
       );
-      emitPressureStage(row.teamId, row.id, stage.label, stage.visualStyle);
+      emitPressureStage(row.teamId, row.cyberRangeId, row.id, stage.label, stage.visualStyle);
     }
 
     if (remaining === 0 && !timeUpEmitted.has(row.id)) {
       timeUpEmitted.add(row.id);
-      emitTimeUp(row.teamId, row.id);
+      emitTimeUp(row.teamId, row.cyberRangeId, row.id);
     } else if (remaining > 0) {
       timeUpEmitted.delete(row.id);
     }

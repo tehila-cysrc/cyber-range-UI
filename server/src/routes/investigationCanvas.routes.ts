@@ -116,7 +116,7 @@ router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes', requirePer
     );
 
   const node = db.prepare(`${NODE_SELECT} WHERE n.id = ?`).get(result.lastInsertRowid);
-  emitInvestigationCanvasNodeCreated(req.user!.teamId, node);
+  emitInvestigationCanvasNodeCreated(req.user!.teamId, cyberRangeId, node);
   res.status(201).json({ node });
 });
 
@@ -176,7 +176,7 @@ router.patch('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', r
   );
 
   const node = db.prepare(`${NODE_SELECT} WHERE n.id = ?`).get(nodeId);
-  emitInvestigationCanvasNodeUpdated(req.user!.teamId, node);
+  emitInvestigationCanvasNodeUpdated(req.user!.teamId, cyberRangeId, node);
   res.json({ node });
 });
 
@@ -219,9 +219,9 @@ router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', 
   // Edges first, so a connected client's local graph drops edges before the node they reference
   // disappears (avoids a dangling-edge render flash).
   for (const edge of removedEdges) {
-    emitInvestigationCanvasEdgeDeleted(req.user!.teamId, edge.id);
+    emitInvestigationCanvasEdgeDeleted(req.user!.teamId, cyberRangeId, edge.id);
   }
-  emitInvestigationCanvasNodeDeleted(req.user!.teamId, nodeId);
+  emitInvestigationCanvasNodeDeleted(req.user!.teamId, cyberRangeId, nodeId);
 
   res.json({ ok: true });
 });
@@ -286,7 +286,7 @@ router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/edges', requirePer
   }
 
   const edge = db.prepare(`${EDGE_SELECT} WHERE e.id = ?`).get(result.lastInsertRowid);
-  emitInvestigationCanvasEdgeCreated(req.user!.teamId, edge);
+  emitInvestigationCanvasEdgeCreated(req.user!.teamId, cyberRangeId, edge);
   res.status(201).json({ edge });
 });
 
@@ -309,7 +309,7 @@ router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/edges/:edgeId', 
   }
 
   db.prepare('DELETE FROM investigation_canvas_edges WHERE id = ?').run(edgeId);
-  emitInvestigationCanvasEdgeDeleted(req.user!.teamId, edgeId);
+  emitInvestigationCanvasEdgeDeleted(req.user!.teamId, cyberRangeId, edgeId);
   res.json({ ok: true });
 });
 

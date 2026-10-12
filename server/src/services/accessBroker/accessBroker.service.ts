@@ -133,7 +133,7 @@ export async function requestAccessSession(user: RequestingUser, topologyNodeId:
   const accessSessionId = result.lastInsertRowid as number;
 
   writeAudit(user.username, 'access_session.requested', 'access_session', accessSessionId, { teamId: user.teamId, topologyNodeId });
-  emitAccessSessionStarted(user.teamId, { id: accessSessionId, topologyNodeId, protocol: target.protocol, expiresAt });
+  emitAccessSessionStarted({ id: accessSessionId, topologyNodeId, protocol: target.protocol, expiresAt });
 
   return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
 }
@@ -210,7 +210,7 @@ export async function requestInstructorAccessSession(
   const accessSessionId = result.lastInsertRowid as number;
 
   writeAudit(actor.username, 'access_session.requested', 'access_session', accessSessionId, { teamId: null, topologyNodeId, instructor: true });
-  emitAccessSessionStarted(null, { id: accessSessionId, topologyNodeId, protocol, expiresAt });
+  emitAccessSessionStarted({ id: accessSessionId, topologyNodeId, protocol, expiresAt });
 
   return { ok: true, accessSessionId, shareableLinkUrl, expiresAt };
 }
@@ -343,7 +343,7 @@ function finishSession(
 ) {
   db.prepare(`UPDATE access_sessions SET outcome = ?, ended_at = ? WHERE id = ?`).run(outcome, new Date().toISOString(), accessSessionId);
   if (cleanupLink) void cleanupShareableLink(accessSessionId);
-  emitAccessSessionEnded(teamId, accessSessionId, outcome);
+  emitAccessSessionEnded(accessSessionId, outcome);
 }
 
 // Best-effort: a lingering shareable link isn't a security hole (it still requires the real VM

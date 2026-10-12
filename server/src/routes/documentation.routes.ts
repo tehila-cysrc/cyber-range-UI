@@ -217,7 +217,7 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', requirePermission('docu
   if (parsedTtps.ids.length > 0) reconcileAndAnnounce(teamId, cyberRangeId);
 
   const entry = entryDTO(entryId, teamId, cyberRangeId);
-  emitDocumentationNew(teamId, entry);
+  emitDocumentationNew(teamId, cyberRangeId, entry);
 
   res.status(201).json({ entry });
 });
@@ -256,7 +256,7 @@ router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', requirePer
   if (result.changed) reconcileAndAnnounce(teamId, cyberRangeId);
 
   const entry = entryDTO(entryId, teamId, cyberRangeId);
-  if (result.changed) emitDocumentationUpdated(teamId, entry);
+  if (result.changed) emitDocumentationUpdated(teamId, cyberRangeId, entry);
   res.json({ entry, ttpBudget: budgetFor(teamId, cyberRangeId) });
 });
 
@@ -284,7 +284,7 @@ router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', requi
     return;
   }
   const entry = entryDTO(entryId, result.teamId, result.cyberRangeId);
-  emitDocumentationUpdated(result.teamId, entry);
+  emitDocumentationUpdated(result.teamId, result.cyberRangeId, entry);
   emitDocumentationFeedback(result.teamId, { entryId, cyberRangeId: result.cyberRangeId });
   res.status(201).json({ entry });
 });
@@ -298,7 +298,7 @@ router.delete('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback/:feed
     return;
   }
   const entry = entryDTO(entryId, result.teamId, result.cyberRangeId);
-  emitDocumentationUpdated(result.teamId, entry);
+  emitDocumentationUpdated(result.teamId, result.cyberRangeId, entry);
   res.json({ entry });
 });
 
