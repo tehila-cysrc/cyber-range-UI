@@ -1,14 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { db } from '../db/index.js';
-import { roleFromUsersRow } from '../authz/roles.js';
-
-interface TokenRow {
-  id: number;
-  role: string;
-  teamId: number | null;
-  username: string;
-  expiresAt: string;
-}
+import { authenticateToken } from '../authz/principal.js';
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
@@ -19,25 +10,12 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  const row = db
-    .prepare(
-      `SELECT u.id AS id, u.role AS role, u.team_id AS teamId, u.username AS username, at.expires_at AS expiresAt
-       FROM auth_tokens at
-       JOIN users u ON u.id = at.user_id
-       WHERE at.token = ? AND u.deactivated_at IS NULL`,
-    )
-    .get(token) as TokenRow | undefined;
-
-  if (!row) {
+  const principal = authenticateToken(token);
+  if (!principal) {
     res.status(401).json({ error: 'invalid token' });
     return;
   }
 
-  if (new Date(row.expiresAt).getTime() < Date.now()) {
-    res.status(401).json({ error: 'token expired' });
-    return;
-  }
-
-  req.user = { id: row.id, role: roleFromUsersRow(row.role), teamId: row.teamId, username: row.username };
+  req.user = principal;
   next();
 }

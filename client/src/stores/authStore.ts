@@ -5,6 +5,7 @@ export interface AuthUser {
   username: string;
   role: 'student' | 'instructor' | 'admin';
   teamId: number | null;
+  accountId?: number | null; // staff only (admin/instructor); absent on sessions stored before accounts
   displayName: string;
   avatar?: string | null; // preset key (lib/avatars.ts); absent on sessions stored before avatars existed
 }

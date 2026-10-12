@@ -33,7 +33,7 @@ export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onClo
       setFormError(null);
     },
   );
-  const remove = useRosterMutation((id: number) => postJson(`/admin/users/${id}`, {}, 'DELETE'), 'Could not delete the account');
+  const remove = useRosterMutation((id: number) => postJson(`/admin/accounts/${id}`, {}, 'DELETE'), 'Could not delete the account');
 
   async function handleRemove(m: Member) {
     const ok = await confirmAction({
@@ -71,9 +71,9 @@ export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onClo
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <Avatar name={m.displayName} avatar={m.avatar} size={22} />
               <bdi>{m.displayName}</bdi> <span className="tabular" style={{ color: 'var(--text-telemetry)' }}>@{m.username}</span>
-              {m.id === me?.id && <span style={{ fontSize: 12, color: 'var(--signal-primary)' }}>you</span>}
+              {m.id === me?.accountId && <span style={{ fontSize: 12, color: 'var(--signal-primary)' }}>you</span>}
             </span>
-            {m.id !== me?.id && (
+            {m.id !== me?.accountId && (
               <button type="button" onClick={() => handleRemove(m)} disabled={remove.isPending} aria-label={`Delete account ${m.displayName}`} style={{ ...linkButtonStyle, color: 'var(--signal-alert)' }}>
                 delete
               </button>

@@ -28,7 +28,6 @@ interface ResetJob {
   endedSessions: number;
   remoteAccess: RemoteAccessResult | null;
   error: string | null;
-  keptInstructors: string[] | null;
 }
 
 const POLL_MS = 3000;
@@ -140,18 +139,9 @@ export function EventResetPage() {
           for the new event until you open it on the Teams &amp; Students page.
         </p>
         {result.remoteAccess && <RemoteAccessSummary result={result.remoteAccess} endedSessions={result.endedSessions} />}
-        {result.keptInstructors && result.keptInstructors.length > 0 && (
-          <p style={{ color: 'var(--text-primary)' }}>
-            Instructor accounts were kept with their current passwords — log back in with yours (
-            {result.keptInstructors.map((u, i) => (
-              <span key={u}>
-                {i > 0 && ', '}
-                <code>{u}</code>
-              </span>
-            ))}
-            ).
-          </p>
-        )}
+        <p style={{ color: 'var(--text-primary)' }}>
+          Admin and instructor accounts were kept with their current passwords — log back in with yours.
+        </p>
         <a href="/login" style={{ color: 'var(--signal-secondary)' }}>
           Go to login →
         </a>

@@ -16,7 +16,7 @@ import {
 import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
 import { parseAvatar, setOwnAvatar } from '../services/avatar.service.js';
 import { kickRevokedSockets } from '../sockets/index.js';
-import { roleFromUsersRow } from '../authz/roles.js';
+import { ensureStaffMembership, findAccountByUsername, scopedInstructorsEnabled, usernameTaken } from '../services/accounts.service.js';
 import { isLoginThrottled, recordLoginFailure, recordLoginSuccess } from '../services/loginThrottle.service.js';
 
 const router = Router();
@@ -55,14 +55,38 @@ router.post('/login', (req, res) => {
   }
 
   // Plaintext comparison is an explicit, documented decision for this internal tool — see CLAUDE.md.
-  const user = db
-    .prepare(
-      `SELECT id, username, password, role, team_id AS teamId, display_name AS displayName, avatar
-       FROM users WHERE event_run_id = ? AND username = ? AND deactivated_at IS NULL`,
-    )
-    .get(activeRun.id, username) as UserRow | undefined;
+  // Staff (admin/instructor) sign in through accounts (CONFIG); the run's membership row is created on
+  // the way in. Students sign in through the run's own users rows.
+  let user: UserRow | undefined;
+  const account = findAccountByUsername(username);
+  if (account) {
+    const allowed =
+      account.password === password &&
+      !account.disabledAt &&
+      (account.role !== 'instructor' || scopedInstructorsEnabled());
+    if (allowed) {
+      const userId = ensureStaffMembership(account)!;
+      user = {
+        id: userId,
+        username: account.username,
+        password: account.password,
+        role: account.role,
+        teamId: null,
+        displayName: account.displayName,
+        avatar: account.avatar,
+      };
+    }
+  } else {
+    const student = db
+      .prepare(
+        `SELECT id, username, password, role, team_id AS teamId, display_name AS displayName, avatar
+         FROM users WHERE event_run_id = ? AND username = ? AND role = 'student' AND deactivated_at IS NULL`,
+      )
+      .get(activeRun.id, username) as UserRow | undefined;
+    if (student && student.password === password) user = student;
+  }
 
-  if (!user || user.password !== password) {
+  if (!user) {
     recordLoginFailure(ip, username);
     res.status(401).json({ error: 'invalid credentials' });
     return;
@@ -85,7 +109,8 @@ router.post('/login', (req, res) => {
     user: {
       id: user.id,
       username: user.username,
-      role: roleFromUsersRow(user.role),
+      role: user.role,
+      accountId: account?.id ?? null,
       teamId: user.teamId,
       displayName: user.displayName,
       avatar: user.avatar,
@@ -168,6 +193,11 @@ router.post('/register', (req, res) => {
     return;
   }
 
+  if (usernameTaken(username.trim())) {
+    res.status(409).json({ error: `username "${username}" is already taken` });
+    return;
+  }
+
   // Server-side scope check — the picker only lists the code's teams, but teamId comes from the client.
   const team = db
     .prepare('SELECT id FROM teams WHERE id = ? AND event_run_id = ? AND organization_id IS ?')
@@ -231,7 +261,7 @@ router.get('/me', requireAuth, (req, res) => {
       'SELECT id, username, role, team_id AS teamId, display_name AS displayName, avatar FROM users WHERE id = ?',
     )
     .get(req.user!.id) as { role: string } | undefined;
-  res.json({ user: user && { ...user, role: req.user!.role } });
+  res.json({ user: user && { ...user, role: req.user!.role, accountId: req.user!.accountId } });
 });
 
 // Self-service profile edit for any signed-in user — see profile.service.ts for the rules.

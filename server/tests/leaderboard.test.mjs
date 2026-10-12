@@ -25,8 +25,8 @@ before(() => {
   acme = orgs.createOrganization('Acme').value.id;
 });
 
-test('instructor always sees every team, no switch needed', () => {
-  const r = leaderboardFor({ role: 'instructor', teamId: null });
+test('admin always sees every team, no switch needed', () => {
+  const r = leaderboardFor({ role: 'admin', teamId: null });
   assert.equal(r.enabled, true);
   assert.deepEqual(names(r), [alpha, bravo].sort());
 });
@@ -52,5 +52,5 @@ test('student sees only their own organization', () => {
   assert.equal(r.enabled, true);
   assert.deepEqual(names(r), [alpha, bravo].sort());
   assert.deepEqual(leaderboardFor(student(outsider)), { enabled: false, teams: [] });
-  assert.equal(leaderboardFor({ role: 'instructor', teamId: null }).teams.length, 3);
+  assert.equal(leaderboardFor({ role: 'admin', teamId: null }).teams.length, 3);
 });

@@ -118,6 +118,70 @@ function relaxScoresForTtpAwards() {
   `);
 }
 
+// RBAC (accounts): every staff row of the active run that predates the accounts table becomes an
+// `admin` account, so nobody loses access on upgrade — today every instructor is a full admin. Runs
+// once (only while `accounts` is empty), in one transaction. The membership row keeps its id (every
+// FK to it stays valid) but no longer holds a password: staff sign in through `accounts`.
+function backfillStaffAccounts() {
+  const hasAccounts = db.prepare('SELECT 1 FROM accounts LIMIT 1').get();
+  if (hasAccounts) return;
+  const staff = db
+    .prepare(
+      `SELECT u.id, u.username, u.password, u.display_name AS displayName, u.avatar
+       FROM users u JOIN event_runs r ON r.id = u.event_run_id
+       WHERE r.is_active = 1 AND u.role = 'instructor' AND u.deactivated_at IS NULL AND u.account_id IS NULL
+       ORDER BY u.id`,
+    )
+    .all() as { id: number; username: string; password: string; displayName: string; avatar: string | null }[];
+  if (staff.length === 0) return;
+
+  db.exec('BEGIN');
+  try {
+    const now = new Date().toISOString();
+    for (const s of staff) {
+      // Two staff rows differing only in letter case collapse onto the first one's account.
+      const existing = db.prepare('SELECT id FROM accounts WHERE username = ?').get(s.username) as { id: number } | undefined;
+      const accountId =
+        existing?.id ??
+        Number(
+          db
+            .prepare(
+              `INSERT INTO accounts (username, password, role, display_name, avatar, created_at)
+               VALUES (?, ?, 'admin', ?, ?, ?)`,
+            )
+            .run(s.username, s.password, s.displayName, s.avatar, now).lastInsertRowid,
+        );
+      db.prepare("UPDATE users SET account_id = ?, password = '' WHERE id = ?").run(accountId, s.id);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  console.log(`[migrate] ${staff.length} instructor account(s) moved to accounts as admin`);
+}
+
+// Created after the backfill so old rows never trip them. users.role 'instructor' now only marks a
+// staff membership row; the real role is accounts.role.
+function addStaffMembershipGuards() {
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_run_account
+      ON users (event_run_id, account_id) WHERE account_id IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_users_account_insert
+    BEFORE INSERT ON users
+    WHEN (NEW.role = 'instructor' AND NEW.account_id IS NULL) OR (NEW.role = 'student' AND NEW.account_id IS NOT NULL)
+    BEGIN
+      SELECT RAISE(ABORT, 'a staff users row needs account_id and a student row must not have one');
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_users_account_update
+    BEFORE UPDATE OF role, account_id ON users
+    WHEN (NEW.role = 'instructor' AND NEW.account_id IS NULL) OR (NEW.role = 'student' AND NEW.account_id IS NOT NULL)
+    BEGIN
+      SELECT RAISE(ABORT, 'a staff users row needs account_id and a student row must not have one');
+    END;
+  `);
+}
+
 export function migrate() {
   // Must be read before config.sql creates the table — the one-time backfill below depends on it.
   const hadTopologyPublications = !!db
@@ -214,6 +278,19 @@ export function migrate() {
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,
   );
   relaxScoresForTtpAwards();
+
+  // RBAC: staff identities live in accounts (CONFIG); see backfillStaffAccounts.
+  addColumnIfMissing('users', 'account_id', 'INTEGER REFERENCES accounts(id)');
+  // Who acted in which role, for which organization/scenario, and whether it was allowed. Snapshot
+  // values, never FKs (audit_log is CONFIG and outlives the RUN rows it describes).
+  addColumnIfMissing('audit_log', 'actor_account_id', 'INTEGER');
+  addColumnIfMissing('audit_log', 'actor_role', 'TEXT');
+  addColumnIfMissing('audit_log', 'organization_id', 'INTEGER');
+  addColumnIfMissing('audit_log', 'cyber_range_id', 'INTEGER');
+  addColumnIfMissing('audit_log', 'outcome', "TEXT NOT NULL DEFAULT 'allowed'");
+  addColumnIfMissing('audit_log', 'client_ip', 'TEXT');
+  backfillStaffAccounts();
+  addStaffMembershipGuards();
 
   // Topology publishing (UX-38) arrived after ranges already had student-visible topology. Publish
   // each such range's current student view exactly once, when the table is first created, so nothing

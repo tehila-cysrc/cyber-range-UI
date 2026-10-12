@@ -239,3 +239,40 @@ CREATE TABLE IF NOT EXISTS organizations (
   created_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name ON organizations (name COLLATE NOCASE);
+
+-- Staff identities (admin / instructor). CONFIG so they survive an event reset: each run gets a
+-- `users` membership row pointing here (users.account_id, RUN -> CONFIG), created at first sign-in.
+-- Students stay RUN-only in `users`. Plaintext password by explicit decision (CLAUDE/invariants.md).
+CREATE TABLE IF NOT EXISTS accounts (
+  id INTEGER PRIMARY KEY,
+  username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  password TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('admin', 'instructor')),
+  display_name TEXT NOT NULL,
+  avatar TEXT,
+  created_at TEXT NOT NULL,
+  created_by_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  disabled_at TEXT -- set instead of deleting an account that has history
+);
+
+-- An instructor's scope: explicit (organization, scenario) pairs. Data of team T on scenario S is
+-- visible only when (T.organization_id, S) is one of the pairs — never the cross product of the
+-- organizations and scenarios an instructor holds. No wildcard rows, so a new scenario never enters
+-- anyone's scope without an explicit assignment.
+CREATE TABLE IF NOT EXISTS instructor_assignments (
+  id INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  created_by_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  UNIQUE (account_id, organization_id, cyber_range_id)
+);
+CREATE INDEX IF NOT EXISTS idx_instructor_assignments_org ON instructor_assignments (organization_id);
+CREATE INDEX IF NOT EXISTS idx_instructor_assignments_range ON instructor_assignments (cyber_range_id);
+CREATE TRIGGER IF NOT EXISTS trg_instructor_assignments_role
+BEFORE INSERT ON instructor_assignments
+WHEN (SELECT role FROM accounts WHERE id = NEW.account_id) IS NOT 'instructor'
+BEGIN
+  SELECT RAISE(ABORT, 'assignments are only for instructor accounts');
+END;

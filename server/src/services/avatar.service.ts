@@ -23,6 +23,9 @@ export function parseAvatar(value: unknown): AvatarParse {
 // Cosmetic, so unlike the rest of the profile it doesn't ask for the current password.
 export function setOwnAvatar(userId: number, value: unknown): AvatarParse {
   const parsed = parseAvatar(value);
-  if (parsed.ok) db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(parsed.avatar, userId);
+  if (!parsed.ok) return parsed;
+  db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(parsed.avatar, userId);
+  // Staff: the account carries the avatar into every future run's membership row.
+  db.prepare('UPDATE accounts SET avatar = ? WHERE id = (SELECT account_id FROM users WHERE id = ?)').run(parsed.avatar, userId);
   return parsed;
 }

@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
-import { getActiveEventRunId, createFreshEventRun, activeInstructorAccounts } from '../../db/seed.js';
+import { getActiveEventRunId, createFreshEventRun } from '../../db/seed.js';
+import { activeAdminCount } from '../../services/accounts.service.js';
 import { endActiveSessions, revokeAllShareableLinks, setRemoteAccessFrozen, type EnvironmentRevocation } from '../../services/accessBroker/accessBroker.service.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { kickRevokedSockets } from '../../sockets/index.js';
@@ -35,8 +36,6 @@ interface ResetJob {
   endedSessions: number;
   remoteAccess: RemoteAccessResult | null;
   error: string | null;
-  // Usernames only — this is served by a token-less route, so it never carries a password.
-  keptInstructors: string[] | null;
 }
 
 // In-memory on purpose: the destructive step (the wipe) is the LAST thing a job does, so a server
@@ -46,9 +45,8 @@ let runningJobId: string | null = null;
 
 // Wipes every RUN table (teams, users, auth_tokens, progress, documentation, scores, help_requests,
 // access_sessions) by deleting the active event_runs row — ON DELETE CASCADE does the rest — then
-// creates a fresh empty run carrying over the instructor accounts with their own passwords
-// (registration closed). CONFIG tables are never
-// touched; see CLAUDE/invariants.md.
+// creates a fresh empty run (registration closed). Staff accounts are CONFIG, like every other CONFIG
+// table never touched — admins and instructors keep their own logins; see CLAUDE/invariants.md.
 //
 // Remote access comes first: the cascade removes access_sessions rows but can't touch Azure, and a
 // previous cohort's student already saw the VM credential ("Show"), so any surviving Bastion shareable
@@ -79,20 +77,18 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
 
     job.phase = 'Wiping the event';
     const activeRunId = getActiveEventRunId();
-    const instructors = activeRunId !== null ? activeInstructorAccounts(activeRunId) : [];
-    // createFreshEventRun falls back to the well-known default login when given nobody — never let a
-    // reset do that (e.g. every instructor was removed while the revoke step was waiting on Bastion).
-    if (instructors.length === 0) {
+    // Staff accounts are CONFIG and survive the wipe; refuse anyway if no admin could sign in after it.
+    if (activeAdminCount() === 0) {
       job.state = 'failed';
-      job.phase = 'Not reset — no active instructor account to keep';
-      job.error = 'no active instructor account would survive the reset — nothing was wiped';
+      job.phase = 'Not reset — no active admin account';
+      job.error = 'no active admin account would be able to sign in after the reset — nothing was wiped';
       return;
     }
     db.exec('BEGIN');
     let newRunId: number;
     try {
       if (activeRunId !== null) db.prepare('DELETE FROM event_runs WHERE id = ?').run(activeRunId);
-      newRunId = createFreshEventRun(instructors);
+      newRunId = createFreshEventRun();
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
@@ -104,7 +100,6 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
       });
     }
     kickRevokedSockets();
-    job.keptInstructors = instructors.map((i) => i.username);
     job.state = 'done';
     job.phase = 'Event reset complete';
   } catch (err) {
@@ -120,7 +115,7 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
 
 // Job status by its unguessable id. Deliberately NOT behind requireAuth: the reset deletes the token
 // that started it, so the page must still be able to read the outcome afterwards. It exposes only job
-// progress and the kept instructor usernames — never a password.
+// progress — never an account name or password.
 resetJobsPublicRouter.get('/:jobId', (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) {
@@ -188,7 +183,6 @@ router.post('/event/reset', (req, res) => {
     endedSessions: 0,
     remoteAccess: null,
     error: null,
-    keptInstructors: null,
   };
   jobs.set(job.id, job);
   runningJobId = job.id;

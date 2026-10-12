@@ -7,7 +7,6 @@ export function isStaff(role: Role): boolean {
   return role !== 'student';
 }
 
-// Until the accounts table exists, every staff row in `users` (role 'instructor') is a full admin.
-export function roleFromUsersRow(dbRole: string): Role {
-  return dbRole === 'student' ? 'student' : 'admin';
+export function isAdmin(role: Role): boolean {
+  return role === 'admin';
 }

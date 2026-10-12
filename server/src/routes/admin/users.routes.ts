@@ -8,22 +8,55 @@ import { MIN_PASSWORD_LENGTH } from '../auth.routes.js';
 import { parseAvatar } from '../../services/avatar.service.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { kickRevokedSockets } from '../../sockets/index.js';
+import { activeAdminCount, getAccount, insertAccount, revokeAccountTokens, usernameTaken } from '../../services/accounts.service.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('admin'));
 
-// Instructor accounts of the active run (Roster → Instructors). Students are listed per team by
+// Staff accounts (Roster → Instructors); `id` is the account id. Students are listed per team by
 // GET /admin/teams instead.
 router.get('/instructors', (_req, res) => {
-  const runId = getActiveEventRunId();
   const instructors = db
     .prepare(
-      `SELECT id, username, display_name AS displayName, avatar FROM users
-       WHERE role = 'instructor' AND event_run_id = ? AND deactivated_at IS NULL ORDER BY display_name COLLATE NOCASE`,
+      `SELECT id, username, display_name AS displayName, avatar, role FROM accounts
+       WHERE disabled_at IS NULL ORDER BY display_name COLLATE NOCASE`,
     )
-    .all(runId);
+    .all();
   res.json({ instructors });
+});
+
+// Disables a staff account (it keeps its history; it can no longer sign in). Never the caller's own
+// account, never the last active admin.
+router.delete('/accounts/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const account = getAccount(id);
+  if (!account || account.disabledAt) {
+    res.status(404).json({ error: 'account not found' });
+    return;
+  }
+  if (id === req.user!.accountId) {
+    res.status(400).json({ error: "you can't remove your own account while signed in with it" });
+    return;
+  }
+  if (account.role === 'admin' && activeAdminCount() <= 1) {
+    res.status(409).json({ error: 'this is the last active admin account' });
+    return;
+  }
+  const memberIds = db.prepare('SELECT id FROM users WHERE account_id = ?').all(id) as { id: number }[];
+  for (const m of memberIds) endActiveSessions({ userId: m.id }, 'force_closed', req.user!.username, 'account_disabled');
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE accounts SET disabled_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+    revokeAccountTokens(id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  writeAudit(req.user!.username, 'account.disabled', 'account', id, { username: account.username, role: account.role });
+  kickRevokedSockets();
+  res.json({ ok: true });
 });
 
 // Manual account creation for the current event run — mainly for additional instructor accounts
@@ -48,6 +81,10 @@ router.post('/users', (req, res) => {
     res.status(400).json({ error: 'teamId is required for a student' });
     return;
   }
+  if (usernameTaken(username.trim())) {
+    res.status(409).json({ error: `username "${username}" is already taken` });
+    return;
+  }
   const avatar = parseAvatar(req.body?.avatar);
   if (!avatar.ok) {
     res.status(400).json({ error: avatar.error });
@@ -57,6 +94,18 @@ router.post('/users', (req, res) => {
   const runId = getActiveEventRunId();
   if (runId === null) {
     res.status(409).json({ error: 'no active event run' });
+    return;
+  }
+
+  // Staff are accounts (CONFIG). Until scoped instructors exist (RBAC stage 3), a new staff account is
+  // an admin — exactly what an "instructor" has been so far.
+  if (role === 'instructor') {
+    const accountId = insertAccount(
+      { username: username.trim(), password, role: 'admin', displayName: (displayName || username).trim(), avatar: avatar.avatar },
+      req.user!.accountId,
+    );
+    writeAudit(req.user!.username, 'account.created', 'account', accountId, { username: username.trim(), role: 'admin' });
+    res.status(201).json({ user: { id: accountId, username: username.trim(), role: 'admin', teamId: null } });
     return;
   }
 
@@ -132,15 +181,15 @@ router.delete('/users/:id', (req, res) => {
     res.status(400).json({ error: "you can't remove your own account while signed in with it" });
     return;
   }
-  // A removed account's live remote session would otherwise keep its Bastion link after the cascade.
-  endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_deleted');
-  const user = db.prepare('SELECT username, role FROM users WHERE id = ? AND deactivated_at IS NULL').get(id) as
+  const user = db.prepare("SELECT username, role FROM users WHERE id = ? AND deactivated_at IS NULL AND role = 'student'").get(id) as
     | { username: string; role: string }
     | undefined;
   if (!user) {
     res.status(404).json({ error: 'user not found' });
     return;
   }
+  // A removed account's live remote session would otherwise keep its Bastion link after the cascade.
+  endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_deleted');
   try {
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
   } catch {

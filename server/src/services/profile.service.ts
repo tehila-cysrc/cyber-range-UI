@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { roleFromUsersRow } from '../authz/roles.js';
+import { getAccount, revokeAccountTokens, syncMembership, usernameTaken } from './accounts.service.js';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -13,7 +13,7 @@ export interface ProfileUpdateInput {
 export interface ProfileUser {
   id: number;
   username: string;
-  role: string;
+  role: 'admin' | 'instructor' | 'student';
   teamId: number | null;
   displayName: string;
   avatar: string | null;
@@ -29,11 +29,21 @@ export type ProfileUpdateResult =
 export function updateOwnProfile(userId: number, currentToken: string, input: ProfileUpdateInput): ProfileUpdateResult {
   const user = db
     .prepare(
-      `SELECT id, event_run_id AS runId, username, password, role, team_id AS teamId, display_name AS displayName, avatar
+      `SELECT id, event_run_id AS runId, username, password, role, team_id AS teamId, display_name AS displayName, avatar,
+              account_id AS accountId
        FROM users WHERE id = ?`,
     )
-    .get(userId) as (ProfileUser & { runId: number; password: string }) | undefined;
+    .get(userId) as (ProfileUser & { runId: number; password: string; accountId: number | null }) | undefined;
   if (!user) return { ok: false, status: 404, error: 'user not found' };
+  // Staff edit their account (CONFIG), not the run's membership row. `role` is never an editable field.
+  const account = user.accountId !== null ? getAccount(user.accountId) : undefined;
+  if (user.accountId !== null && !account) return { ok: false, status: 404, error: 'user not found' };
+  if (account) {
+    user.username = account.username;
+    user.displayName = account.displayName;
+    user.password = account.password;
+    user.role = account.role;
+  }
 
   if (typeof input.currentPassword !== 'string' || input.currentPassword !== user.password) {
     return { ok: false, status: 403, error: 'current password is incorrect' };
@@ -65,10 +75,31 @@ export function updateOwnProfile(userId: number, currentToken: string, input: Pr
   const passwordChanged = password !== user.password;
 
   if (username !== user.username) {
-    const taken = db
-      .prepare('SELECT 1 FROM users WHERE event_run_id = ? AND username = ? AND id != ?')
-      .get(user.runId, username, userId);
-    if (taken) return { ok: false, status: 409, error: `username "${username}" is already taken this run` };
+    const taken = usernameTaken(username, { userId, accountId: account?.id });
+    if (taken) return { ok: false, status: 409, error: `username "${username}" is already taken` };
+  }
+
+  if (account) {
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE accounts SET username = ?, display_name = ?, password = ? WHERE id = ?').run(
+        username,
+        displayName,
+        password,
+        account.id,
+      );
+      syncMembership(account.id);
+      if (passwordChanged) revokeAccountTokens(account.id, currentToken);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    return {
+      ok: true,
+      user: { id: user.id, username, role: account.role, teamId: null, displayName, avatar: account.avatar },
+      passwordChanged,
+    };
   }
 
   db.exec('BEGIN');
@@ -92,7 +123,7 @@ export function updateOwnProfile(userId: number, currentToken: string, input: Pr
 
   return {
     ok: true,
-    user: { id: user.id, username, role: roleFromUsersRow(user.role), teamId: user.teamId, displayName, avatar: user.avatar },
+    user: { id: user.id, username, role: 'student', teamId: user.teamId, displayName, avatar: user.avatar },
     passwordChanged,
   };
 }

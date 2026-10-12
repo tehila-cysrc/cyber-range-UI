@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { db } from './index.js';
 import { migrate } from './migrate.js';
+import { ensureInitialAdmin, ensureStaffMembership, getAccount } from '../services/accounts.service.js';
 
 function nowIso() {
   return new Date().toISOString();
@@ -62,47 +63,14 @@ export function getActiveEventRunId(): number | null {
   return row?.id ?? null;
 }
 
-export const DEFAULT_INSTRUCTOR_USERNAME = 'instructor';
-export const DEFAULT_INSTRUCTOR_PASSWORD = 'instructor123';
-
-export interface CarriedInstructor {
-  username: string;
-  password: string;
-  displayName: string;
-  avatar: string | null;
-}
-
-// Every active instructor account of the current run, so a reset can carry them into the next one.
-export function activeInstructorAccounts(runId: number): CarriedInstructor[] {
+// Creates a new active, empty event_runs row (registration closed). Shared by the dev seed script and
+// the event-reset endpoint (server/src/routes/admin/event.routes.ts). Staff accounts live in CONFIG
+// (`accounts`) and survive the reset; their membership row in the new run is created at sign-in, so a
+// reset never (re)creates a login — in particular never `instructor`/`instructor123`.
+export function createFreshEventRun(): number {
   return db
-    .prepare(
-      `SELECT username, password, display_name AS displayName, avatar
-       FROM users WHERE event_run_id = ? AND role = 'instructor' AND deactivated_at IS NULL ORDER BY id`,
-    )
-    .all(runId) as unknown as CarriedInstructor[];
-}
-
-// Creates a new active event_runs row with its instructor accounts — the minimum needed for the system
-// to be usable (someone has to be able to log in to create the new cohort's teams/students). Shared by
-// the dev seed script and the event-reset endpoint (server/src/routes/admin/event.routes.ts).
-// The reset passes the previous run's instructors so they keep their own logins; only a run with no
-// instructor to carry over (first seed) gets the well-known default account — a reset must never
-// re-create `instructor`/`instructor123` on a deploy whose instructors changed it.
-export function createFreshEventRun(instructors: CarriedInstructor[] = []): number {
-  const runId = db
     .prepare('INSERT INTO event_runs (started_at, is_active) VALUES (?, 1)')
     .run(nowIso()).lastInsertRowid as number;
-
-  const accounts: CarriedInstructor[] = instructors.length
-    ? instructors
-    : [{ username: DEFAULT_INSTRUCTOR_USERNAME, password: DEFAULT_INSTRUCTOR_PASSWORD, displayName: 'Instructor', avatar: null }];
-  const insert = db.prepare(
-    `INSERT INTO users (event_run_id, username, password, role, team_id, display_name, avatar)
-     VALUES (?, ?, ?, 'instructor', NULL, ?, ?)`,
-  );
-  for (const a of accounts) insert.run(runId, a.username, a.password, a.displayName, a.avatar);
-
-  return runId;
 }
 
 function seedDemoRunData() {
@@ -128,9 +96,11 @@ function seedDemoRunData() {
   insertUser.run(runId, 'carol', 'student123', 'student', teamBravoId, 'Carol');
   insertUser.run(runId, 'dave', 'student123', 'student', teamBravoId, 'Dave');
 
-  console.log(
-    `[seed] created event run ${runId} with 2 demo teams and 5 users (instructor/student123 logins)`,
-  );
+  // Sign-in would create these anyway; the demo run has them up front so fixtures can reference staff.
+  const accounts = db.prepare('SELECT id FROM accounts WHERE disabled_at IS NULL ORDER BY id').all() as { id: number }[];
+  for (const { id } of accounts) ensureStaffMembership(getAccount(id)!);
+
+  console.log(`[seed] created event run ${runId} with 2 demo teams and 4 students (student123 logins)`);
 }
 
 export function seed() {
@@ -138,6 +108,13 @@ export function seed() {
   seedDays();
   seedDocumentationCategories();
   seedScoringConfig();
+  const admin = ensureInitialAdmin();
+  if (admin.created) {
+    console.log(
+      `[seed] created admin account "${admin.username}"` +
+        (process.env.INITIAL_ADMIN_PASSWORD ? ' (password from INITIAL_ADMIN_PASSWORD)' : ' with the documented dev password — change it'),
+    );
+  }
   seedDemoRunData();
   console.log('[seed] done');
 }

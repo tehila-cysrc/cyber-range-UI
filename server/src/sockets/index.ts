@@ -1,38 +1,13 @@
 import type { Server, Socket } from 'socket.io';
-import { db } from '../db/index.js';
-import { isStaff, roleFromUsersRow, type Role } from '../authz/roles.js';
+import { authenticateToken, type Principal } from '../authz/principal.js';
+import { isAdmin } from '../authz/roles.js';
 import { teamRoom, INSTRUCTOR_ROOM } from './rooms.js';
 import { getIo } from './io.js';
 
-interface AuthedUser {
-  id: number;
-  role: Role;
-  teamId: number | null;
-}
-
-interface TokenRow {
-  id: number;
-  role: string;
-  teamId: number | null;
-  expiresAt: string;
-}
+type AuthedUser = Principal;
 
 function authenticate(token: string | undefined): AuthedUser | null {
-  if (!token) return null;
-
-  const row = db
-    .prepare(
-      `SELECT u.id AS id, u.role AS role, u.team_id AS teamId, at.expires_at AS expiresAt
-       FROM auth_tokens at
-       JOIN users u ON u.id = at.user_id
-       WHERE at.token = ? AND u.deactivated_at IS NULL`,
-    )
-    .get(token) as TokenRow | undefined;
-
-  if (!row) return null;
-  if (new Date(row.expiresAt).getTime() < Date.now()) return null;
-
-  return { id: row.id, role: roleFromUsersRow(row.role), teamId: row.teamId };
+  return authenticateToken(token);
 }
 
 // A socket's rooms are decided at handshake, so its token is re-checked afterwards: logout, expiry,
@@ -45,7 +20,7 @@ export function revalidateSockets(io: Server) {
   for (const socket of io.sockets.sockets.values()) {
     const prev = socket.data.user as AuthedUser | undefined;
     const now = authenticate(socket.data.token as string | undefined);
-    if (!prev || !now || now.id !== prev.id || now.role !== prev.role || now.teamId !== prev.teamId) {
+    if (!prev || !now || now.id !== prev.id || now.role !== prev.role || now.teamId !== prev.teamId || now.accountId !== prev.accountId) {
       socket.disconnect(true);
     }
   }
@@ -81,7 +56,8 @@ export function setupSockets(io: Server) {
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user as AuthedUser;
 
-    if (isStaff(user.role)) {
+    // Admin only until scoped delivery exists for instructors (RBAC stage 4) — fail closed.
+    if (isAdmin(user.role)) {
       socket.join(INSTRUCTOR_ROOM);
     } else if (user.teamId != null) {
       socket.join(teamRoom(user.teamId));
