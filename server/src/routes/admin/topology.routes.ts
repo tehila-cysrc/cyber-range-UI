@@ -109,7 +109,10 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (r
     return;
   }
 
-  writeAudit(req.user!.username, 'topology.node_updated', 'topology_node', nodeId, { changes: Object.keys(req.body ?? {}) }, { cyberRangeId });
+  const changes = Object.keys(req.body ?? {}).filter((k) => k !== 'posX' && k !== 'posY');
+  if (changes.length > 0) {
+    writeAudit(req.user!.username, 'topology.node_updated', 'topology_node', nodeId, { changes }, { cyberRangeId });
+  }
   db.prepare(
     `UPDATE topology_nodes SET
        label = COALESCE(?, label),

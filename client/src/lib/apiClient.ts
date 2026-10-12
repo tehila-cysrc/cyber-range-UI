@@ -12,9 +12,12 @@ export const SIGNED_OUT_NOTE_KEY = 'cyber-range-signed-out';
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // Machine-readable cause the server sends with some refusals (e.g. 'scenario_shared').
+  reason?: string;
+  constructor(status: number, message: string, reason?: string) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -44,7 +47,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const body = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new ApiError(res.status, body?.error ?? `Request failed with status ${res.status}`);
+    throw new ApiError(res.status, body?.error ?? `Request failed with status ${res.status}`, typeof body?.reason === 'string' ? body.reason : undefined);
   }
 
   return body as T;

@@ -154,7 +154,8 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0 12px 10px' }}>
           <select
             autoFocus
-            defaultValue={team.organizationId ?? ''}
+            // Controlled by the saved value: a refused move (403) snaps back instead of showing the target.
+            value={team.organizationId ?? ''}
             aria-label={`Organization of ${team.name}`}
             disabled={setOrg.isPending}
             onChange={(e) => setOrg.mutate(e.target.value ? Number(e.target.value) : null)}

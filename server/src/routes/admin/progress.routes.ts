@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requirePermission } from '../../authz/requirePermission.js';
+import { auditDenied, requirePermission } from '../../authz/requirePermission.js';
 import { assertPairInScope } from '../../authz/resolve.js';
 import { pairInScope, teamOrganization } from '../../authz/scope.js';
 import { writeAudit } from '../../services/audit.service.js';
@@ -29,6 +29,7 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', requirePermission
     .prepare("SELECT cyber_range_id AS id FROM team_cyber_range_progress WHERE team_id = ? AND status = 'active' AND cyber_range_id != ?")
     .get(teamId, cyberRangeId) as { id: number } | undefined;
   if (live && !pairInScope(req.user!, teamId, live.id)) {
+    auditDenied(req, 'scenario_out_of_scope', { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId: live.id });
     res.status(409).json({ error: 'this team is live on a scenario outside your assignments — it has to be completed first', reason: 'scenario_out_of_scope' });
     return;
   }

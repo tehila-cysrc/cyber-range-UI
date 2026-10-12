@@ -140,3 +140,40 @@ test('#13 the kill switch accepts any common "off" spelling', async () => {
   delete process.env.ENABLE_SCOPED_INSTRUCTORS;
   assert.equal((await api('GET', '/api/auth/me', t.iA)).status, 200);
 });
+
+// Browser QA of stage 6 (2026-10-12): refusals and sign-in failures must be readable in the audit trail.
+const deniedReasons = () =>
+  db.prepare("SELECT metadata_json AS m FROM audit_log WHERE action = 'authz.denied'").all().map((r) => JSON.parse(r.m).reason);
+
+test('QA business-rule refusals (team move/delete, scenario switch, voiding) are audited as authz.denied', () => {
+  const reasons = deniedReasons();
+  for (const reason of ['team_work_out_of_scope', 'scenario_out_of_scope', 'scenario_shared']) {
+    assert.ok(reasons.includes(reason), `missing authz.denied ${reason}: ${reasons.join(', ')}`);
+  }
+});
+
+test('QA a failed staff sign-in records why it failed', async () => {
+  const login = (password) =>
+    fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'iA', password }) });
+  const lastReason = () =>
+    JSON.parse(db.prepare("SELECT metadata_json AS m FROM audit_log WHERE action = 'auth.login_failed' ORDER BY id DESC LIMIT 1").get().m).reason;
+  process.env.ENABLE_SCOPED_INSTRUCTORS = 'off';
+  try {
+    assert.equal((await login('pass12345')).status, 401);
+    assert.equal(lastReason(), 'instructors_disabled');
+    assert.equal((await login('wrong-password')).status, 401);
+    assert.equal(lastReason(), 'bad_password');
+  } finally {
+    delete process.env.ENABLE_SCOPED_INSTRUCTORS;
+  }
+});
+
+test('QA dragging a node (position only) writes no audit row; a content edit does', async () => {
+  const count = () => db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'topology.node_updated'").get().n;
+  const before = count();
+  const path = `/api/admin/cyber-ranges/${f.s1}/topology/nodes/${ids.nodeS1}`;
+  assert.equal((await api('PATCH', path, t.admin, { posX: 10, posY: 20 })).status, 200);
+  assert.equal(count(), before);
+  assert.equal((await api('PATCH', path, t.admin, { label: 'vm1-renamed' })).status, 200);
+  assert.equal(count(), before + 1);
+});

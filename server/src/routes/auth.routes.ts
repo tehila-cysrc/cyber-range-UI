@@ -97,7 +97,21 @@ router.post('/login', (req, res) => {
     // would flood the trail. The attempted username is never logged with a password.
     if (account) {
       runAsAuditActor({ accountId: account.id, role: account.role, ip }, () =>
-        writeAudit(account.username, 'auth.login_failed', 'account', account.id, { disabled: !!account.disabledAt }, { outcome: 'denied' }),
+        writeAudit(
+          account.username,
+          'auth.login_failed',
+          'account',
+          account.id,
+          {
+            reason:
+              account.password !== password
+                ? 'bad_password'
+                : account.disabledAt
+                  ? 'account_disabled'
+                  : 'instructors_disabled',
+          },
+          { outcome: 'denied' },
+        ),
       );
     }
     res.status(401).json({ error: 'invalid credentials' });

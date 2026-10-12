@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requirePermission } from '../../authz/requirePermission.js';
+import { auditDenied, requirePermission } from '../../authz/requirePermission.js';
 import { assertPairInScope, assertScenarioExclusive, assertScenarioInScope } from '../../authz/resolve.js';
 import { pairInScope, teamOrganization } from '../../authz/scope.js';
 import { getActiveEventRunId } from '../../db/seed.js';
@@ -249,6 +249,7 @@ router.delete('/expected-ttps/:id', requirePermission('scenario.author'), (req, 
     .all(existing.id) as { id: number; teamId: number }[];
   // Voiding takes points away from those teams: every one of them must be in the caller's pairs.
   if (credited.some((d) => !pairInScope(req.user!, d.teamId, existing.cyberRangeId))) {
+    auditDenied(req, 'scenario_shared', { cyberRangeId: existing.cyberRangeId });
     res.status(409).json({
       error: "teams outside your assignments were already credited for this technique — only an admin can remove it now",
       reason: 'scenario_shared',

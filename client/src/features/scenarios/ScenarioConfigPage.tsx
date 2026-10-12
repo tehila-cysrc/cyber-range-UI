@@ -337,8 +337,9 @@ function ExpectedRow({
       apiFetch(`/admin/expected-ttps/${row.id}${voidDetections ? '?voidDetections=true' : ''}`, { method: 'DELETE' }),
     onSuccess: onChanged,
     onError: (err) => {
-      // 409 = teams were already credited; removing must explicitly void their points.
-      if (err instanceof ApiError && err.status === 409) {
+      // 409 = teams were already credited; removing must explicitly void their points. A 409 with
+      // reason 'scenario_shared' is a refusal (other organizations' credits) — shown inline, no prompt.
+      if (err instanceof ApiError && err.status === 409 && err.reason !== 'scenario_shared') {
         void confirmAction({
           title: `Remove ${row.techniqueId} and void its credits?`,
           message: err.message,
@@ -376,7 +377,7 @@ function ExpectedRow({
   // patch/remove handle their own errors (inline, below); markOccurred/deleteOccurrence fall through
   // to the global mutation toast. remove's 409 is the confirm-and-void prompt, not an error to show.
   const errorMessage = [patch.error, remove.error].find(
-    (e) => e instanceof ApiError && !(e === remove.error && e.status === 409),
+    (e) => e instanceof ApiError && !(e === remove.error && e.status === 409 && e.reason !== 'scenario_shared'),
   ) as ApiError | undefined;
 
   return (
