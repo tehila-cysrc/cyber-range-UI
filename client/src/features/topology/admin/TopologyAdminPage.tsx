@@ -37,6 +37,7 @@ interface AccessTarget {
   port: number;
   username: string | null;
   hasCredential: boolean;
+  isEnabled: boolean;
 }
 
 const ROLE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -568,6 +569,18 @@ function NodePanel({
     },
   });
 
+  const setStudentAccess = useMutation({
+    mutationFn: (isEnabled: boolean) =>
+      apiFetch(`/admin/topology/nodes/${node.id}/access-target`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isEnabled }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['access-target', node.id] });
+      onAccessTargetChanged();
+    },
+  });
+
   const connect = useMutation({
     mutationFn: () =>
       apiFetch<{ accessSessionId: number; shareableLinkUrl: string; expiresAt: string }>(`/admin/topology/nodes/${node.id}/connect`, { method: 'POST' }),
@@ -661,17 +674,42 @@ function NodePanel({
             This node isn't Azure-discovered — browser access needs a real VM behind Azure Bastion, so it can't be configured here.
           </div>
         )}
-        {accessTargetData?.accessTarget && (
+        {!!node.environmentId && (
+          <>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 13,
+                color: 'var(--text-muted)',
+                margin: '0 0 6px',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={!!accessTargetData?.accessTarget?.isEnabled}
+                disabled={setStudentAccess.isPending}
+                onChange={(e) => setStudentAccess.mutate(e.target.checked)}
+              />
+              Allow students to connect
+            </label>
+            <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 8 }}>
+              Students see Connect when this is on. A saved login below is optional — they type it at the VM prompt, or use Show/Copy if you save one.
+            </div>
+          </>
+        )}
+        {accessTargetData?.accessTarget?.hasCredential && (
           <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 6 }}>
             Currently: {accessTargetData.accessTarget.protocol.toUpperCase()} to {accessTargetData.accessTarget.host}, user{' '}
-            <span style={{ fontFamily: 'var(--font-mono)' }}>{accessTargetData.accessTarget.username}</span> — protocol/host are auto-detected from
-            the VM; leave username/password blank to keep the current credential (re-entering rotates it in Key Vault).
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{accessTargetData.accessTarget.username}</span> — leave username/password blank to keep
+            this login (re-entering rotates it in Key Vault).
           </div>
         )}
         {!!node.environmentId && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username" style={fieldStyle} />
-          <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password" type="password" style={fieldStyle} />
+          <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username (optional)" style={fieldStyle} />
+          <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password (optional)" type="password" style={fieldStyle} />
           <div style={{ display: 'flex', gap: 8 }}>
             <Button
               variant="ghost"
@@ -680,7 +718,7 @@ function NodePanel({
             >
               Save credential
             </Button>
-            {accessTargetData?.accessTarget && (
+            {accessTargetData?.accessTarget?.hasCredential && (
               <Button variant="destructive" onClick={() => removeAccessTarget.mutate()}>
                 Remove
               </Button>
@@ -705,7 +743,7 @@ function NodePanel({
         ) : (
           <Button
             variant="ghost"
-            disabled={connect.isPending || !node.environmentId || !accessTargetData?.accessTarget}
+            disabled={connect.isPending || !node.environmentId}
             title={node.environmentId ? undefined : 'Connect needs an Azure-discovered VM'}
             onClick={() => {
               // One own session at a time — same rule as the student Topology page; the header box

@@ -42,7 +42,7 @@ router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
       `SELECT tn.id AS id, tn.external_key AS externalKey, tn.label AS label, tn.node_type AS nodeType, tn.role AS role,
               tn.zone_id AS zoneId, tn.status AS status, tn.pos_x AS posX, tn.pos_y AS posY, tn.metadata_json AS metadataJson,
               tn.environment_id AS environmentId, tn.is_visible_to_students AS isVisibleToStudents,
-              (at.id IS NOT NULL) AS hasAccessTarget
+              (at.id IS NOT NULL AND COALESCE(at.is_enabled, 1) = 1) AS hasAccessTarget
        FROM topology_nodes tn LEFT JOIN access_targets at ON at.topology_node_id = tn.id
        WHERE tn.cyber_range_id = ?`,
     )

@@ -165,6 +165,9 @@ export function migrate() {
   // Key Vault; a username isn't sensitive and storing it there too would mean parsing a structured
   // value out of a KV secret for no real benefit.
   addColumnIfMissing('access_targets', 'username', 'TEXT');
+  // Soft on/off for student Connect: off hides the button without deleting the Key Vault login, so
+  // the instructor can re-enable a JUMP box without re-entering the password. Existing rows stay on.
+  addColumnIfMissing('access_targets', 'is_enabled', 'INTEGER NOT NULL DEFAULT 1');
 
   // Optional screenshot/evidence attached to a documentation entry — stored inline as a data: URL
   // rather than on disk/blob storage, matching this app's low-scale internal-tool scope.

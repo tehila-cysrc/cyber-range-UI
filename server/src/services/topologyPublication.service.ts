@@ -75,7 +75,7 @@ export function getPublishedTopology(cyberRangeId: number): (StudentTopology & {
     (
       db
         .prepare(
-          `SELECT tn.id AS id, tn.status AS status, (at.id IS NOT NULL) AS hasAccessTarget
+          `SELECT tn.id AS id, tn.status AS status, (at.id IS NOT NULL AND COALESCE(at.is_enabled, 1) = 1) AS hasAccessTarget
            FROM topology_nodes tn LEFT JOIN access_targets at ON at.topology_node_id = tn.id
            WHERE tn.cyber_range_id = ? AND tn.is_visible_to_students = 1`,
         )

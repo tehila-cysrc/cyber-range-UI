@@ -150,6 +150,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_discovery_run
 -- when unset, the broker falls back to the owning cloud_environments.default_vm_credential_id.
 -- key_vault_secret_name (nullable, additive) is the Phase 2 path: when set, the VM login credential
 -- lives in the environment's Key Vault (key_vault_uri) instead of the local credentials table.
+-- is_enabled (additive, default 1): instructors can hide student Connect without deleting the saved
+-- login; the instructor's own diagnostic Connect still works while this is off.
 CREATE TABLE IF NOT EXISTS access_targets (
   id INTEGER PRIMARY KEY,
   topology_node_id INTEGER NOT NULL UNIQUE REFERENCES topology_nodes(id),

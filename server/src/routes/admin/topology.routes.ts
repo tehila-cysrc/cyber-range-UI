@@ -6,7 +6,7 @@ import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
 import { getExecution, listExecutionsForNode, runScriptOnNode } from '../../services/scriptExecution.service.js';
-import { requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
+import { endActiveSessions, requestInstructorAccessSession } from '../../services/accessBroker/accessBroker.service.js';
 import { TopologyLayoutPlanner } from '../../services/discovery/topologyLayout.js';
 import { publicationStatus, publishTopology } from '../../services/topologyPublication.service.js';
 import { emitTopologyPublished } from '../../sockets/emitters.js';
@@ -238,10 +238,7 @@ router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
     return;
   }
 
-  const metadata = node.metadataJson ? JSON.parse(node.metadataJson) : {};
-  const protocol: 'rdp' | 'ssh' = metadata.osType === 'Linux' ? 'ssh' : 'rdp';
-  const host = typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : 'unknown';
-  const port = protocol === 'ssh' ? 22 : 3389;
+  const { protocol, host, port } = accessDetailsFromMetadata(node.metadataJson);
   const secretName = vmLoginSecretName(nodeId);
 
   try {
@@ -277,10 +274,20 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const target = db
     .prepare(
-      'SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName FROM access_targets WHERE topology_node_id = ?',
+      `SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName,
+              is_enabled AS isEnabled
+       FROM access_targets WHERE topology_node_id = ?`,
     )
     .get(nodeId) as
-    | { protocol: string; host: string; port: number; username: string | null; credentialId: number | null; keyVaultSecretName: string | null }
+    | {
+        protocol: string;
+        host: string;
+        port: number;
+        username: string | null;
+        credentialId: number | null;
+        keyVaultSecretName: string | null;
+        isEnabled: number;
+      }
     | undefined;
 
   if (!target) {
@@ -294,8 +301,61 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
       port: target.port,
       username: target.username,
       hasCredential: target.credentialId != null || target.keyVaultSecretName != null,
+      isEnabled: target.isEnabled === 1,
     },
   });
+});
+
+// Soft on/off for student Connect. A login in Key Vault is optional (Show/Copy in the session box);
+// Bastion does not need it to open the browser session, so turning this on must not require one.
+router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
+  const nodeId = Number(req.params.nodeId);
+  const { isEnabled } = req.body ?? {};
+  if (typeof isEnabled !== 'boolean') {
+    res.status(400).json({ error: 'isEnabled (boolean) is required' });
+    return;
+  }
+
+  const node = db
+    .prepare(
+      `SELECT tn.metadata_json AS metadataJson, tn.environment_id AS environmentId
+       FROM topology_nodes tn WHERE tn.id = ?`,
+    )
+    .get(nodeId) as { metadataJson: string | null; environmentId: number | null } | undefined;
+  if (!node) {
+    res.status(404).json({ error: 'node not found' });
+    return;
+  }
+  if (!node.environmentId) {
+    res.status(400).json({ error: 'this node has no Azure environment — browser access requires an Azure-discovered VM' });
+    return;
+  }
+
+  const existing = db.prepare('SELECT id FROM access_targets WHERE topology_node_id = ?').get(nodeId);
+  if (!existing) {
+    if (!isEnabled) {
+      res.json({ ok: true, isEnabled: false });
+      return;
+    }
+    const { protocol, host, port } = accessDetailsFromMetadata(node.metadataJson);
+    db.prepare('INSERT INTO access_targets (topology_node_id, protocol, host, port, is_enabled) VALUES (?, ?, ?, ?, 1)').run(
+      nodeId,
+      protocol,
+      host,
+      port,
+    );
+  } else {
+    db.prepare('UPDATE access_targets SET is_enabled = ? WHERE topology_node_id = ?').run(isEnabled ? 1 : 0, nodeId);
+  }
+
+  if (!isEnabled) {
+    endActiveSessions({ topologyNodeId: nodeId, studentsOnly: true }, 'force_closed', req.user!.username, 'student_access_disabled');
+  }
+
+  writeAudit(req.user!.username, isEnabled ? 'access_target.student_access_enabled' : 'access_target.student_access_disabled', 'topology_node', nodeId, {
+    enabled: isEnabled,
+  });
+  res.json({ ok: true, isEnabled });
 });
 
 router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
@@ -315,6 +375,8 @@ router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
     res.status(404).json({ error: 'no access target configured for this node' });
     return;
   }
+
+  endActiveSessions({ topologyNodeId: nodeId, studentsOnly: true }, 'force_closed', req.user!.username, 'access_target_removed');
 
   if (existing?.keyVaultSecretName && existing.environmentId && existing.keyVaultUri) {
     try {
@@ -490,5 +552,12 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) =
   db.prepare('DELETE FROM topology_zones WHERE id = ?').run(zoneId);
   res.json({ ok: true });
 });
+
+function accessDetailsFromMetadata(metadataJson: string | null): { protocol: 'rdp' | 'ssh'; host: string; port: number } {
+  const metadata = metadataJson ? (JSON.parse(metadataJson) as { osType?: string; privateIpAddress?: string }) : {};
+  const protocol: 'rdp' | 'ssh' = metadata.osType === 'Linux' ? 'ssh' : 'rdp';
+  const host = typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : 'unknown';
+  return { protocol, host, port: protocol === 'ssh' ? 22 : 3389 };
+}
 
 export default router;
