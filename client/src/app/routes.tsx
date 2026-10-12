@@ -65,7 +65,7 @@ export const router = createBrowserRouter([
       {
         path: '/instructor',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="dashboard.read">
             <InstructorDashboardPage />
           </ProtectedRoute>
         ),
@@ -73,7 +73,7 @@ export const router = createBrowserRouter([
       {
         path: '/instructor/teams/:teamId',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="team.read">
             <InstructorTeamWorkspacePage />
           </ProtectedRoute>
         ),
@@ -81,7 +81,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/topology',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="scenario.inspect">
             <Suspense fallback={<TopologyFallback />}>
               <TopologyAdminPage />
             </Suspense>
@@ -91,7 +91,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/teams',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="team.read">
             <TeamsAdminPage />
           </ProtectedRoute>
         ),
@@ -99,7 +99,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/event-reset',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="event.reset">
             <EventResetPage />
           </ProtectedRoute>
         ),
@@ -107,7 +107,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/environments',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="environment.manage">
             <EnvironmentsAdminPage />
           </ProtectedRoute>
         ),
@@ -115,7 +115,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/audit-log',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="audit.read">
             <AuditLogPage />
           </ProtectedRoute>
         ),
@@ -123,7 +123,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/scripts',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="script.read">
             <ScriptLibraryPage />
           </ProtectedRoute>
         ),
@@ -131,7 +131,7 @@ export const router = createBrowserRouter([
       {
         path: '/admin/scenarios',
         element: (
-          <ProtectedRoute requireStaff>
+          <ProtectedRoute permission="scenario.inspect">
             <Suspense fallback={<div style={{ padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading…</div>}>
               <ScenarioConfigPage />
             </Suspense>

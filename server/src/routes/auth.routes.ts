@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { isInstructor } from '../authz/roles.js';
+import { isInstructor, type Role } from '../authz/roles.js';
 import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -132,6 +132,9 @@ router.post('/login', (req, res) => {
       displayName: user.displayName,
       avatar: user.avatar,
     },
+    // UI hints (what to show); the server re-checks every request.
+    permissions: permissionsFor(user.role as Role),
+    scope: describeScope({ id: user.id, accountId: account?.id ?? null, role: user.role as Role, teamId: user.teamId, username: user.username }),
   });
 });
 
@@ -259,6 +262,8 @@ router.post('/register', (req, res) => {
       displayName: (displayName || username).trim(),
       avatar: avatar.avatar,
     },
+    permissions: permissionsFor('student'),
+    scope: null,
   });
 });
 

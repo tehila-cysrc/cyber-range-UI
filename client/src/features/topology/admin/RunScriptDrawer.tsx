@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch, ApiError } from '../../../lib/apiClient';
 import { Button } from '../../../components/Button';
 import { TypeBadge, SUGGESTED_CATEGORIES, type ScriptSummary } from '../../scripts/ScriptLibraryPage';
+import { useCan } from '../../../lib/permissions';
 
 type ScriptType = 'powershell' | 'bash';
 
@@ -39,6 +40,7 @@ function requiredType(osType: 'Windows' | 'Linux' | null): ScriptType | null {
 
 export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId: number; nodeLabel: string; osType: 'Windows' | 'Linux' | null; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const canAdhoc = useCan('script.adhoc');
   const [mode, setMode] = useState<'library' | 'manual'>('library');
   const [category, setCategory] = useState('');
   const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null);
@@ -139,14 +141,17 @@ export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--space-md)' }}>
-          <Button variant={mode === 'library' ? 'primary' : 'ghost'} onClick={() => setMode('library')}>
-            Select from Library
-          </Button>
-          <Button variant={mode === 'manual' ? 'primary' : 'ghost'} onClick={() => setMode('manual')}>
-            Write Manually
-          </Button>
-        </div>
+        {/* A custom script could read the VM's identity or the environment's secrets — admin only. */}
+        {canAdhoc && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 'var(--space-md)' }}>
+            <Button variant={mode === 'library' ? 'primary' : 'ghost'} onClick={() => setMode('library')}>
+              Select from Library
+            </Button>
+            <Button variant={mode === 'manual' ? 'primary' : 'ghost'} onClick={() => setMode('manual')}>
+              Write Manually
+            </Button>
+          </div>
+        )}
 
         {mode === 'library' && (
           <div>
@@ -188,13 +193,15 @@ export function RunScriptDrawer({ nodeId, nodeLabel, osType, onClose }: { nodeId
                 {hiddenCount} script{hiddenCount === 1 ? '' : 's'} hidden — wrong OS for this machine.
               </p>
             )}
-            <Link to="/admin/scripts" style={{ fontSize: 12, color: 'var(--signal-primary)' }}>
-              Edit / Manage Library →
-            </Link>
+            {canAdhoc && (
+              <Link to="/admin/scripts" style={{ fontSize: 12, color: 'var(--signal-primary)' }}>
+                Edit / Manage Library →
+              </Link>
+            )}
           </div>
         )}
 
-        {mode === 'manual' && (
+        {mode === 'manual' && canAdhoc && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
               Script type: <TypeBadge type={required ?? 'powershell'} /> (fixed to this machine's OS)

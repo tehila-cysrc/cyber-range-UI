@@ -12,6 +12,7 @@ import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { techniqueDisplayName, useMitreCatalog } from '../../lib/mitre';
 import { formatEntryTime } from '../documentation/InvestigationPage';
 import { ScenarioSideNav, useSelectedScenario } from './ScenarioSideNav';
+import { useCan } from '../../lib/permissions';
 
 interface CyberRange {
   id: number;
@@ -88,6 +89,8 @@ function toLocalInputValue(date: Date) {
 // identify, before the run. Everything on this page is answer-key data (served only under /admin).
 export function ScenarioConfigPage() {
   const queryClient = useQueryClient();
+  const canCreate = useCan('scenario.create');
+  const canDelete = useCan('scenario.delete');
   const { data: catalog } = useMitreCatalog();
   const [creating, setCreating] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
@@ -159,10 +162,14 @@ export function ScenarioConfigPage() {
           ranges={rangesData?.cyberRanges ?? []}
           activeId={creating ? null : cyberRangeId}
           onSelect={selectScenario}
-          onAdd={() => {
-            setCreating(true);
-            setEditingDetails(false);
-          }}
+          onAdd={
+            canCreate
+              ? () => {
+                  setCreating(true);
+                  setEditingDetails(false);
+                }
+              : undefined
+          }
         />
       </aside>
       <main style={{ minWidth: 0 }}>
@@ -180,7 +187,7 @@ export function ScenarioConfigPage() {
             {editingDetails ? 'Hide details' : 'Edit details & student briefing'}
           </Button>
         )}
-        {cyberRangeId !== '' && !creating && (
+        {cyberRangeId !== '' && !creating && canDelete && (
           <Button
             type="button"
             variant="destructive"
@@ -227,7 +234,9 @@ export function ScenarioConfigPage() {
         <EmptyState
           message={
             rangesData && rangesData.cyberRanges.length === 0
-              ? 'No scenarios yet — click "+ New scenario" to create the first one (or register an Azure environment, which creates one).'
+              ? canCreate
+                ? 'No scenarios yet — click "+ New scenario" to create the first one (or register an Azure environment, which creates one).'
+                : 'No scenarios are assigned to you yet — ask an admin.'
               : 'Pick a scenario to edit its details, student briefing and the MITRE ATT&CK techniques students should identify.'
           }
         />

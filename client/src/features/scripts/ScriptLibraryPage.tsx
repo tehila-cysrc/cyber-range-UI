@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { confirmAction } from '../../components/ConfirmDialog';
+import { useCan } from '../../lib/permissions';
 
 export interface ScriptSummary {
   id: number;
@@ -47,6 +48,7 @@ const EMPTY_DRAFT: Draft = { id: null, name: '', description: '', content: '', s
 
 export function ScriptLibraryPage() {
   const queryClient = useQueryClient();
+  const canWrite = useCan('script.write');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -97,9 +99,11 @@ export function ScriptLibraryPage() {
     <div className="page" style={{ padding: 'var(--space-xl)' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0 }}>Training Scripts</h1>
-        <Button variant="primary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
-          + New script
-        </Button>
+        {canWrite && (
+          <Button variant="primary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
+            + New script
+          </Button>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
@@ -148,7 +152,7 @@ export function ScriptLibraryPage() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              {canWrite && <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <Button variant="ghost" onClick={() => openForEdit(s.id)}>
                   Edit
                 </Button>
@@ -169,7 +173,7 @@ export function ScriptLibraryPage() {
                 >
                   Delete
                 </Button>
-              </div>
+              </div>}
             </div>
           ))}
         </div>

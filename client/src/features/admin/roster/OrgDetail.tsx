@@ -5,6 +5,7 @@ import { Button } from '../../../components/Button';
 import { confirmAction } from '../../../components/ConfirmDialog';
 import { useToastStore } from '../../../stores/toastStore';
 import { MoreMenu } from './MoreMenu';
+import { useCan } from '../../../lib/permissions';
 import { TeamRow } from './TeamRow';
 import {
   formatJoinCode,
@@ -40,6 +41,7 @@ export function OrgDetail({ org, teams, organizations, focusTeamId, onDeleted }:
   useEffect(() => setExpanded(focusTeamId === null ? new Set() : new Set([focusTeamId])), [org?.id]);
 
   const allExpanded = ownTeams.length > 0 && ownTeams.every((t) => expanded.has(t.id));
+  const canManageRegistration = useCan('registration.manage');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', minWidth: 0 }}>
@@ -56,7 +58,7 @@ export function OrgDetail({ org, teams, organizations, focusTeamId, onDeleted }:
         </div>
       )}
 
-      {org ? <OrgJoinCode org={org} /> : <GeneralJoinCode hasOrganizations={organizations.length > 0} />}
+      {canManageRegistration && (org ? <OrgJoinCode org={org} /> : <GeneralJoinCode hasOrganizations={organizations.length > 0} />)}
 
       {ownTeams.length > 1 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -109,6 +111,7 @@ function OrgHeader({ org, teamCount, studentCount, onDeleted }: { org: Organizat
     setName(org.name);
   }, [org.id, org.name]);
 
+  const canManageOrgs = useCan('org.manage');
   const rename = useRosterMutation((next: string) => postJson(`/admin/organizations/${org.id}`, { name: next }, 'PATCH'), 'Could not rename the organization', () => setEditing(false));
   const remove = useRosterMutation(() => postJson(`/admin/organizations/${org.id}`, {}, 'DELETE'), 'Could not delete the organization', onDeleted);
 
@@ -153,16 +156,18 @@ function OrgHeader({ org, teamCount, studentCount, onDeleted }: { org: Organizat
             <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 0, overflowWrap: 'anywhere' }}>
               <bdi>{org.name}</bdi>
             </h1>
-            <button type="button" onClick={() => setEditing(true)} style={linkButtonStyle} aria-label={`Rename ${org.name}`}>
-              ✎ rename
-            </button>
+            {canManageOrgs && (
+              <button type="button" onClick={() => setEditing(true)} style={linkButtonStyle} aria-label={`Rename ${org.name}`}>
+                ✎ rename
+              </button>
+            )}
           </div>
         )}
         <div className="tabular" style={{ fontSize: 13, color: 'var(--text-telemetry)', marginTop: 4 }}>
           {teamCount} team{teamCount === 1 ? '' : 's'} · {studentCount} student{studentCount === 1 ? '' : 's'}
         </div>
       </div>
-      <MoreMenu label={`Actions for ${org.name}`} items={[{ label: 'Delete organization', onSelect: handleDelete, danger: true }]} />
+      {canManageOrgs && <MoreMenu label={`Actions for ${org.name}`} items={[{ label: 'Delete organization', onSelect: handleDelete, danger: true }]} />}
     </div>
   );
 }

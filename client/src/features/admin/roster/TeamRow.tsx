@@ -4,6 +4,7 @@ import { AvatarPicker } from '../../../components/AvatarPicker';
 import { Button } from '../../../components/Button';
 import { confirmAction } from '../../../components/ConfirmDialog';
 import { MoreMenu } from './MoreMenu';
+import { useCan } from '../../../lib/permissions';
 import {
   inputStyle,
   linkButtonStyle,
@@ -97,15 +98,17 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
     addStudent.mutate(undefined);
   }
 
+  // Removing a team from its organization (and the unassigned teams) is admin-only.
+  const canManageOrgs = useCan('org.manage');
   // "Move to…" options grouped by organization, so a long team list stays scannable.
   const otherTeams = allTeams.filter((t) => t.id !== team.id);
   const moveGroups = [
     ...organizations.map((o) => ({ label: o.name, teams: otherTeams.filter((t) => t.organizationId === o.id) })),
-    { label: 'No organization', teams: otherTeams.filter((t) => t.organizationId === null) },
+    ...(canManageOrgs ? [{ label: 'No organization', teams: otherTeams.filter((t) => t.organizationId === null) }] : []),
   ].filter((g) => g.teams.length > 0);
 
   const menuItems = [
-    ...(organizations.length > 0 ? [{ label: 'Change organization…', onSelect: () => setChangingOrg(true) }] : []),
+    ...(organizations.length > (canManageOrgs ? 0 : 1) ? [{ label: 'Change organization…', onSelect: () => setChangingOrg(true) }] : []),
     { label: 'Delete team', onSelect: handleDeleteTeam, danger: true },
   ];
 
@@ -157,7 +160,7 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
             onChange={(e) => setOrg.mutate(e.target.value ? Number(e.target.value) : null)}
             style={{ ...inputStyle, flex: 1 }}
           >
-            <option value="">No organization</option>
+            {canManageOrgs && <option value="">No organization</option>}
             {organizations.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}

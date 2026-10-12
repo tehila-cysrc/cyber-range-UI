@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useCan } from '../../../lib/permissions';
 import { AddCard, SectionHeader, SectionView } from './RosterSection';
 import { inputStyle, postJson, useRosterMutation, type Organization, type Selection, type Team } from './rosterData';
 
@@ -72,6 +73,7 @@ function NewTeamCard({
   const [name, setName] = useState('');
   const [orgId, setOrgId] = useState(organizations.length === 1 ? String(organizations[0].id) : '');
   const [formError, setFormError] = useState<string | null>(null);
+  const canManageOrgs = useCan('org.manage');
   const create = useRosterMutation(
     () => postJson('/admin/teams', { name, organizationId: orgId ? Number(orgId) : null }) as Promise<{ team: { id: number } }>,
     'Could not create the team',
@@ -80,6 +82,7 @@ function NewTeamCard({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setFormError('Name is required');
+    if (!orgId && !canManageOrgs) return setFormError('Pick an organization');
     create.mutate(undefined, {
       // Open the new team where students get added to it.
       onSuccess: (res) => onCreated(orgId ? { kind: 'org', id: Number(orgId) } : { kind: 'none' }, (res as { team: { id: number } }).team.id),
@@ -91,7 +94,7 @@ function NewTeamCard({
       <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Team name" aria-label="Team name" style={inputStyle} />
       {organizations.length > 0 && (
         <select value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organization" style={inputStyle}>
-          <option value="">No organization</option>
+          <option value="">{canManageOrgs ? 'No organization' : 'Organization…'}</option>
           {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       )}

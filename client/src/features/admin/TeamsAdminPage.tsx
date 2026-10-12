@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
+import { useCan } from '../../lib/permissions';
 import { SideNav, type SideNavItem } from '../../components/SideNav';
 import { OrgDetail } from './roster/OrgDetail';
-import { InstructorsView } from './roster/InstructorsView';
+import { StaffAccountsView } from './roster/StaffAccountsView';
 import { StudentsView } from './roster/StudentsView';
 import { TeamsView } from './roster/TeamsView';
 import { OrganizationsView } from './roster/OrganizationsView';
@@ -65,7 +66,7 @@ export function TeamsAdminPage() {
         ) : selection.kind === 'teams' ? (
           <TeamsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : selection.kind === 'instructors' ? (
-          <InstructorsView adding={adding} onCloseAdd={() => select(selection)} />
+          <StaffAccountsView adding={adding} onCloseAdd={() => select(selection)} />
         ) : selection.kind === 'students' ? (
           <StudentsView teams={teams} organizations={organizations} adding={adding} onCloseAdd={() => select(selection)} onSelect={select} />
         ) : (
@@ -124,21 +125,23 @@ function Sidebar({
   selection: Selection;
   onSelect: (s: Selection, teamId?: number, add?: boolean) => void;
 }) {
+  const canManageOrgs = useCan('org.manage');
+  const canManageAccounts = useCan('account.manage');
   const { data: instructorData } = useQuery({
     queryKey: ['admin-instructors'],
     queryFn: () => apiFetch<{ accounts: (Member & { disabledAt: string | null })[] }>('/admin/accounts'),
+    enabled: canManageAccounts,
   });
   const instructorCount = instructorData?.accounts.filter((a) => !a.disabledAt).length ?? 0;
   const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
 
   // A top-level row: opens its list; "+" opens the same list with the "New …" card.
-  const row = (key: ListKey, label: string, count: number, noun: string, addLabel: string): SideNavItem => ({
+  const row = (key: ListKey, label: string, count: number, noun: string, addLabel: string | null): SideNavItem => ({
     key,
     label,
     meta: String(count),
     metaTitle: `${count} ${noun}`,
-    onAdd: () => onSelect({ kind: key }, undefined, true),
-    addLabel,
+    ...(addLabel ? { onAdd: () => onSelect({ kind: key }, undefined, true), addLabel } : {}),
   });
 
   return (
@@ -148,10 +151,11 @@ function Sidebar({
       groups={[
         {
           items: [
-            row('orgs', 'Organizations', organizations.length, 'organizations', 'New organization'),
+            // Instructors see their assigned organizations only, and never manage organizations or accounts.
+            row('orgs', 'Organizations', organizations.length, 'organizations', canManageOrgs ? 'New organization' : null),
             row('teams', 'Teams', teams.length, 'teams', 'New team'),
             row('students', 'Students', totalStudents, 'students', 'New student'),
-            row('instructors', 'Instructors', instructorCount, 'instructors', 'New instructor'),
+            ...(canManageAccounts ? [row('instructors', 'Staff accounts', instructorCount, 'accounts', 'New account')] : []),
           ],
         },
       ]}

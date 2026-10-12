@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { useDebriefTeam } from './useDebriefTeam';
+import { useCan } from '../../lib/permissions';
 
 interface DaySummary {
   dayKey: string;
@@ -15,7 +16,8 @@ interface DaySummary {
 }
 
 export function EventSummaryPage() {
-  const { query, ready, picker, isInstructor, links, teamId } = useDebriefTeam();
+  const { query, ready, picker, links, teamId } = useDebriefTeam();
+  const canExport = useCan('event.export');
   const { data, isError } = useQuery({
     queryKey: ['event-summary', query],
     queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
@@ -34,7 +36,7 @@ export function EventSummaryPage() {
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
         Event Summary
       </h1>
-      {isInstructor && teamId != null && (
+      {canExport && teamId != null && (
         <div style={{ marginBottom: 'var(--space-md)' }}>
           <ExportResultsButtons teamId={teamId} />
         </div>

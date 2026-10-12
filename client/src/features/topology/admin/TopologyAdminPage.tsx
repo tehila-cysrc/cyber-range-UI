@@ -18,6 +18,7 @@ import { RunScriptDrawer } from './RunScriptDrawer';
 import { PublicationBar } from './PublicationBar';
 import { type ActiveAccessSession } from '../../accessSession/AccessSessionPanel';
 import { openRemoteSessionBox } from '../../accessSession/HeaderRemoteSession';
+import { useCan } from '../../../lib/permissions';
 
 interface CyberRange {
   id: number;
@@ -80,6 +81,7 @@ function readListHidden() {
 }
 
 export function TopologyAdminPage() {
+  const canDiscover = useCan('environment.manage');
   const queryClient = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const [listHidden, setListHidden] = useState(readListHidden);
@@ -346,10 +348,14 @@ export function TopologyAdminPage() {
             >
               This Cyber Range has no machines yet. If it's linked to an Azure environment, run{' '}
               <strong>Discover now</strong> on the{' '}
-              <Link to="/admin/environments" style={{ color: 'var(--signal-secondary)' }}>
-                Environments
-              </Link>{' '}
-              page; otherwise add zones and nodes by hand above.
+              {canDiscover ? (
+                <Link to="/admin/environments" style={{ color: 'var(--signal-secondary)' }}>
+                  Environments
+                </Link>
+              ) : (
+                'Environments'
+              )}{' '}
+              page{canDiscover ? '' : ' (an admin does this)'}; otherwise add zones and nodes by hand above.
             </div>
           )}
           <PublicationBar
@@ -527,6 +533,8 @@ function NodePanel({
   const privateIp = typeof metadata?.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
 
   const queryClient = useQueryClient();
+  // VM login credentials live in the environment's Key Vault — environment secrets are admin-only.
+  const canManageCredentials = useCan('environment.manage');
   const [accessUsername, setAccessUsername] = useState('');
   const [accessPassword, setAccessPassword] = useState('');
   const [showRunScript, setShowRunScript] = useState(false);
@@ -706,7 +714,7 @@ function NodePanel({
             this login (re-entering rotates it in Key Vault).
           </div>
         )}
-        {!!node.environmentId && (
+        {!!node.environmentId && canManageCredentials && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <input value={accessUsername} onChange={(e) => setAccessUsername(e.target.value)} placeholder="Login username (optional)" style={fieldStyle} />
           <input value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)} placeholder="Login password (optional)" type="password" style={fieldStyle} />

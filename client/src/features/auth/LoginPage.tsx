@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, ApiError, SIGNED_OUT_NOTE_KEY } from '../../lib/apiClient';
-import { useAuthStore, type AuthUser } from '../../stores/authStore';
+import { useAuthStore, type AuthUser, type AccessInfo } from '../../stores/authStore';
 import { Button } from '../../components/Button';
 import logoGreenUrl from '../../assets/logo-wordmark-green.svg';
 import { AvatarPicker } from '../../components/AvatarPicker';
 
-interface AuthResponse {
+interface AuthResponse extends AccessInfo {
   token: string;
   user: AuthUser;
 }
@@ -102,7 +102,7 @@ export function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      setAuth(res.token, res.user);
+      setAuth(res.token, res.user, { permissions: res.permissions, scope: res.scope });
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed');
@@ -132,7 +132,7 @@ export function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ teamId, username, password, displayName, joinCode, avatar }),
       });
-      setAuth(res.token, res.user);
+      setAuth(res.token, res.user, { permissions: res.permissions, scope: res.scope });
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed');

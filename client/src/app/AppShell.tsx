@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '../stores/authStore';
-import { isStaff } from '../lib/permissions';
+import { useAuthStore, type AccessInfo, type AuthUser } from '../stores/authStore';
+import { hasPermission, isStaff, type Permission } from '../lib/permissions';
 import { useClockStore } from '../stores/clockStore';
 import { disconnectSocket, getSocket } from '../lib/socketClient';
 import { apiFetch } from '../lib/apiClient';
@@ -35,40 +35,41 @@ const NAV_ITEMS = [
   { to: '/debrief', label: 'Debrief' },
 ];
 
-type NavLinkItem = { to: string; label: string; end?: boolean; alert?: boolean };
+// `permission`: the staff entry only shows when the server granted it (admins see everything).
+type NavLinkItem = { to: string; label: string; end?: boolean; alert?: boolean; permission?: Permission };
 type NavGroup = { label: string; items: NavLinkItem[] };
 
 // The instructor bar is grouped by when each page is used (during the event / before it) instead of
 // one flat row of 12 tabs. The student-only views (Home, Topology, Team) have no instructor entry. Labels describe the instructor's view of the page — e.g. /investigation
 // is reading a team's timeline, not investigating. Routes are unchanged; only labels differ.
-const INSTRUCTOR_DASHBOARD: NavLinkItem = { to: '/instructor', label: 'Live Dashboard' };
+const INSTRUCTOR_DASHBOARD: NavLinkItem = { to: '/instructor', label: 'Live Dashboard', permission: 'dashboard.read' };
 const INSTRUCTOR_GROUPS: NavGroup[] = [
   {
     label: 'Monitor',
     items: [
-      { to: '/investigation', label: 'Team Timelines' },
-      { to: '/progress', label: 'Team Scores' },
-      { to: '/leaderboard', label: 'Leaderboard' },
+      { to: '/investigation', label: 'Team Timelines', permission: 'documentation.read' },
+      { to: '/progress', label: 'Team Scores', permission: 'score.read' },
+      { to: '/leaderboard', label: 'Leaderboard', permission: 'leaderboard.read' },
     ],
   },
   {
     label: 'Setup',
     items: [
-      { to: '/admin/scenarios', label: 'Scenarios' },
-      { to: '/admin/topology', label: 'Topology Builder' },
-      { to: '/admin/teams', label: 'Teams & Students' },
-      { to: '/admin/environments', label: 'Cloud Environments' },
-      { to: '/admin/scripts', label: 'Training Scripts' },
+      { to: '/admin/scenarios', label: 'Scenarios', permission: 'scenario.inspect' },
+      { to: '/admin/topology', label: 'Topology Builder', permission: 'scenario.inspect' },
+      { to: '/admin/teams', label: 'Teams & Students', permission: 'team.read' },
+      { to: '/admin/environments', label: 'Cloud Environments', permission: 'environment.manage' },
+      { to: '/admin/scripts', label: 'Training Scripts', permission: 'script.read' },
     ],
   },
 ];
-const INSTRUCTOR_DEBRIEF: NavLinkItem = { to: '/debrief', label: 'Debrief' };
+const INSTRUCTOR_DEBRIEF: NavLinkItem = { to: '/debrief', label: 'Debrief', permission: 'history.read' };
 // Rare / destructive actions live behind the gear, out of the main row.
 const INSTRUCTOR_SYSTEM: NavGroup = {
   label: 'System',
   items: [
-    { to: '/admin/audit-log', label: 'Activity Log' },
-    { to: '/admin/event-reset', label: 'Reset Event…', alert: true },
+    { to: '/admin/audit-log', label: 'Activity Log', permission: 'audit.read' },
+    { to: '/admin/event-reset', label: 'Reset Event…', alert: true, permission: 'event.reset' },
   ],
 };
 
@@ -425,7 +426,7 @@ function HeaderHelp() {
 }
 
 export function AppShell() {
-  const { user, clear } = useAuthStore();
+  const { user, clear, permissions, setAccess } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const resetClock = useClockStore((s) => s.reset);
@@ -435,6 +436,22 @@ export function AppShell() {
   useOwnHelpRequestSync(isStudent);
   useEntryFeedbackToast(isStudent);
   const openHelpCount = useOpenHelpRequestCount(isInstructor);
+  // Permissions/scope can change while signed in (an admin edits this account's assignments or role):
+  // re-read them on load and every few minutes. UI hints only — the server checks every request.
+  const { data: me } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => apiFetch<{ user: AuthUser } & AccessInfo>('/auth/me'),
+    enabled: !!user,
+    refetchInterval: 5 * 60_000,
+  });
+  useEffect(() => {
+    if (me) setAccess({ permissions: me.permissions, scope: me.scope });
+  }, [me, setAccess]);
+  const can = (permission?: Permission) => !permission || hasPermission(permissions, user?.role, permission);
+  const visibleGroups = INSTRUCTOR_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => can(item.permission)) })).filter(
+    (group) => group.items.length > 0,
+  );
+  const systemGroup = { ...INSTRUCTOR_SYSTEM, items: INSTRUCTOR_SYSTEM.items.filter((item) => can(item.permission)) };
   const { data: activeRange } = useActiveCyberRange(isStudent);
   // A student's board is their own organization's teams only; with no team to compete against
   // (no organization, or alone in it) the server answers enabled:false and the tab is hidden.
@@ -504,11 +521,11 @@ export function AppShell() {
         <div className="app-nav-links">
           {isInstructor ? (
             <>
-              <NavItem {...INSTRUCTOR_DASHBOARD} badge={openHelpCount} />
-              {INSTRUCTOR_GROUPS.map((group) => (
+              {can(INSTRUCTOR_DASHBOARD.permission) && <NavItem {...INSTRUCTOR_DASHBOARD} badge={openHelpCount} />}
+              {visibleGroups.map((group) => (
                 <NavDropdown key={group.label} group={group} />
               ))}
-              <NavItem {...INSTRUCTOR_DEBRIEF} />
+              {can(INSTRUCTOR_DEBRIEF.permission) && <NavItem {...INSTRUCTOR_DEBRIEF} />}
             </>
           ) : (
             NAV_ITEMS.filter((item) => !(isStudent && item.to === '/leaderboard' && leaderboard && !leaderboard.enabled))
@@ -523,7 +540,7 @@ export function AppShell() {
         {isStudent && activeRange?.active && <HeaderHelp />}
 
         {user && <LiveStatusBadge />}
-        {isInstructor && <NavDropdown group={INSTRUCTOR_SYSTEM} trigger={<GearIcon />} align="right" />}
+        {isInstructor && systemGroup.items.length > 0 && <NavDropdown group={systemGroup} trigger={<GearIcon />} align="right" />}
         {user && <UserMenu displayName={user.displayName} avatar={user.avatar} role={user.role} onLogout={handleLogout} />}
       </nav>
 

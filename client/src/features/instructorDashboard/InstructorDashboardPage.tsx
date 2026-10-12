@@ -35,6 +35,8 @@ interface TeamStatus {
       mttd: MttdSummary;
     } | null;
   } | null;
+  // The team is live on a scenario outside this instructor's (organization, scenario) assignments.
+  activeOutOfScope?: boolean;
   openHelpCount: number;
   completedCount: number;
   totalPoints: number;
@@ -618,6 +620,8 @@ export function InstructorDashboardPage() {
                   {formatRemaining(team.active.remainingSeconds)}
                 </div>
               </>
+            ) : team.activeOutOfScope ? (
+              <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>On a scenario outside your assignments</div>
             ) : (
               <div style={{ fontSize: 14, color: 'var(--text-telemetry)' }}>No active Cyber Range</div>
             )}

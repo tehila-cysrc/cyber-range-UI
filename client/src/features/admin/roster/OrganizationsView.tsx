@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { AddCard, SectionHeader, SectionView } from './RosterSection';
 import { inputStyle, noOrgLabel, postJson, useRosterMutation, type Organization, type Selection, type Team } from './rosterData';
+import { useCan } from '../../../lib/permissions';
 
 // Every organization in one list (plus the unassigned teams, when there are any). Clicking a row opens
 // that organization — its join code and teams live there.
@@ -20,6 +21,8 @@ export function OrganizationsView({
   const studentsOf = (orgId: number | null) =>
     teams.filter((t) => t.organizationId === orgId).reduce((n, t) => n + t.members.length, 0);
   const unassigned = teams.filter((t) => t.organizationId === null).length;
+  // Teams without an organization (and the general join code on that page) are admin-only.
+  const canManageOrgs = useCan('org.manage');
 
   const rows = [
     ...organizations.map((o) => ({
@@ -33,7 +36,7 @@ export function OrganizationsView({
     })),
     // Always offered when there are no organizations — that page holds the general join code (the only
     // one then); otherwise only when some team is actually unassigned.
-    ...(organizations.length === 0 || unassigned > 0
+    ...(canManageOrgs && (organizations.length === 0 || unassigned > 0)
       ? [{ key: 'none', name: noOrgLabel(organizations), teamCount: unassigned, studentCount: studentsOf(null), joinOpen: false, muted: organizations.length > 0, go: () => onSelect({ kind: 'none' }) }]
       : []),
   ];
@@ -45,10 +48,12 @@ export function OrganizationsView({
         subtitle={`${organizations.length} organization${organizations.length === 1 ? '' : 's'} · ${teams.length} team${teams.length === 1 ? '' : 's'}`}
       />
 
-      {adding && <NewOrganizationCard onClose={onCloseAdd} onCreated={(id) => onSelect({ kind: 'org', id })} />}
+      {adding && canManageOrgs && <NewOrganizationCard onClose={onCloseAdd} onCreated={(id) => onSelect({ kind: 'org', id })} />}
 
       {rows.length === 0 ? (
-        <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>No organizations yet.</div>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+          {canManageOrgs ? 'No organizations yet.' : 'No organizations are assigned to you yet — ask an admin.'}
+        </div>
       ) : (
         <div style={{ border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-container)', background: 'var(--surface-1)', padding: '6px 12px' }}>
           {rows.map((r) => (
