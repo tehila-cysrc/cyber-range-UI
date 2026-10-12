@@ -220,12 +220,18 @@ test('each role is refused (403) on every route whose permission it lacks', asyn
   assert.deepEqual(wrong, []);
 });
 
-test('every refusal is audited as authz.denied with the actor role', async () => {
-  const before = db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'authz.denied' AND actor_role = 'instructor'").get().n;
+test('refusals are audited as authz.denied with role and IP — once a minute per actor and route', async () => {
+  const rows = () =>
+    db
+      .prepare("SELECT outcome, client_ip AS ip, actor_role AS role FROM audit_log WHERE action = 'authz.denied' AND metadata_json LIKE '%/api/admin/event/reset%' AND actor_role = 'instructor'")
+      .all();
+  // The sweep above already refused this exact call once.
+  const before = rows();
+  assert.equal(before.length, 1);
+  assert.equal(before[0].outcome, 'denied');
+  assert.ok(before[0].ip);
+  // Repeating it right away is still refused, but not written again (no audit flooding).
   assert.equal(await call('POST', '/api/admin/event/reset', tokens.iA), 403);
-  const row = db.prepare("SELECT outcome, client_ip AS ip, metadata_json AS m FROM audit_log WHERE action = 'authz.denied' ORDER BY id DESC LIMIT 1").get();
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'authz.denied' AND actor_role = 'instructor'").get().n, before + 1);
-  assert.equal(row.outcome, 'denied');
-  assert.ok(row.ip);
-  assert.match(row.m, /event\.reset/);
+  assert.equal(await call('POST', '/api/admin/event/reset', tokens.iA), 403);
+  assert.equal(rows().length, 1);
 });

@@ -3,7 +3,7 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../authz/requirePermission.js';
 import { assertOrganizationInScope, assertTeamInScope } from '../../authz/resolve.js';
-import { scopeWhere, teamOrganization } from '../../authz/scope.js';
+import { scopeWhere, teamOrganization, teamWorkCoveredBy } from '../../authz/scope.js';
 import { isAdmin } from '../../authz/roles.js';
 import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
@@ -123,6 +123,12 @@ router.patch('/teams/:id', requirePermission('team.manage'), (req, res) => {
   }
   if (!clearing && !isAdmin(req.user!.role) && !assertOrganizationInScope(req, res, Number(target))) return;
   const from = teamOrganization(teamId)?.orgId ?? null;
+  // The team's whole history moves with it: every scenario it has work on must be in the caller's
+  // pairs under BOTH organizations, or the move would expose (or hide) another pair's data.
+  if (!clearing && !(teamWorkCoveredBy(req.user!, teamId, from) && teamWorkCoveredBy(req.user!, teamId, Number(target)))) {
+    res.status(403).json({ error: "this team has work on scenarios outside your assignments in one of the organizations — ask an admin to move it" });
+    return;
+  }
   const r = setTeamOrganization(teamId, target);
   if (!r.ok) {
     res.status(r.status).json({ error: r.error });
@@ -137,6 +143,11 @@ router.delete('/teams/:id', requirePermission('team.manage'), (req, res) => {
   const teamId = Number(req.params.id);
   if (!assertTeamInScope(req, res, teamId)) return;
   const orgId = teamOrganization(teamId)?.orgId ?? null;
+  // Deleting cascades every scenario's work — never another pair's.
+  if (!teamWorkCoveredBy(req.user!, teamId, orgId)) {
+    res.status(403).json({ error: 'this team has work on scenarios outside your assignments — ask an admin to delete it' });
+    return;
+  }
   // Cascades to that team's users/progress/documentation/scores/help_requests too — deliberate:
   // an instructor removing a team they just created by mistake should not leave orphaned rows.
   // The cascade would delete the session rows but not their Bastion links — end them properly first.

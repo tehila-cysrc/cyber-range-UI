@@ -3,7 +3,7 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../authz/requirePermission.js';
 import { can } from '../../authz/permissions.js';
-import { assertScenarioExclusive, nodeScenarioInScope, rowInScenario, scenarioParam } from '../../authz/resolve.js';
+import { assertVmExclusive, nodeScenarioInScope, rowInScenario, scenarioParam } from '../../authz/resolve.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
@@ -82,6 +82,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) 
 
   const id = result.lastInsertRowid as number;
   db.prepare('UPDATE topology_nodes SET external_key = ? WHERE id = ?').run(String(id), id);
+  writeAudit(req.user!.username, 'topology.node_created', 'topology_node', id, { label }, { cyberRangeId });
 
   const node = db
     .prepare(
@@ -108,6 +109,7 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (r
     return;
   }
 
+  writeAudit(req.user!.username, 'topology.node_updated', 'topology_node', nodeId, { changes: Object.keys(req.body ?? {}) }, { cyberRangeId });
   db.prepare(
     `UPDATE topology_nodes SET
        label = COALESCE(?, label),
@@ -140,6 +142,7 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (
     res.status(404).json({ error: 'node not found' });
     return;
   }
+  writeAudit(req.user!.username, 'topology.node_delete_requested', 'topology_node', nodeId, null, { cyberRangeId: Number(req.params.cyberRangeId) });
   // Deliberately NOT cleaning up access_sessions / script_executions — a node with real history
   // shouldn't be silently deletable out from under its own audit trail (see CLAUDE/db.md). Checked
   // up front so a refused delete no longer leaves the node stripped of its edges and access target.
@@ -327,7 +330,10 @@ router.get('/topology/nodes/:nodeId/access-target', requirePermission('scenario.
 // Bastion does not need it to open the browser session, so turning this on must not require one.
 router.patch('/topology/nodes/:nodeId/access-target', requirePermission('scenario.author'), (req, res) => {
   const nodeId = Number(req.params.nodeId);
-  if (nodeScenarioInScope(req, res, nodeId) === null) return;
+  const nodeRange = nodeScenarioInScope(req, res, nodeId);
+  if (nodeRange === null) return;
+  // Turning student access off ends every student session on the VM — other organizations' too.
+  if (req.body?.isEnabled === false && !assertVmExclusive(req, res, nodeId, nodeRange)) return;
   const { isEnabled } = req.body ?? {};
   if (typeof isEnabled !== 'boolean') {
     res.status(400).json({ error: 'isEnabled (boolean) is required' });
@@ -416,7 +422,7 @@ router.delete('/topology/nodes/:nodeId/access-target', requirePermission('enviro
 router.post('/topology/nodes/:nodeId/connect', requirePermission('environment.operate'), async (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const cyberRangeId = nodeScenarioInScope(req, res, nodeId);
-  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
+  if (cyberRangeId === null || !assertVmExclusive(req, res, nodeId, cyberRangeId)) return;
   const outcome = await requestInstructorAccessSession(nodeId, { id: req.user!.id, username: req.user!.username }, req.ip ?? null);
 
   if (!outcome.ok) {
@@ -432,7 +438,7 @@ router.post('/topology/nodes/:nodeId/connect', requirePermission('environment.op
 // GET .../script-executions/:id rather than the request staying open.
 router.post('/topology/nodes/:nodeId/power', requirePermission('environment.operate'), (req, res) => {
   const cyberRangeId = nodeScenarioInScope(req, res, Number(req.params.nodeId));
-  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
+  if (cyberRangeId === null || !assertVmExclusive(req, res, Number(req.params.nodeId), cyberRangeId)) return;
   const action = req.body?.action;
   if (action !== 'start' && action !== 'stop') {
     res.status(400).json({ error: "action must be 'start' or 'stop'" });
@@ -458,8 +464,11 @@ router.post('/topology/nodes/:nodeId/run-script', requirePermission('environment
   const nodeId = Number(req.params.nodeId);
   const { scriptId, content, scriptType } = req.body ?? {};
   const cyberRangeId = nodeScenarioInScope(req, res, nodeId);
-  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
-  if (typeof scriptId !== 'number' && !can(req.user!.role, 'script.adhoc')) {
+  if (cyberRangeId === null || !assertVmExclusive(req, res, nodeId, cyberRangeId)) return;
+  // A library run names a real script id (positive integer) and nothing else; anything carrying
+  // content is a custom run. Checked strictly — a falsy id (0) must never fall through to content.
+  const libraryRun = Number.isInteger(scriptId) && scriptId > 0 && content === undefined;
+  if (!libraryRun && !can(req.user!.role, 'script.adhoc')) {
     res.status(403).json({ error: 'pick a script from the Script Library — only an admin can run a custom script' });
     return;
   }
@@ -521,6 +530,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/edges', ...AUTHOR, (req, res) 
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
     .run(cyberRangeId, fromNodeId ?? null, toNodeId ?? null, fromZoneId ?? null, toZoneId ?? null, label ?? null);
+  writeAudit(req.user!.username, 'topology.edge_created', 'topology_edge', Number(result.lastInsertRowid), null, { cyberRangeId });
 
   const edge = db
     .prepare(
@@ -532,7 +542,10 @@ router.post('/cyber-ranges/:cyberRangeId/topology/edges', ...AUTHOR, (req, res) 
 });
 
 router.delete('/cyber-ranges/:cyberRangeId/topology/edges/:edgeId', ...AUTHOR, (req, res) => {
-  db.prepare('DELETE FROM topology_edges WHERE id = ? AND cyber_range_id = ?').run(Number(req.params.edgeId), Number(req.params.cyberRangeId));
+  const removed = db.prepare('DELETE FROM topology_edges WHERE id = ? AND cyber_range_id = ?').run(Number(req.params.edgeId), Number(req.params.cyberRangeId));
+  if (removed.changes > 0) {
+    writeAudit(req.user!.username, 'topology.edge_deleted', 'topology_edge', Number(req.params.edgeId), null, { cyberRangeId: Number(req.params.cyberRangeId) });
+  }
   res.json({ ok: true });
 });
 
@@ -551,6 +564,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/zones', ...AUTHOR, (req, res) 
   const result = db
     .prepare('INSERT INTO topology_zones (cyber_range_id, name, cidr) VALUES (?, ?, ?)')
     .run(cyberRangeId, name.trim(), typeof cidr === 'string' && cidr.trim() ? cidr.trim() : null);
+  writeAudit(req.user!.username, 'topology.zone_created', 'topology_zone', Number(result.lastInsertRowid), { name: name.trim() }, { cyberRangeId });
 
   const zone = db
     .prepare('SELECT id, external_key AS externalKey, name, cidr, sort_order AS sortOrder FROM topology_zones WHERE id = ?')
@@ -567,6 +581,7 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', ...AUTHOR, (r
     res.status(404).json({ error: 'zone not found' });
     return;
   }
+  writeAudit(req.user!.username, 'topology.zone_updated', 'topology_zone', zoneId, { changes: Object.keys(req.body ?? {}) }, { cyberRangeId: Number(req.params.cyberRangeId) });
 
   db.prepare(
     `UPDATE topology_zones SET
@@ -587,6 +602,7 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', ...AUTHOR, (
     res.status(404).json({ error: 'zone not found' });
     return;
   }
+  writeAudit(req.user!.username, 'topology.zone_deleted', 'topology_zone', zoneId, null, { cyberRangeId: Number(req.params.cyberRangeId) });
   db.prepare('UPDATE topology_nodes SET zone_id = NULL WHERE zone_id = ?').run(zoneId);
   db.prepare('DELETE FROM topology_edges WHERE from_zone_id = ? OR to_zone_id = ?').run(zoneId, zoneId);
   db.prepare('DELETE FROM topology_zones WHERE id = ?').run(zoneId);

@@ -21,7 +21,19 @@ export function requirePermission(permission: Permission): PermissionGuard {
   return guard;
 }
 
+// A looping client must not flood the (never-pruned, CONFIG) audit trail: the same denial from the same
+// account/IP is written at most once a minute.
+const DENIAL_WINDOW_MS = 60_000;
+const recentDenials = new Map<string, number>();
+
 export function auditDenied(req: Request, reason: string, context: { organizationId?: number | null; cyberRangeId?: number | null } = {}) {
+  const now = Date.now();
+  const key = `${req.user?.id ?? req.ip}|${req.method}|${req.originalUrl.split('?')[0]}|${reason}`;
+  if ((recentDenials.get(key) ?? 0) > now - DENIAL_WINDOW_MS) return;
+  recentDenials.set(key, now);
+  if (recentDenials.size > 5000) {
+    for (const [k, at] of recentDenials) if (at <= now - DENIAL_WINDOW_MS) recentDenials.delete(k);
+  }
   writeAudit(req.user?.username ?? null, 'authz.denied', 'request', null, { method: req.method, path: req.originalUrl.split('?')[0], reason }, {
     ...context,
     outcome: 'denied',

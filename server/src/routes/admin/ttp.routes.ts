@@ -245,8 +245,16 @@ router.delete('/expected-ttps/:id', requirePermission('scenario.author'), (req, 
   }
   if (!assertScenarioInScope(req, res, existing.cyberRangeId, 'expected technique')) return;
   const credited = db
-    .prepare(`SELECT id FROM ttp_detections WHERE expected_ttp_id = ? AND status = 'credited'`)
-    .all(existing.id) as { id: number }[];
+    .prepare(`SELECT id, team_id AS teamId FROM ttp_detections WHERE expected_ttp_id = ? AND status = 'credited'`)
+    .all(existing.id) as { id: number; teamId: number }[];
+  // Voiding takes points away from those teams: every one of them must be in the caller's pairs.
+  if (credited.some((d) => !pairInScope(req.user!, d.teamId, existing.cyberRangeId))) {
+    res.status(409).json({
+      error: "teams outside your assignments were already credited for this technique — only an admin can remove it now",
+      reason: 'scenario_shared',
+    });
+    return;
+  }
   if (credited.length > 0 && req.query.voidDetections !== 'true') {
     res.status(409).json({
       error: `${credited.length} team(s) were already credited for this technique. Remove it anyway and void those credits (their points are removed)?`,

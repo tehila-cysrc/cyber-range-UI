@@ -3,7 +3,7 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../authz/requirePermission.js';
 import { assertPairInScope } from '../../authz/resolve.js';
-import { scopeWhere } from '../../authz/scope.js';
+import { scopeWhere, teamOrganization } from '../../authz/scope.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { emitHelpRequestResolved } from '../../sockets/emitters.js';
 
@@ -53,7 +53,10 @@ router.post('/help-requests/:id/resolve', requirePermission('help.manage'), (req
      WHERE id = ?`,
   ).run(resolvedAt, req.user!.id, id);
 
-  writeAudit(req.user!.username, 'help_request.resolved', 'help_request', id, { teamId: existing.teamId }, { cyberRangeId: existing.cyberRangeId });
+  writeAudit(req.user!.username, 'help_request.resolved', 'help_request', id, { teamId: existing.teamId }, {
+    organizationId: teamOrganization(existing.teamId)?.orgId ?? null,
+    cyberRangeId: existing.cyberRangeId,
+  });
   emitHelpRequestResolved(existing.teamId, existing.cyberRangeId, id, 'instructor');
 
   res.json({ ok: true });

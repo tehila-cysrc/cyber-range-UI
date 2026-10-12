@@ -84,20 +84,86 @@ export function organizationInScope(p: Principal, orgId: number): boolean {
   return loadScope(p).orgIds.has(orgId);
 }
 
-// Shared Azure environment / shared scenario state (RBAC review §4.6): an instructor may operate VMs
-// of a scenario, or record a TTP occurrence on it, only while EVERY team currently on that scenario
-// (active or paused) is in their scope. Otherwise the action would reach another organization's run.
+// True when every team currently on one of `rangeIds` (active or paused) is in the caller's pair scope
+// for that scenario. Teams without an organization never are.
+function teamsOnScenariosInScope(p: Principal, rangeIds: number[]): boolean {
+  if (p.role === 'admin') return true;
+  const scope = loadScope(p);
+  for (const rangeId of rangeIds) {
+    const teams = db
+      .prepare(
+        `SELECT t.organization_id AS orgId FROM team_cyber_range_progress pr JOIN teams t ON t.id = pr.team_id
+         WHERE pr.cyber_range_id = ? AND pr.status IN ('active', 'paused')`,
+      )
+      .all(rangeId) as { orgId: number | null }[];
+    if (!teams.every((t) => hasPair(scope, t.orgId, rangeId))) return false;
+  }
+  return true;
+}
+
+// Shared Azure environment / shared scenario state (RBAC review §4.6): an instructor may record a TTP
+// occurrence on a scenario, or change state every team on it shares, only while EVERY team currently
+// on that scenario (active or paused) is in their scope.
 export function scenarioExclusiveFor(p: Principal, rangeId: number): boolean {
   if (p.role === 'admin') return true;
   if (!scenarioInScope(p, rangeId)) return false;
-  const teams = db
-    .prepare(
-      `SELECT t.organization_id AS orgId FROM team_cyber_range_progress pr JOIN teams t ON t.id = pr.team_id
-       WHERE pr.cyber_range_id = ? AND pr.status IN ('active', 'paused')`,
-    )
-    .all(rangeId) as { orgId: number | null }[];
+  return teamsOnScenariosInScope(p, [rangeId]);
+}
+
+// Every scenario that reaches the same VM as this topology node: its own, every scenario linked to the
+// node's cloud environment, and every scenario holding a node for the same Azure resource. One
+// environment can back several scenarios, so the node's own scenario alone is not enough.
+export function scenariosSharingNode(nodeId: number): number[] {
+  const node = db
+    .prepare('SELECT cyber_range_id AS rangeId, environment_id AS envId, external_key AS key FROM topology_nodes WHERE id = ?')
+    .get(nodeId) as { rangeId: number; envId: number | null; key: string } | undefined;
+  if (!node) return [];
+  const ids = new Set<number>([node.rangeId]);
+  if (node.envId !== null) {
+    for (const r of db.prepare('SELECT cyber_range_id AS id FROM cyber_range_environments WHERE environment_id = ?').all(node.envId) as { id: number }[]) {
+      ids.add(r.id);
+    }
+    for (const r of db
+      .prepare('SELECT DISTINCT cyber_range_id AS id FROM topology_nodes WHERE environment_id = ? AND external_key = ?')
+      .all(node.envId, node.key) as { id: number }[]) {
+      ids.add(r.id);
+    }
+  }
+  return [...ids];
+}
+
+// VM operations (power, scripts, Connect): the node's scenario in scope, and nobody outside the
+// caller's scope working any scenario that reaches the same VM.
+export function vmExclusiveFor(p: Principal, nodeId: number): boolean {
+  if (p.role === 'admin') return true;
+  const ranges = scenariosSharingNode(nodeId);
+  return ranges.length > 0 && teamsOnScenariosInScope(p, ranges);
+}
+
+// Every scenario a team has any recorded work on (progress, timeline, canvas, scores, detections).
+export function scenariosWithTeamWork(teamId: number): number[] {
+  return (
+    db
+      .prepare(
+        `SELECT cyber_range_id AS id FROM team_cyber_range_progress WHERE team_id = ?
+         UNION SELECT cyber_range_id FROM documentation_entries WHERE team_id = ?
+         UNION SELECT cyber_range_id FROM investigation_canvas_nodes WHERE team_id = ?
+         UNION SELECT cyber_range_id FROM scores WHERE team_id = ? AND cyber_range_id IS NOT NULL
+         UNION SELECT cyber_range_id FROM ttp_detections WHERE team_id = ?
+         UNION SELECT cyber_range_id FROM help_requests WHERE team_id = ?`,
+      )
+      .all(teamId, teamId, teamId, teamId, teamId, teamId) as { id: number }[]
+  ).map((r) => r.id);
+}
+
+// Moving or deleting a team carries ALL of its work: a non-admin needs (orgId, S) for every scenario
+// S the team has work on — otherwise a move would re-file another pair's data under one they hold
+// (the cross product again), and a delete would destroy it.
+export function teamWorkCoveredBy(p: Principal, teamId: number, orgId: number | null): boolean {
+  if (p.role === 'admin') return true;
+  if (orgId === null) return false;
   const scope = loadScope(p);
-  return teams.every((t) => hasPair(scope, t.orgId, rangeId));
+  return scenariosWithTeamWork(teamId).every((rangeId) => hasPair(scope, orgId, rangeId));
 }
 
 export interface SqlFilter {

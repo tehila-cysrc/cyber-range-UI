@@ -52,12 +52,17 @@ router.get('/dashboard', requirePermission('dashboard.read'), (req, res) => {
      LIMIT 1`,
   );
 
+  // Counters and totals only include the caller's pairs (team-level awards without a scenario count).
+  const helpScope = scopeWhere(req.user!, 't.organization_id', 'h.cyber_range_id');
   const openHelpCountStmt = db.prepare(
-    `SELECT COUNT(*) AS n FROM help_requests WHERE team_id = ? AND status = 'open'`,
+    `SELECT COUNT(*) AS n FROM help_requests h JOIN teams t ON t.id = h.team_id
+     WHERE h.team_id = ? AND h.status = 'open' AND ${helpScope.sql}`,
   );
 
+  const progressScope = scopeWhere(req.user!, 't.organization_id', 'p.cyber_range_id');
   const completedCountStmt = db.prepare(
-    `SELECT COUNT(*) AS n FROM team_cyber_range_progress WHERE team_id = ? AND status = 'completed'`,
+    `SELECT COUNT(*) AS n FROM team_cyber_range_progress p JOIN teams t ON t.id = p.team_id
+     WHERE p.team_id = ? AND p.status = 'completed' AND ${progressScope.sql}`,
   );
 
   // Live progress signals for the active scenario, so an instructor can spot a stalled team (no
@@ -68,14 +73,18 @@ router.get('/dashboard', requirePermission('dashboard.read'), (req, res) => {
             MAX(created_at) AS lastEntryAt
      FROM documentation_entries WHERE team_id = ? AND cyber_range_id = ?`,
   );
-  const totalPointsStmt = db.prepare('SELECT COALESCE(SUM(points), 0) AS total FROM scores WHERE team_id = ?');
+  const scoreScope = scopeWhere(req.user!, 't.organization_id', 's.cyber_range_id');
+  const totalPointsStmt = db.prepare(
+    `SELECT COALESCE(SUM(s.points), 0) AS total FROM scores s JOIN teams t ON t.id = s.team_id
+     WHERE s.team_id = ? AND (s.cyber_range_id IS NULL OR ${scoreScope.sql})`,
+  );
   const memberCountStmt = db.prepare("SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND role = 'student' AND deactivated_at IS NULL");
 
   const result = teams.map((team) => {
     const live = activeStmt.get(team.id) as ActiveRow | undefined;
     const active = live && pairInScope(req.user!, team.id, live.cyberRangeId) ? live : undefined;
-    const openHelpCount = (openHelpCountStmt.get(team.id) as { n: number }).n;
-    const completedCount = (completedCountStmt.get(team.id) as { n: number }).n;
+    const openHelpCount = (openHelpCountStmt.get(team.id, ...helpScope.params) as { n: number }).n;
+    const completedCount = (completedCountStmt.get(team.id, ...progressScope.params) as { n: number }).n;
     const activity = active
       ? (activityStmt.get(team.id, active.cyberRangeId) as { entryCount: number; findingCount: number; lastEntryAt: string | null })
       : null;
@@ -111,7 +120,7 @@ router.get('/dashboard', requirePermission('dashboard.read'), (req, res) => {
       activeOutOfScope: !!live && !active,
       openHelpCount,
       completedCount,
-      totalPoints: (totalPointsStmt.get(team.id) as { total: number }).total,
+      totalPoints: (totalPointsStmt.get(team.id, ...scoreScope.params) as { total: number }).total,
       memberCount: (memberCountStmt.get(team.id) as { n: number }).n,
     };
   });

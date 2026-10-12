@@ -6,6 +6,7 @@ import {
   organizationInScope,
   pairInScope,
   scenarioExclusiveFor,
+  vmExclusiveFor,
   scenarioInScope,
   scopeWhere,
   teamInScope,
@@ -113,4 +114,16 @@ export function scenarioParam(req: Request, res: Response, next: () => void) {
 // only the URL's scenario would let a request edit another scenario's row by id (RBAC §4.2).
 export function rowInScenario(table: 'topology_nodes' | 'topology_zones' | 'topology_edges', id: unknown, cyberRangeId: number): boolean {
   return !!db.prepare(`SELECT 1 FROM ${table} WHERE id = ? AND cyber_range_id = ?`).get(Number(id), cyberRangeId);
+}
+
+// VM operations: nobody outside the caller's scope may be working ANY scenario that reaches this VM
+// (an environment can back several scenarios — see scope.ts#scenariosSharingNode).
+export function assertVmExclusive(req: Request, res: Response, nodeId: number, cyberRangeId: number): boolean {
+  if (vmExclusiveFor(req.user!, nodeId)) return true;
+  auditDenied(req, 'scenario_shared', { cyberRangeId });
+  res.status(409).json({
+    error: "another organization's team is working on this machine's environment right now — only an admin can do this until it finishes",
+    reason: 'scenario_shared',
+  });
+  return false;
 }

@@ -208,7 +208,10 @@ export function runScriptOnNode(nodeId: number, request: RunScriptRequest, actor
   let scriptType: ScriptType;
   let scriptId: number | null = null;
 
-  if (request.scriptId) {
+  if (request.scriptId != null && request.content !== undefined) {
+    return { ok: false, status: 400, reason: 'invalid_request', message: 'send either a library scriptId or content, not both' };
+  }
+  if (request.scriptId != null) {
     const script = getScript(request.scriptId);
     if (!script) return { ok: false, status: 404, reason: 'script_not_found', message: 'script not found in the library' };
     content = script.content;

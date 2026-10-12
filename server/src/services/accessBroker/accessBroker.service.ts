@@ -426,6 +426,8 @@ interface EndFilter {
   studentsOnly?: boolean;
   // Scenario switch: sessions on the (still-)active range stay valid, everything else ends.
   exceptCyberRangeId?: number;
+  // Scenario completion: only that scenario's sessions end.
+  cyberRangeId?: number;
   all?: boolean;
   // Event reset / revoke-all: revokeAllShareableLinks() does the (serialized) link cleanup itself —
   // a per-session delete racing it would just collide on the Bastion host (409).
@@ -458,6 +460,10 @@ export function endActiveSessions(
   if (filter.exceptCyberRangeId != null) {
     where.push('cyber_range_id != ?');
     params.push(filter.exceptCyberRangeId);
+  }
+  if (filter.cyberRangeId != null) {
+    where.push('cyber_range_id = ?');
+    params.push(filter.cyberRangeId);
   }
   if (!filter.all && filter.teamId == null && filter.userId == null && filter.topologyNodeId == null) return 0;
 

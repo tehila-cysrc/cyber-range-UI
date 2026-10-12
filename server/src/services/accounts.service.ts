@@ -33,8 +33,10 @@ export function findAccountByUsername(username: string): AccountRow | undefined 
 
 // Staff sign-in for instructor accounts can be switched off as a whole (ENABLE_SCOPED_INSTRUCTORS=false)
 // without touching admins or students. Fail-closed: a disabled instructor is refused, never upgraded.
+// Any common "off" spelling switches them off (false/0/off/no, any case) — a typo must not fail open.
 export function scopedInstructorsEnabled(): boolean {
-  return process.env.ENABLE_SCOPED_INSTRUCTORS !== 'false';
+  const raw = (process.env.ENABLE_SCOPED_INSTRUCTORS ?? '').trim().toLowerCase();
+  return !['false', '0', 'off', 'no'].includes(raw);
 }
 
 export function activeAdminCount(): number {

@@ -3,7 +3,7 @@ import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requirePermission } from '../../authz/requirePermission.js';
 import { assertPairInScope } from '../../authz/resolve.js';
-import { teamOrganization } from '../../authz/scope.js';
+import { pairInScope, teamOrganization } from '../../authz/scope.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { startCyberRangeForTeam } from '../../services/cyberRangeProgress.service.js';
 import { emitProgressChanged } from '../../sockets/emitters.js';
@@ -23,6 +23,15 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', requirePermission
   const cyberRangeId = Number(req.params.cyberRangeId);
 
   if (!assertPairInScope(req, res, teamId, cyberRangeId)) return;
+  // Switching pauses the team's current scenario and ends its sessions/help — not allowed when that
+  // live scenario belongs to another instructor's pair.
+  const live = db
+    .prepare("SELECT cyber_range_id AS id FROM team_cyber_range_progress WHERE team_id = ? AND status = 'active' AND cyber_range_id != ?")
+    .get(teamId, cyberRangeId) as { id: number } | undefined;
+  if (live && !pairInScope(req.user!, teamId, live.id)) {
+    res.status(409).json({ error: 'this team is live on a scenario outside your assignments — it has to be completed first', reason: 'scenario_out_of_scope' });
+    return;
+  }
 
   const result = startCyberRangeForTeam(teamId, cyberRangeId);
   if (!result.ok) {
@@ -57,8 +66,9 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', requirePermiss
     return;
   }
 
-  endActiveSessions({ teamId }, 'force_closed', req.user!.username, 'scenario_completed');
-  closeOpenHelpRequests(teamId);
+  // Only this scenario's sessions and help requests — the team may be live on another one.
+  endActiveSessions({ teamId, cyberRangeId }, 'force_closed', req.user!.username, 'scenario_completed');
+  closeOpenHelpRequests(teamId, { onlyCyberRangeId: cyberRangeId });
   writeAudit(req.user!.username, 'progress.completed', 'team', teamId, null, { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId });
   emitProgressChanged(teamId, { cyberRangeId, status: 'completed' });
   res.json({ ok: true });
