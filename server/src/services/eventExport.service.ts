@@ -77,7 +77,8 @@ interface DetectionRow {
   voidReason: string | null;
 }
 
-export function buildEventExport({ includeImages = true }: { includeImages?: boolean } = {}) {
+// teamId limits the export to one team of the active run (Event Summary page); omitted = every team.
+export function buildEventExport({ includeImages = true, teamId }: { includeImages?: boolean; teamId?: number } = {}) {
   const eventRunId = getActiveEventRunId();
   const eventRun = db.prepare('SELECT id, started_at AS startedAt FROM event_runs WHERE id = ?').get(eventRunId) as
     | { id: number; startedAt: string }
@@ -87,9 +88,9 @@ export function buildEventExport({ includeImages = true }: { includeImages?: boo
     .prepare(
       `SELECT t.id, t.name, o.name AS organization
        FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id
-       WHERE t.event_run_id = ? ORDER BY t.sort_order, t.name`,
+       WHERE t.event_run_id = ? AND (? IS NULL OR t.id = ?) ORDER BY t.sort_order, t.name`,
     )
-    .all(eventRunId) as unknown as TeamRow[];
+    .all(eventRunId, teamId ?? null, teamId ?? null) as unknown as TeamRow[];
 
   const membersStmt = db.prepare(
     `SELECT u.username, u.display_name AS displayName,
@@ -297,8 +298,8 @@ function addSheet(workbook: ExcelJS.Workbook, name: string, columns: { header: s
 
 // Full results workbook: a Summary sheet plus one sheet per kind of record, every record in full —
 // screenshots are embedded next to their timeline entry.
-export async function buildEventExportXlsx(): Promise<Buffer> {
-  const data: EventExport = buildEventExport({ includeImages: true });
+export async function buildEventExportXlsx(teamId?: number): Promise<Buffer> {
+  const data: EventExport = buildEventExport({ includeImages: true, teamId });
   const workbook = new ExcelJS.Workbook();
   workbook.created = new Date(data.exportedAt);
 

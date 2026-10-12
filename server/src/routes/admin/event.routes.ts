@@ -126,13 +126,23 @@ router.use(requireAuth, requireRole('instructor'));
 
 // Results archive to keep before a reset wipes the RUN tables (UX audit UX-05). ?format=csv gives a
 // one-row-per-team×scenario summary; default is the full JSON (timelines, canvas, scores).
+// ?teamId= limits the Excel/JSON export to that one team (Event Summary page, team picker).
 router.get('/event/export', async (req, res, next) => {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  let teamId: number | undefined;
+  if (req.query.teamId !== undefined) {
+    teamId = Number(req.query.teamId);
+    if (!db.prepare('SELECT 1 FROM teams WHERE id = ? AND event_run_id = ?').get(teamId, getActiveEventRunId())) {
+      res.status(404).json({ error: 'team not found' });
+      return;
+    }
+  }
+  const name = `cyber-range-results${teamId ? `-team-${teamId}` : ''}-${stamp}`;
   if (req.query.format === 'xlsx') {
     try {
-      const buffer = await buildEventExportXlsx();
+      const buffer = await buildEventExportXlsx(teamId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="cyber-range-results-${stamp}.xlsx"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${name}.xlsx"`);
       res.send(buffer);
     } catch (err) {
       next(err);
@@ -146,8 +156,8 @@ router.get('/event/export', async (req, res, next) => {
     res.send('﻿' + buildEventExportCsv());
     return;
   }
-  res.setHeader('Content-Disposition', `attachment; filename="cyber-range-results-${stamp}.json"`);
-  res.json(buildEventExport());
+  res.setHeader('Content-Disposition', `attachment; filename="${name}.json"`);
+  res.json(buildEventExport({ teamId }));
 });
 
 router.post('/event/reset', (req, res) => {
