@@ -204,6 +204,8 @@ export function migrate() {
   addColumnIfMissing('teams', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE SET NULL');
   // Optional preset avatar key (services/avatar.service.ts); NULL keeps the initials circle.
   addColumnIfMissing('users', 'avatar', 'TEXT');
+  // Set instead of deleting a student whose account authored team activity (DELETE /admin/users/:id).
+  addColumnIfMissing('users', 'deactivated_at', 'TEXT');
   db.exec(
     `UPDATE team_cyber_range_progress SET first_completed_at = completed_at
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,

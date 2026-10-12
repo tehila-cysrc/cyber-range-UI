@@ -38,7 +38,7 @@ export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onClo
   async function handleRemove(m: Member) {
     const ok = await confirmAction({
       title: `Delete the instructor account ${m.displayName} (@${m.username})?`,
-      message: 'They can no longer sign in. An account that already awarded scores or answered help requests cannot be deleted.',
+      message: 'They can no longer sign in. Scores they awarded and help requests they answered stay on record under their name.',
       confirmLabel: 'Delete account',
       danger: true,
     });

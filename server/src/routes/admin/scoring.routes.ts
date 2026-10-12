@@ -61,7 +61,7 @@ router.post('/scores', (req, res) => {
     res.status(404).json({ error: 'team not found' });
     return;
   }
-  if (studentUserId != null && !db.prepare("SELECT 1 FROM users WHERE id = ? AND team_id = ? AND role = 'student'").get(studentUserId, teamId)) {
+  if (studentUserId != null && !db.prepare("SELECT 1 FROM users WHERE id = ? AND team_id = ? AND role = 'student' AND deactivated_at IS NULL").get(studentUserId, teamId)) {
     res.status(400).json({ error: 'that student is not a member of this team' });
     return;
   }

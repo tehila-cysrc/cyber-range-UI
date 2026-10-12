@@ -83,7 +83,7 @@ export function TeamRow({ team, allTeams, organizations, expanded, onToggle }: P
   async function handleRemoveMember(m: Member) {
     const ok = await confirmAction({
       title: `Delete the account ${m.displayName} (@${m.username})?`,
-      message: `They are removed from ${team.name} and can no longer sign in. An account that already recorded timeline entries or scores can't be deleted — move it to another team instead.`,
+      message: `They are removed from ${team.name} and can no longer sign in. If the student already recorded work (timeline entries, canvas items, help requests or scores), that work stays with the team under their name.`,
       confirmLabel: 'Delete account',
       danger: true,
     });

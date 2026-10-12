@@ -40,7 +40,7 @@ type GrantTarget = { ok: true; teamId: number; username: string } | { ok: false;
 
 function findStudent(userId: number): GrantTarget {
   const row = db
-    .prepare("SELECT team_id AS teamId, username FROM users WHERE id = ? AND role = 'student' AND event_run_id = ?")
+    .prepare("SELECT team_id AS teamId, username FROM users WHERE id = ? AND role = 'student' AND event_run_id = ? AND deactivated_at IS NULL")
     .get(userId, getActiveEventRunId()) as { teamId: number | null; username: string } | undefined;
   if (!row || row.teamId === null) return { ok: false, status: 404, error: 'student not found' };
   return { ok: true, teamId: row.teamId, username: row.username };

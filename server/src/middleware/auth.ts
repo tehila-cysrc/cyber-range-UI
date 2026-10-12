@@ -23,7 +23,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
       `SELECT u.id AS id, u.role AS role, u.team_id AS teamId, u.username AS username, at.expires_at AS expiresAt
        FROM auth_tokens at
        JOIN users u ON u.id = at.user_id
-       WHERE at.token = ?`,
+       WHERE at.token = ? AND u.deactivated_at IS NULL`,
     )
     .get(token) as TokenRow | undefined;
 

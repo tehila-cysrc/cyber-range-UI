@@ -50,7 +50,7 @@ router.post('/login', (req, res) => {
   const user = db
     .prepare(
       `SELECT id, username, password, role, team_id AS teamId, display_name AS displayName, avatar
-       FROM users WHERE event_run_id = ? AND username = ?`,
+       FROM users WHERE event_run_id = ? AND username = ? AND deactivated_at IS NULL`,
     )
     .get(activeRun.id, username) as UserRow | undefined;
 

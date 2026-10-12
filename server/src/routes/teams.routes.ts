@@ -28,7 +28,7 @@ router.get('/me', (req, res) => {
   const team = db.prepare('SELECT id, name FROM teams WHERE id = ?').get(teamId);
   const members = db
     .prepare(
-      'SELECT id, username, display_name AS displayName, avatar FROM users WHERE team_id = ? ORDER BY display_name',
+      'SELECT id, username, display_name AS displayName, avatar FROM users WHERE team_id = ? AND deactivated_at IS NULL ORDER BY display_name',
     )
     .all(teamId);
 
@@ -159,7 +159,8 @@ router.get('/me/scores', (req, res) => {
        FROM users u
        LEFT JOIN scores s ON s.student_user_id = u.id AND s.team_id = ?
        WHERE u.team_id = ?
-       GROUP BY u.id`,
+       GROUP BY u.id
+       HAVING u.deactivated_at IS NULL OR total != 0`,
     )
     .all(teamId, teamId);
 

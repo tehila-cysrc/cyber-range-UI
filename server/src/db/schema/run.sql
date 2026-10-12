@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
   team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
   avatar TEXT, -- optional preset key (avatar.service.ts); NULL = initials
+  deactivated_at TEXT, -- set when an account with recorded activity is deleted: kept for the record, can't sign in, hidden from rosters
   UNIQUE (event_run_id, username)
 );
 

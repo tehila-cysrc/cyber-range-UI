@@ -63,7 +63,7 @@ router.get('/dashboard', (_req, res) => {
      FROM documentation_entries WHERE team_id = ? AND cyber_range_id = ?`,
   );
   const totalPointsStmt = db.prepare('SELECT COALESCE(SUM(points), 0) AS total FROM scores WHERE team_id = ?');
-  const memberCountStmt = db.prepare("SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND role = 'student'");
+  const memberCountStmt = db.prepare("SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND role = 'student' AND deactivated_at IS NULL");
 
   const result = teams.map((team) => {
     const active = activeStmt.get(team.id) as ActiveRow | undefined;

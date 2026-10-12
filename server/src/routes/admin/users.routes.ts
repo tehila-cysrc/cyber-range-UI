@@ -6,6 +6,7 @@ import { getActiveEventRunId } from '../../db/seed.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
 import { MIN_PASSWORD_LENGTH } from '../auth.routes.js';
 import { parseAvatar } from '../../services/avatar.service.js';
+import { writeAudit } from '../../services/audit.service.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/instructors', (_req, res) => {
   const instructors = db
     .prepare(
       `SELECT id, username, display_name AS displayName, avatar FROM users
-       WHERE role = 'instructor' AND event_run_id = ? ORDER BY display_name COLLATE NOCASE`,
+       WHERE role = 'instructor' AND event_run_id = ? AND deactivated_at IS NULL ORDER BY display_name COLLATE NOCASE`,
     )
     .all(runId);
   res.json({ instructors });
@@ -90,7 +91,7 @@ router.post('/users', (req, res) => {
 router.patch('/users/:id', (req, res) => {
   const id = Number(req.params.id);
   const teamId = Number(req.body?.teamId);
-  const user = db.prepare('SELECT id, role, team_id AS teamId FROM users WHERE id = ?').get(id) as
+  const user = db.prepare('SELECT id, role, team_id AS teamId FROM users WHERE id = ? AND deactivated_at IS NULL').get(id) as
     | { id: number; role: string; teamId: number | null }
     | undefined;
   if (!user) {
@@ -131,20 +132,30 @@ router.delete('/users/:id', (req, res) => {
   }
   // A removed account's live remote session would otherwise keep its Bastion link after the cascade.
   endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_deleted');
+  const user = db.prepare('SELECT username FROM users WHERE id = ? AND deactivated_at IS NULL').get(id) as
+    | { username: string }
+    | undefined;
+  if (!user) {
+    res.status(404).json({ error: 'user not found' });
+    return;
+  }
   try {
-    const result = db.prepare('DELETE FROM users WHERE id = ?').run(id);
-    if (result.changes === 0) {
-      res.status(404).json({ error: 'user not found' });
-      return;
-    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
   } catch {
     // FOREIGN KEY failure: the account authored timeline entries / canvas nodes / help requests or
-    // awarded scores. Deleting it would silently rewrite the team's investigation record, so refuse
-    // with an explanation instead of an opaque 500.
-    res.status(409).json({
-      error:
-        'This account has recorded activity (timeline entries, canvas items, help requests or scores) and cannot be removed without erasing it. Delete the whole team, or leave the account in place.',
-    });
+    // awarded scores. Deleting it would silently rewrite the team's investigation record, so the account
+    // is deactivated instead: it can't sign in and drops out of every roster, but its work stays credited.
+    db.exec('BEGIN');
+    try {
+      db.prepare('UPDATE users SET deactivated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+      db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(id);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+    writeAudit(req.user!.username, 'user.deactivated', 'user', id, { username: user.username });
+    res.json({ ok: true, deactivated: true });
     return;
   }
   res.json({ ok: true });
