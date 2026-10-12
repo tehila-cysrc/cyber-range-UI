@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isStaff } from '../authz/roles.js';
+import { requirePermission } from '../authz/requirePermission.js';
+import { resolveTeamForPrincipal } from '../authz/resolve.js';
 import {
   emitInvestigationCanvasNodeCreated,
   emitInvestigationCanvasNodeUpdated,
@@ -21,24 +22,6 @@ const MAX_LABEL_LENGTH = 200;
 const MAX_BODY_LENGTH = 10_000;
 
 router.use(requireAuth);
-
-// Same shape as documentation.routes.ts's resolveTeamId: instructor must pass ?teamId= explicitly
-// (never a merged cross-team view), a student implicitly gets their own team.
-function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (isStaff(req.user!.role)) {
-    const teamId = Number(req.query.teamId);
-    if (!teamId) {
-      res.status(400).json({ error: 'instructor must pass ?teamId=' });
-      return null;
-    }
-    return teamId;
-  }
-  if (!req.user!.teamId) {
-    res.status(409).json({ error: 'user has no team assigned' });
-    return null;
-  }
-  return req.user!.teamId;
-}
 
 const NODE_SELECT = `
   SELECT
@@ -68,10 +51,11 @@ const EDGE_SELECT = `
   FROM investigation_canvas_edges e
 `;
 
-router.get('/cyber-ranges/:cyberRangeId/investigation-canvas', (req, res) => {
-  const teamId = resolveTeamId(req, res);
-  if (teamId === null) return;
+// A student gets their own team; staff pass ?teamId= and need that team's scenario in pair scope.
+router.get('/cyber-ranges/:cyberRangeId/investigation-canvas', requirePermission('canvas.read'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
+  const teamId = resolveTeamForPrincipal(req, res, cyberRangeId);
+  if (teamId === null) return;
 
   const nodes = db
     .prepare(`${NODE_SELECT} WHERE n.team_id = ? AND n.cyber_range_id = ? ORDER BY n.created_at ASC`)
@@ -83,10 +67,10 @@ router.get('/cyber-ranges/:cyberRangeId/investigation-canvas', (req, res) => {
   res.json({ nodes, edges });
 });
 
-router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes', requirePermission('canvas.write'), (req, res) => {
   // Students only build their own team's canvas; instructors view but never author it — same
   // authorship split as documentation_entries' Timeline.
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can add canvas nodes' });
     return;
   }
@@ -139,8 +123,8 @@ router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes', (req, res)
 // Serves three call sites from the client with one endpoint: drag-stop (posX/posY only), inline
 // label/body edit, and a node-type change — all COALESCE-patched, same pattern as
 // admin/topology.routes.ts's node PATCH.
-router.patch('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.patch('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', requirePermission('canvas.write'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can edit canvas nodes' });
     return;
   }
@@ -200,8 +184,8 @@ router.patch('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', (
 // never left dangling-edge-free-but-still-present (or vice versa) even if the process dies
 // mid-operation. node:sqlite's DatabaseSync has no .transaction() helper (see CLAUDE/invariants.md),
 // so this uses the same explicit BEGIN/COMMIT/ROLLBACK pattern as admin/event.routes.ts's reset handler.
-router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', requirePermission('canvas.write'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can delete canvas nodes' });
     return;
   }
@@ -242,8 +226,8 @@ router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/nodes/:nodeId', 
   res.json({ ok: true });
 });
 
-router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/edges', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/edges', requirePermission('canvas.write'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can connect canvas nodes' });
     return;
   }
@@ -306,8 +290,8 @@ router.post('/cyber-ranges/:cyberRangeId/investigation-canvas/edges', (req, res)
   res.status(201).json({ edge });
 });
 
-router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/edges/:edgeId', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.delete('/cyber-ranges/:cyberRangeId/investigation-canvas/edges/:edgeId', requirePermission('canvas.write'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can delete canvas edges' });
     return;
   }

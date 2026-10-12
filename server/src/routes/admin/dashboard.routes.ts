@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { pairInScope, scopeWhere } from '../../authz/scope.js';
 import { teamTtpSummary } from '../../services/ttpScoring.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 interface TeamRow {
   id: number;
@@ -26,14 +27,19 @@ interface ActiveRow {
 
 // US-006: instructor sees every team from one view — day, active range, time remaining, progress
 // state, open help request count. Renders as an array so the client can grid N teams, not 2.
-router.get('/dashboard', (_req, res) => {
+// Instructor: the teams of their assigned organizations; a team's live scenario (and its activity)
+// only when that (organization, scenario) pair is theirs — otherwise `active` is null and
+// `activeOutOfScope` says another instructor runs it.
+router.get('/dashboard', requirePermission('dashboard.read'), (req, res) => {
   // Organization fields let the dashboard's sidebar filter/group teams by organization.
+  const scoped = scopeWhere(req.user!, 't.organization_id');
   const teams = db
     .prepare(
       `SELECT t.id, t.name, t.organization_id AS organizationId, o.name AS organizationName
-       FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id ORDER BY t.sort_order`,
+       FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id
+       WHERE ${scoped.sql} ORDER BY t.sort_order`,
     )
-    .all() as unknown as TeamRow[];
+    .all(...scoped.params) as unknown as TeamRow[];
 
   const activeStmt = db.prepare(
     `SELECT
@@ -66,7 +72,8 @@ router.get('/dashboard', (_req, res) => {
   const memberCountStmt = db.prepare("SELECT COUNT(*) AS n FROM users WHERE team_id = ? AND role = 'student' AND deactivated_at IS NULL");
 
   const result = teams.map((team) => {
-    const active = activeStmt.get(team.id) as ActiveRow | undefined;
+    const live = activeStmt.get(team.id) as ActiveRow | undefined;
+    const active = live && pairInScope(req.user!, team.id, live.cyberRangeId) ? live : undefined;
     const openHelpCount = (openHelpCountStmt.get(team.id) as { n: number }).n;
     const completedCount = (completedCountStmt.get(team.id) as { n: number }).n;
     const activity = active
@@ -101,6 +108,7 @@ router.get('/dashboard', (_req, res) => {
             ttp: teamTtpSummary(team.id, active.cyberRangeId),
           }
         : null,
+      activeOutOfScope: !!live && !active,
       openHelpCount,
       completedCount,
       totalPoints: (totalPointsStmt.get(team.id) as { total: number }).total,

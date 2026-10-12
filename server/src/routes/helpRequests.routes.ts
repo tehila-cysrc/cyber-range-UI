@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { emitHelpRequestNew } from '../sockets/emitters.js';
+import { requirePermission } from '../authz/requirePermission.js';
 
 const router = Router();
 
@@ -24,8 +25,8 @@ const HELP_REQUEST_SELECT = `
 
 // The team's own open request, if any — lets every teammate's page show "waiting for the
 // instructor" (and survive a refresh) instead of a confirmation that vanished after 8 seconds.
-router.get('/help-requests/mine', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.get('/help-requests/mine', requirePermission('help.request'), (req, res) => {
+  if (!req.user!.teamId) {
     res.json({ helpRequest: null });
     return;
   }
@@ -35,8 +36,8 @@ router.get('/help-requests/mine', (req, res) => {
   res.json({ helpRequest });
 });
 
-router.post('/help-requests', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.post('/help-requests', requirePermission('help.request'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can request help' });
     return;
   }

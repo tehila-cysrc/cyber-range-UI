@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { db } from '../db/index.js';
+import type { Principal } from '../authz/principal.js';
+import { isAdmin } from '../authz/roles.js';
 
 // Who is acting in the current request — set once by requireAuth, read by every writeAudit call below
 // it, so no call site can forget the actor's role/account/IP.
@@ -57,6 +59,10 @@ export function writeAudit(
 export interface AuditLogEntry {
   id: number;
   actorUsername: string | null;
+  actorRole: string | null;
+  organizationId: number | null;
+  cyberRangeId: number | null;
+  outcome: string;
   action: string;
   entityType: string;
   entityId: number | null;
@@ -67,6 +73,10 @@ export interface AuditLogEntry {
 interface AuditLogRow {
   id: number;
   actorUsername: string | null;
+  actorRole: string | null;
+  organizationId: number | null;
+  cyberRangeId: number | null;
+  outcome: string;
   action: string;
   entityType: string;
   entityId: number | null;
@@ -74,12 +84,33 @@ interface AuditLogRow {
   createdAt: string;
 }
 
-// Instructor-facing read of the compliance trail (Phase 5). CONFIG data — deliberately readable
-// across event resets, since that's the whole point of it surviving them (see CLAUDE/invariants.md).
-export function listAuditLog(options: { entityType?: string; limit?: number; before?: number; search?: string } = {}): AuditLogEntry[] {
+// Read of the compliance trail (Phase 5). CONFIG data — deliberately readable across event resets,
+// since that's the whole point of it surviving them (see CLAUDE/invariants.md).
+// Scoped per reader (RBAC §4.7): an admin sees everything; an instructor sees a row whose
+// (organization, scenario) pair is theirs, an organization-only row of an assigned organization, or a
+// scenario-only row (content edits) of an assigned scenario. Rows with neither (sign-ins, accounts,
+// system actions) are admin-only. Students never reach this (no audit.read).
+export function listAuditLog(
+  options: { entityType?: string; limit?: number; before?: number; search?: string } = {},
+  reader: Principal,
+): AuditLogEntry[] {
   const limit = Math.min(options.limit ?? 100, 500);
   const clauses: string[] = [];
   const params: (string | number)[] = [];
+
+  if (!isAdmin(reader.role)) {
+    const accountId = reader.accountId ?? -1;
+    clauses.push(`(
+      (organization_id IS NOT NULL AND cyber_range_id IS NOT NULL AND EXISTS (
+         SELECT 1 FROM instructor_assignments ia WHERE ia.account_id = ?
+           AND ia.organization_id = audit_log.organization_id AND ia.cyber_range_id = audit_log.cyber_range_id))
+      OR (organization_id IS NOT NULL AND cyber_range_id IS NULL AND organization_id IN (
+         SELECT ia.organization_id FROM instructor_assignments ia WHERE ia.account_id = ?))
+      OR (organization_id IS NULL AND cyber_range_id IS NOT NULL AND cyber_range_id IN (
+         SELECT ia.cyber_range_id FROM instructor_assignments ia WHERE ia.account_id = ?))
+    )`);
+    params.push(accountId, accountId, accountId);
+  }
 
   if (options.entityType) {
     clauses.push('entity_type = ?');
@@ -99,7 +130,8 @@ export function listAuditLog(options: { entityType?: string; limit?: number; bef
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = db
     .prepare(
-      `SELECT id, actor_username AS actorUsername, action, entity_type AS entityType, entity_id AS entityId,
+      `SELECT id, actor_username AS actorUsername, actor_role AS actorRole, organization_id AS organizationId,
+              cyber_range_id AS cyberRangeId, outcome, action, entity_type AS entityType, entity_id AS entityId,
               metadata_json AS metadataJson, created_at AS createdAt
        FROM audit_log ${where} ORDER BY id DESC LIMIT ?`,
     )
@@ -108,6 +140,10 @@ export function listAuditLog(options: { entityType?: string; limit?: number; bef
   return rows.map((r) => ({
     id: r.id,
     actorUsername: r.actorUsername,
+    actorRole: r.actorRole,
+    organizationId: r.organizationId,
+    cyberRangeId: r.cyberRangeId,
+    outcome: r.outcome,
     action: r.action,
     entityType: r.entityType,
     entityId: r.entityId,

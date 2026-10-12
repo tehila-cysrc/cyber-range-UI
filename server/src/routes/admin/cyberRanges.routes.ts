@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { assertScenarioInScope } from '../../authz/resolve.js';
+import { writeAudit } from '../../services/audit.service.js';
 import {
   VALID_DIFFICULTIES,
   deleteCyberRange,
@@ -12,7 +14,7 @@ import {
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 const SELECT_DETAILS = `
   SELECT cr.id AS id, cr.name AS name, cr.difficulty AS difficulty, cr.day_id AS dayId,
@@ -21,14 +23,14 @@ const SELECT_DETAILS = `
   FROM cyber_ranges cr JOIN days d ON d.id = cr.day_id
   WHERE cr.id = ?`;
 
-router.get('/days', (_req, res) => {
+router.get('/days', requirePermission('scenario.inspect'), (_req, res) => {
   const days = db.prepare('SELECT id, key, label FROM days ORDER BY sort_order').all();
   res.json({ days });
 });
 
 // Instructor-authored catalog entry — the seeded catalog is just a starting point, not a fixed list;
 // an instructor can add a new Cyber Range at any time (e.g. from the Environments registration flow).
-router.post('/cyber-ranges', (req, res) => {
+router.post('/cyber-ranges', requirePermission('scenario.create'), (req, res) => {
   const invalid = validateNewCyberRange(req.body);
   if (invalid) {
     res.status(400).json({ error: invalid });
@@ -36,6 +38,7 @@ router.post('/cyber-ranges', (req, res) => {
   }
   const { dayId, name, difficulty, expectedDurationMinutes, studentBriefing } = req.body;
   const id = insertCyberRange({ dayId, name, difficulty, expectedDurationMinutes, studentBriefing });
+  writeAudit(req.user!.username, 'cyber_range.created', 'cyber_range', id, { name }, { cyberRangeId: id });
 
   const cyberRange = db
     .prepare(
@@ -52,7 +55,8 @@ router.post('/cyber-ranges', (req, res) => {
 
 // Scenario details for the Scenarios page (UX-08/UX-37): name, track, difficulty, duration and the
 // instructor-written student briefing.
-router.get('/cyber-ranges/:id', (req, res) => {
+router.get('/cyber-ranges/:id', requirePermission('scenario.inspect'), (req, res) => {
+  if (!assertScenarioInScope(req, res, Number(req.params.id))) return;
   const cyberRange = db.prepare(SELECT_DETAILS).get(Number(req.params.id));
   if (!cyberRange) {
     res.status(404).json({ error: 'cyber range not found' });
@@ -61,12 +65,15 @@ router.get('/cyber-ranges/:id', (req, res) => {
   res.json({ cyberRange });
 });
 
-router.patch('/cyber-ranges/:id', (req, res) => {
+// Scenario content is shared by every organization that runs it (decision 2026-10-07): an assigned
+// instructor's edit applies to all of them, and is audited.
+router.patch('/cyber-ranges/:id', requirePermission('scenario.author'), (req, res) => {
   const id = Number(req.params.id);
   if (!db.prepare('SELECT 1 FROM cyber_ranges WHERE id = ?').get(id)) {
     res.status(404).json({ error: 'cyber range not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, id)) return;
   const { name, dayId, difficulty, expectedDurationMinutes, studentBriefing } = req.body ?? {};
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
     res.status(400).json({ error: 'name must be a non-empty string' });
@@ -97,12 +104,15 @@ router.patch('/cyber-ranges/:id', (req, res) => {
   if (difficulty !== undefined) (sets.push('difficulty = ?'), params.push(difficulty));
   if (expectedDurationMinutes !== undefined) (sets.push('expected_duration_minutes = ?'), params.push(expectedDurationMinutes));
   if (studentBriefing !== undefined) (sets.push('student_briefing = ?'), params.push(normalizeBriefing(studentBriefing)));
-  if (sets.length) db.prepare(`UPDATE cyber_ranges SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+  if (sets.length) {
+    db.prepare(`UPDATE cyber_ranges SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
+    writeAudit(req.user!.username, 'cyber_range.updated', 'cyber_range', id, { changes: Object.keys(req.body ?? {}) }, { cyberRangeId: id });
+  }
   res.json({ cyberRange: db.prepare(SELECT_DETAILS).get(id) });
 });
 
 // Scenarios page "Delete scenario" — see deleteCyberRange for what blocks it.
-router.delete('/cyber-ranges/:id', (req, res) => {
+router.delete('/cyber-ranges/:id', requirePermission('scenario.delete'), (req, res) => {
   const result = deleteCyberRange(Number(req.params.id), req.user!.username);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });

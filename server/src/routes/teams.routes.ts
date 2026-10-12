@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isStaff } from '../authz/roles.js';
+import { requirePermission } from '../authz/requirePermission.js';
 import { budgetFor, buildTeamTtpReport } from '../services/ttpScoring.service.js';
 import { certificateStatus } from '../services/certificate.service.js';
 
@@ -9,11 +9,8 @@ const router = Router();
 
 router.use(requireAuth);
 
+// Only students hold team.self (route-level requirePermission); staff have no team of their own.
 function requireTeam(req: import('express').Request, res: import('express').Response): number | null {
-  if (isStaff(req.user!.role)) {
-    res.status(400).json({ error: 'instructor has no team — use /api/admin/teams' });
-    return null;
-  }
   if (!req.user!.teamId) {
     res.status(409).json({ error: 'user has no team assigned' });
     return null;
@@ -22,7 +19,7 @@ function requireTeam(req: import('express').Request, res: import('express').Resp
 }
 
 // US-002: team workspace — own team's members, without exposing the other team's data.
-router.get('/me', (req, res) => {
+router.get('/me', requirePermission('team.self'), (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
 
@@ -37,7 +34,7 @@ router.get('/me', (req, res) => {
 });
 
 // Whether the student may download the completion certificate (header button) — see certificate.service.ts.
-router.get('/me/certificate', (req, res) => {
+router.get('/me/certificate', requirePermission('team.self'), (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
   res.json(certificateStatus(req.user!.id, teamId));
@@ -58,7 +55,7 @@ interface ActiveProgressRow {
 }
 
 // US-001: active Cyber Range view — day, name, difficulty, configured time.
-router.get('/me/active-cyber-range', (req, res) => {
+router.get('/me/active-cyber-range', requirePermission('team.self'), (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
 
@@ -128,7 +125,7 @@ router.get('/me/active-cyber-range', (req, res) => {
 });
 
 // US-007: student view of scoring — individual + team attribution, no separate milestones entity.
-router.get('/me/scores', (req, res) => {
+router.get('/me/scores', requirePermission('team.self'), (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
 
@@ -174,7 +171,7 @@ router.get('/me/scores', (req, res) => {
 // for EVERY team on it, the full breakdown (expected / detected / missed / incorrect + MTTD) is
 // revealed, minus the instructor's private notes. Tags made after a team's first completion never
 // score (see reconcileTeamTtps), so re-opening a revealed scenario can't be farmed.
-router.get('/me/cyber-ranges/:cyberRangeId/ttp-summary', (req, res) => {
+router.get('/me/cyber-ranges/:cyberRangeId/ttp-summary', requirePermission('team.self'), (req, res) => {
   const teamId = requireTeam(req, res);
   if (teamId === null) return;
   const cyberRangeId = Number(req.params.cyberRangeId);

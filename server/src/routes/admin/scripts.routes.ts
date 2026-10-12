@@ -1,23 +1,27 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { can } from '../../authz/permissions.js';
 import { createScript, deleteScript, getScript, listScripts, updateScript, type ScriptType } from '../../services/scriptExecution.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 const VALID_SCRIPT_TYPES: ScriptType[] = ['powershell', 'bash'];
 
 // The instructor-authored reusable Script Library — see config.sql's `scripts` table for why this is
 // a global CONFIG catalog, not scoped to one cyber range.
-router.get('/scripts', (req, res) => {
+// Instructors may run library scripts (Admin-authored) but never read their content, and don't see
+// which other scenarios use a script as an ATT&CK trigger (that names those scenarios' answer key).
+router.get('/scripts', requirePermission('script.read'), (req, res) => {
   const category = typeof req.query.category === 'string' ? req.query.category : undefined;
   const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-  res.json({ scripts: listScripts({ category, search }) });
+  const scripts = listScripts({ category, search });
+  res.json({ scripts: can(req.user!.role, 'script.write') ? scripts : scripts.map(({ usedAsTrigger: _u, ...rest }) => rest) });
 });
 
-router.post('/scripts', (req, res) => {
+router.post('/scripts', requirePermission('script.write'), (req, res) => {
   const { name, description, content, scriptType, category } = req.body ?? {};
 
   if (typeof name !== 'string' || !name.trim() || typeof content !== 'string' || !content.trim() || !VALID_SCRIPT_TYPES.includes(scriptType)) {
@@ -38,16 +42,21 @@ router.post('/scripts', (req, res) => {
   res.status(201).json({ script });
 });
 
-router.get('/scripts/:id', (req, res) => {
+router.get('/scripts/:id', requirePermission('script.read'), (req, res) => {
   const script = getScript(Number(req.params.id));
   if (!script) {
     res.status(404).json({ error: 'script not found' });
     return;
   }
+  if (!can(req.user!.role, 'script.write')) {
+    const { content: _content, ...summary } = script;
+    res.json({ script: summary });
+    return;
+  }
   res.json({ script });
 });
 
-router.patch('/scripts/:id', (req, res) => {
+router.patch('/scripts/:id', requirePermission('script.write'), (req, res) => {
   const { name, description, content, scriptType, category } = req.body ?? {};
 
   if (scriptType !== undefined && !VALID_SCRIPT_TYPES.includes(scriptType)) {
@@ -74,7 +83,7 @@ router.patch('/scripts/:id', (req, res) => {
   res.json({ script });
 });
 
-router.delete('/scripts/:id', (req, res) => {
+router.delete('/scripts/:id', requirePermission('script.write'), (req, res) => {
   const ok = deleteScript(Number(req.params.id), req.user!.username);
   if (!ok) {
     res.status(404).json({ error: 'script not found' });

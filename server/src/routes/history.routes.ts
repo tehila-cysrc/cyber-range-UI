@@ -1,33 +1,20 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isStaff } from '../authz/roles.js';
+import { requirePermission } from '../authz/requirePermission.js';
+import { resolveTeamForPrincipal, teamWorkWhere } from '../authz/resolve.js';
 import { feedbackByEntry } from '../services/documentationFeedback.service.js';
 
 const router = Router();
 
 router.use(requireAuth);
 
-function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (isStaff(req.user!.role)) {
-    const teamId = Number(req.query.teamId);
-    if (!teamId) {
-      res.status(400).json({ error: 'instructor must pass ?teamId=' });
-      return null;
-    }
-    return teamId;
-  }
-  if (!req.user!.teamId) {
-    res.status(409).json({ error: 'user has no team assigned' });
-    return null;
-  }
-  return req.user!.teamId;
-}
-
 // US-010: completed Cyber Ranges, day + difficulty only — no fabricated data.
-router.get('/history', (req, res) => {
-  const teamId = resolveTeamId(req, res);
+// Staff see only the team's scenarios that are in their (organization, scenario) pair scope.
+router.get('/history', requirePermission('history.read'), (req, res) => {
+  const teamId = resolveTeamForPrincipal(req, res);
   if (teamId === null) return;
+  const scoped = teamWorkWhere(req, 't.organization_id', 'p.cyber_range_id');
 
   const completed = db
     .prepare(
@@ -37,10 +24,11 @@ router.get('/history', (req, res) => {
        FROM team_cyber_range_progress p
        JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
        JOIN days d ON d.id = cr.day_id
-       WHERE p.team_id = ? AND p.status = 'completed'
+       JOIN teams t ON t.id = p.team_id
+       WHERE p.team_id = ? AND p.status = 'completed' AND ${scoped.sql}
        ORDER BY p.completed_at DESC`,
     )
-    .all(teamId);
+    .all(teamId, ...scoped.params);
 
   // Every scenario the team worked on that isn't the live one — completed, or paused because the
   // instructor switched the team to another scenario. A paused scenario used to be visible nowhere
@@ -54,10 +42,11 @@ router.get('/history', (req, res) => {
        FROM team_cyber_range_progress p
        JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
        JOIN days d ON d.id = cr.day_id
-       WHERE p.team_id = ? AND p.status IN ('completed', 'paused')
+       JOIN teams t ON t.id = p.team_id
+       WHERE p.team_id = ? AND p.status IN ('completed', 'paused') AND ${scoped.sql}
        ORDER BY COALESCE(p.completed_at, p.started_at) DESC`,
     )
-    .all(teamId);
+    .all(teamId, ...scoped.params);
 
   res.json({ completed, scenarios });
 });
@@ -67,9 +56,10 @@ router.get('/history', (req, res) => {
 // every scenario the team worked on (completed, paused by a switch, or live) and all their points —
 // counting only completed ones silently dropped a switched-away scenario's work from the summary.
 // Declared before the /:cyberRangeId route below so "event-summary" isn't captured as an id.
-router.get('/history/event-summary', (req, res) => {
-  const teamId = resolveTeamId(req, res);
+router.get('/history/event-summary', requirePermission('history.read'), (req, res) => {
+  const teamId = resolveTeamForPrincipal(req, res);
   if (teamId === null) return;
+  const scoped = teamWorkWhere(req, 't.organization_id', 'p.cyber_range_id');
 
   const rows = db
     .prepare(
@@ -85,21 +75,22 @@ router.get('/history/event-summary', (req, res) => {
        FROM team_cyber_range_progress p
        JOIN cyber_ranges cr ON cr.id = p.cyber_range_id
        JOIN days d ON d.id = cr.day_id
-       WHERE p.team_id = ? AND p.status IN ('completed', 'paused', 'active')
+       JOIN teams t ON t.id = p.team_id
+       WHERE p.team_id = ? AND p.status IN ('completed', 'paused', 'active') AND ${scoped.sql}
        GROUP BY d.id
        ORDER BY d.sort_order`,
     )
-    .all(teamId);
+    .all(teamId, ...scoped.params);
 
   res.json({ days: rows });
 });
 
 // Summary of one Cyber Range the team worked on (completed, paused or still live): documentation,
 // each score awarded and the help requests actually recorded for it. The canvas has its own route.
-router.get('/history/:cyberRangeId', (req, res) => {
-  const teamId = resolveTeamId(req, res);
-  if (teamId === null) return;
+router.get('/history/:cyberRangeId', requirePermission('history.read'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
+  const teamId = resolveTeamForPrincipal(req, res, cyberRangeId);
+  if (teamId === null) return;
 
   const cyberRange = db
     .prepare(

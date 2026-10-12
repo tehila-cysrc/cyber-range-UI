@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { can } from '../../authz/permissions.js';
+import { assertScenarioExclusive, nodeScenarioInScope, rowInScenario, scenarioParam } from '../../authz/resolve.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { getResolvedCredential } from '../../services/environments.service.js';
 import { deleteVmLoginSecret, storeVmLoginSecret, vmLoginSecretName } from '../../services/keyVaultCredential.service.js';
@@ -14,31 +16,37 @@ import { getNodePower, requestNodePower, type VmPowerAction } from '../../servic
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
+
+// Scenario content routes carry :cyberRangeId (checked by scenarioParam); node routes resolve the
+// node's own scenario (nodeScenarioInScope). Content edits are shared by every organization running
+// the scenario (decision 2026-10-07). VM credentials are environment secrets — admin only. VM
+// operations (Connect, power, scripts) also need the scenario to be exclusive to the caller's scope.
+const AUTHOR = [requirePermission('scenario.author'), scenarioParam] as const;
 
 // Publishing (UX-38): students see only what was last published.
-router.get('/cyber-ranges/:cyberRangeId/topology/publication', (req, res) => {
+router.get('/cyber-ranges/:cyberRangeId/topology/publication', requirePermission('scenario.inspect'), scenarioParam, (req, res) => {
   res.json(publicationStatus(Number(req.params.cyberRangeId)));
 });
 
-router.post('/cyber-ranges/:cyberRangeId/topology/publish', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/topology/publish', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  if (!db.prepare('SELECT 1 FROM cyber_ranges WHERE id = ?').get(cyberRangeId)) {
-    res.status(404).json({ error: 'cyber range not found' });
-    return;
-  }
   const result = publishTopology(cyberRangeId, req.user!.username);
-  writeAudit(req.user!.username, 'topology.published', 'cyber_range', cyberRangeId, { nodeCount: result.nodeCount });
+  writeAudit(req.user!.username, 'topology.published', 'cyber_range', cyberRangeId, { nodeCount: result.nodeCount }, { cyberRangeId });
   emitTopologyPublished(cyberRangeId);
   res.json({ ok: true, ...result, ...publicationStatus(cyberRangeId) });
 });
 
-router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const { label, nodeType, posX, posY, metadata, role, zoneId } = req.body ?? {};
 
   if (typeof label !== 'string' || typeof nodeType !== 'string') {
     res.status(400).json({ error: 'label and nodeType are required' });
+    return;
+  }
+  if (typeof zoneId === 'number' && !rowInScenario('topology_zones', zoneId, cyberRangeId)) {
+    res.status(400).json({ error: "that zone isn't part of this scenario's topology" });
     return;
   }
 
@@ -86,13 +94,17 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', (req, res) => {
   res.status(201).json({ node });
 });
 
-router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) => {
+router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  const cyberRangeId = Number(req.params.cyberRangeId);
   const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status } = req.body ?? {};
 
-  const existing = db.prepare('SELECT id FROM topology_nodes WHERE id = ?').get(nodeId);
-  if (!existing) {
+  if (!rowInScenario('topology_nodes', nodeId, cyberRangeId)) {
     res.status(404).json({ error: 'node not found' });
+    return;
+  }
+  if (typeof zoneId === 'number' && !rowInScenario('topology_zones', zoneId, cyberRangeId)) {
+    res.status(400).json({ error: "that zone isn't part of this scenario's topology" });
     return;
   }
 
@@ -122,8 +134,12 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =>
   res.json({ ok: true });
 });
 
-router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) => {
+router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  if (!rowInScenario('topology_nodes', nodeId, Number(req.params.cyberRangeId))) {
+    res.status(404).json({ error: 'node not found' });
+    return;
+  }
   // Deliberately NOT cleaning up access_sessions / script_executions — a node with real history
   // shouldn't be silently deletable out from under its own audit trail (see CLAUDE/db.md). Checked
   // up front so a refused delete no longer leaves the node stripped of its edges and access target.
@@ -153,7 +169,7 @@ router.delete('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', (req, res) =
 // packed in sort order, unzoned nodes last; within a zone, student-visible hosts take the first grid
 // slots and hidden infrastructure (NICs/NSGs/...) follows, so the default logical view stays compact
 // with no gaps when the infrastructure overlay is off.
-router.post('/cyber-ranges/:cyberRangeId/topology/auto-layout', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/topology/auto-layout', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
 
   const zones = db
@@ -194,7 +210,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/auto-layout', (req, res) => {
     throw err;
   }
 
-  writeAudit(req.user!.username, 'topology.auto_layout', 'cyber_range', cyberRangeId, { nodeCount: nodes.length });
+  writeAudit(req.user!.username, 'topology.auto_layout', 'cyber_range', cyberRangeId, { nodeCount: nodes.length }, { cyberRangeId });
   res.json({ ok: true, nodeCount: nodes.length });
 });
 
@@ -204,7 +220,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/auto-layout', (req, res) => {
 // input for values Bastion doesn't actually need picked (it auto-detects RDP vs SSH per VM). Only
 // instructors can configure this; the credential is write-only (never read back — see
 // CLAUDE/invariants.md, same rule as cloud_environments' Service Principal secret).
-router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
+router.put('/topology/nodes/:nodeId/access-target', requirePermission('environment.manage'), async (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const { username, password } = req.body ?? {};
 
@@ -270,8 +286,9 @@ router.put('/topology/nodes/:nodeId/access-target', async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
+router.get('/topology/nodes/:nodeId/access-target', requirePermission('scenario.inspect'), (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  if (nodeScenarioInScope(req, res, nodeId) === null) return;
   const target = db
     .prepare(
       `SELECT protocol, host, port, username, credential_id AS credentialId, key_vault_secret_name AS keyVaultSecretName,
@@ -308,8 +325,9 @@ router.get('/topology/nodes/:nodeId/access-target', (req, res) => {
 
 // Soft on/off for student Connect. A login in Key Vault is optional (Show/Copy in the session box);
 // Bastion does not need it to open the browser session, so turning this on must not require one.
-router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
+router.patch('/topology/nodes/:nodeId/access-target', requirePermission('scenario.author'), (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  if (nodeScenarioInScope(req, res, nodeId) === null) return;
   const { isEnabled } = req.body ?? {};
   if (typeof isEnabled !== 'boolean') {
     res.status(400).json({ error: 'isEnabled (boolean) is required' });
@@ -358,7 +376,7 @@ router.patch('/topology/nodes/:nodeId/access-target', (req, res) => {
   res.json({ ok: true, isEnabled });
 });
 
-router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
+router.delete('/topology/nodes/:nodeId/access-target', requirePermission('environment.manage'), async (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const existing = db
     .prepare(
@@ -395,8 +413,10 @@ router.delete('/topology/nodes/:nodeId/access-target', async (req, res) => {
 // broker (accessSessions.routes.ts's POST /teams/me/access-sessions), but not team-scoped (see
 // accessBroker.service.ts#requestInstructorAccessSession). Ending it reuses the existing force-close
 // endpoint (admin/accessSessions.routes.ts) — no separate "end" route needed.
-router.post('/topology/nodes/:nodeId/connect', async (req, res) => {
+router.post('/topology/nodes/:nodeId/connect', requirePermission('environment.operate'), async (req, res) => {
   const nodeId = Number(req.params.nodeId);
+  const cyberRangeId = nodeScenarioInScope(req, res, nodeId);
+  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
   const outcome = await requestInstructorAccessSession(nodeId, { id: req.user!.id, username: req.user!.username }, req.ip ?? null);
 
   if (!outcome.ok) {
@@ -410,7 +430,9 @@ router.post('/topology/nodes/:nodeId/connect', async (req, res) => {
 // execution's id (fire-and-track, like POST .../environments/:id/discover) — the actual Run Command
 // call can take minutes for a script meant to generate real, observable activity, so the client polls
 // GET .../script-executions/:id rather than the request staying open.
-router.post('/topology/nodes/:nodeId/power', (req, res) => {
+router.post('/topology/nodes/:nodeId/power', requirePermission('environment.operate'), (req, res) => {
+  const cyberRangeId = nodeScenarioInScope(req, res, Number(req.params.nodeId));
+  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
   const action = req.body?.action;
   if (action !== 'start' && action !== 'stop') {
     res.status(400).json({ error: "action must be 'start' or 'stop'" });
@@ -424,18 +446,23 @@ router.post('/topology/nodes/:nodeId/power', (req, res) => {
   res.status(202).json({ operation: outcome.operation });
 });
 
-router.get('/topology/nodes/:nodeId/power', (req, res) => {
+router.get('/topology/nodes/:nodeId/power', requirePermission('environment.operate'), (req, res) => {
   const nodeId = Number(req.params.nodeId);
-  if (!db.prepare('SELECT 1 FROM topology_nodes WHERE id = ?').get(nodeId)) {
-    res.status(404).json({ error: 'node not found' });
-    return;
-  }
+  if (nodeScenarioInScope(req, res, nodeId) === null) return;
   res.json({ operation: getNodePower(nodeId) });
 });
 
-router.post('/topology/nodes/:nodeId/run-script', (req, res) => {
+// Instructors run Admin-approved library scripts only; arbitrary content is admin-only (RBAC PE-10:
+// an ad-hoc script could read the VM's managed identity or the environment's secrets).
+router.post('/topology/nodes/:nodeId/run-script', requirePermission('environment.operate'), (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const { scriptId, content, scriptType } = req.body ?? {};
+  const cyberRangeId = nodeScenarioInScope(req, res, nodeId);
+  if (cyberRangeId === null || !assertScenarioExclusive(req, res, cyberRangeId)) return;
+  if (typeof scriptId !== 'number' && !can(req.user!.role, 'script.adhoc')) {
+    res.status(403).json({ error: 'pick a script from the Script Library — only an admin can run a custom script' });
+    return;
+  }
 
   const outcome = runScriptOnNode(
     nodeId,
@@ -451,23 +478,25 @@ router.post('/topology/nodes/:nodeId/run-script', (req, res) => {
   res.status(202).json({ executionId: outcome.executionId });
 });
 
-router.get('/topology/nodes/:nodeId/script-executions', (req, res) => {
+router.get('/topology/nodes/:nodeId/script-executions', requirePermission('environment.operate'), (req, res) => {
+  if (nodeScenarioInScope(req, res, Number(req.params.nodeId)) === null) return;
   res.json({ executions: listExecutionsForNode(Number(req.params.nodeId)) });
 });
 
-router.get('/script-executions/:id', (req, res) => {
+router.get('/script-executions/:id', requirePermission('environment.operate'), (req, res) => {
   const execution = getExecution(Number(req.params.id));
   if (!execution) {
     res.status(404).json({ error: 'execution not found' });
     return;
   }
+  if (nodeScenarioInScope(req, res, execution.topologyNodeId) === null) return;
   res.json({ execution });
 });
 
 // Each side of an edge is either a node or a zone (never both, never neither) — lets an instructor
 // draw a boundary like Internet -> Firewall -> Zone, not just node-to-node lines. Mirrored by the
 // CHECK constraints on topology_edges itself (belt-and-suspenders, not just app-level validation).
-router.post('/cyber-ranges/:cyberRangeId/topology/edges', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/topology/edges', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const { fromNodeId, toNodeId, fromZoneId, toZoneId, label } = req.body ?? {};
 
@@ -475,6 +504,14 @@ router.post('/cyber-ranges/:cyberRangeId/topology/edges', (req, res) => {
   const toOk = (!!toNodeId) !== (!!toZoneId);
   if (!fromOk || !toOk) {
     res.status(400).json({ error: 'each side of an edge needs exactly one of a node id or a zone id' });
+    return;
+  }
+  // Both ends must belong to this scenario — never stitch another scenario's host into it.
+  const endsOk =
+    (fromNodeId ? rowInScenario('topology_nodes', fromNodeId, cyberRangeId) : rowInScenario('topology_zones', fromZoneId, cyberRangeId)) &&
+    (toNodeId ? rowInScenario('topology_nodes', toNodeId, cyberRangeId) : rowInScenario('topology_zones', toZoneId, cyberRangeId));
+  if (!endsOk) {
+    res.status(400).json({ error: "both ends of an edge must be part of this scenario's topology" });
     return;
   }
 
@@ -494,15 +531,15 @@ router.post('/cyber-ranges/:cyberRangeId/topology/edges', (req, res) => {
   res.status(201).json({ edge });
 });
 
-router.delete('/cyber-ranges/:cyberRangeId/topology/edges/:edgeId', (req, res) => {
-  db.prepare('DELETE FROM topology_edges WHERE id = ?').run(Number(req.params.edgeId));
+router.delete('/cyber-ranges/:cyberRangeId/topology/edges/:edgeId', ...AUTHOR, (req, res) => {
+  db.prepare('DELETE FROM topology_edges WHERE id = ? AND cyber_range_id = ?').run(Number(req.params.edgeId), Number(req.params.cyberRangeId));
   res.json({ ok: true });
 });
 
 // Zones — the visual grouping container. Auto-created one-per-Azure-subnet by discovery; these
 // endpoints cover the manual side (a hand-added zone for a manual-only cyber range, or renaming an
 // auto-created one).
-router.post('/cyber-ranges/:cyberRangeId/topology/zones', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/topology/zones', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const { name, cidr } = req.body ?? {};
 
@@ -522,12 +559,11 @@ router.post('/cyber-ranges/:cyberRangeId/topology/zones', (req, res) => {
   res.status(201).json({ zone });
 });
 
-router.patch('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) => {
+router.patch('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', ...AUTHOR, (req, res) => {
   const zoneId = Number(req.params.zoneId);
   const { name, cidr, sortOrder } = req.body ?? {};
 
-  const existing = db.prepare('SELECT id FROM topology_zones WHERE id = ?').get(zoneId);
-  if (!existing) {
+  if (!rowInScenario('topology_zones', zoneId, Number(req.params.cyberRangeId))) {
     res.status(404).json({ error: 'zone not found' });
     return;
   }
@@ -545,8 +581,12 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) =>
 
 // Deleting a zone un-assigns (doesn't delete) any node placed in it — a zone is just a grouping
 // container, so removing it shouldn't take hosts down with it.
-router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', (req, res) => {
+router.delete('/cyber-ranges/:cyberRangeId/topology/zones/:zoneId', ...AUTHOR, (req, res) => {
   const zoneId = Number(req.params.zoneId);
+  if (!rowInScenario('topology_zones', zoneId, Number(req.params.cyberRangeId))) {
+    res.status(404).json({ error: 'zone not found' });
+    return;
+  }
   db.prepare('UPDATE topology_nodes SET zone_id = NULL WHERE zone_id = ?').run(zoneId);
   db.prepare('DELETE FROM topology_edges WHERE from_zone_id = ? OR to_zone_id = ?').run(zoneId, zoneId);
   db.prepare('DELETE FROM topology_zones WHERE id = ?').run(zoneId);

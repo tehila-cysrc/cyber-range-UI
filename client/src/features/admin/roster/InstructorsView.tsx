@@ -12,9 +12,9 @@ export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onClo
   const me = useAuthStore((s) => s.user);
   const { data } = useQuery({
     queryKey: ['admin-instructors'],
-    queryFn: () => apiFetch<{ instructors: Member[] }>('/admin/instructors'),
+    queryFn: () => apiFetch<{ accounts: (Member & { disabledAt: string | null })[] }>('/admin/accounts'),
   });
-  const instructors = data?.instructors ?? [];
+  const instructors = (data?.accounts ?? []).filter((a) => !a.disabledAt);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +23,7 @@ export function InstructorsView({ adding, onCloseAdd }: { adding: boolean; onClo
   const [formError, setFormError] = useState<string | null>(null);
 
   const create = useRosterMutation(
-    () => postJson('/admin/users', { username, password, displayName, avatar, role: 'instructor' }),
+    () => postJson('/admin/accounts', { username, password, displayName, avatar, role: 'admin' }),
     'Could not create the account',
     () => {
       setUsername('');

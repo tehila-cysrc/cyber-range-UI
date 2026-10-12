@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isStaff } from '../authz/roles.js';
+import { isStudent } from '../authz/roles.js';
+import { requirePermission } from '../authz/requirePermission.js';
+import { assertPairInScope, resolveTeamForPrincipal } from '../authz/resolve.js';
 import { emitDocumentationFeedback, emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
 import { activeCyberRangeIdForTeam, teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
@@ -39,7 +41,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.get('/documentation-categories', (_req, res) => {
+router.get('/documentation-categories', requirePermission('documentation.read'), (_req, res) => {
   const categories = db
     .prepare(
       'SELECT id, key, label FROM documentation_categories WHERE active = 1 ORDER BY sort_order',
@@ -48,30 +50,14 @@ router.get('/documentation-categories', (_req, res) => {
   res.json({ categories });
 });
 
-function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (isStaff(req.user!.role)) {
-    const teamId = Number(req.query.teamId);
-    if (!teamId) {
-      res.status(400).json({ error: 'instructor must pass ?teamId=' });
-      return null;
-    }
-    return teamId;
-  }
-  if (!req.user!.teamId) {
-    res.status(409).json({ error: 'user has no team assigned' });
-    return null;
-  }
-  return req.user!.teamId;
-}
-
-router.get('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
-  const teamId = resolveTeamId(req, res);
+router.get('/cyber-ranges/:cyberRangeId/documentation', requirePermission('documentation.read'), (req, res) => {
+  const cyberRangeId = Number(req.params.cyberRangeId);
+  const teamId = resolveTeamForPrincipal(req, res, cyberRangeId);
   if (teamId === null) return;
 
-  const cyberRangeId = Number(req.params.cyberRangeId);
   // Same rule as student topology reads: only scenarios the team has actually been assigned (the
   // response carries the ATT&CK budget, which says something about a scenario's answer key).
-  if (req.user!.role === 'student' && !teamHasProgressOn(teamId, cyberRangeId)) {
+  if (isStudent(req.user!.role) && !teamHasProgressOn(teamId, cyberRangeId)) {
     res.status(403).json({ error: "your team hasn't been assigned this Cyber Range" });
     return;
   }
@@ -147,9 +133,9 @@ function findOrCreateCategoryId(label: string): number | null {
   return Number(result.lastInsertRowid);
 }
 
-router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
-  // Students only document their own team's investigation; instructors don't author entries.
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.post('/cyber-ranges/:cyberRangeId/documentation', requirePermission('documentation.write'), (req, res) => {
+  // Students only document their own team's investigation; staff don't author entries.
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can add documentation' });
     return;
   }
@@ -239,8 +225,8 @@ router.post('/cyber-ranges/:cyberRangeId/documentation', (req, res) => {
 // Add/change/remove an entry's ATT&CK tags. Entries themselves stay append-only; only the optional
 // tag association is editable. Any teammate may tag any of the team's entries, but only while the
 // scenario is the team's active one (same write gate as creating entries).
-router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', requirePermission('documentation.write'), (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can tag documentation' });
     return;
   }
@@ -277,12 +263,21 @@ router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', (req, res)
 // Instructor feedback on an entry ("on track" / "off track" / a comment) — see
 // documentationFeedback.service.ts. Allowed on any of the team's scenarios, not just the active one,
 // so an instructor can still comment during review. The entry itself is untouched.
-router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', (req, res) => {
-  if (!isStaff(req.user!.role)) {
-    res.status(403).json({ error: 'only an instructor can give feedback' });
-    return;
+// The entry's own team/scenario decide scope — never the URL's :cyberRangeId alone.
+function entryInScope(req: import('express').Request, res: import('express').Response, entryId: number): boolean {
+  const entry = db
+    .prepare('SELECT team_id AS teamId, cyber_range_id AS cyberRangeId FROM documentation_entries WHERE id = ?')
+    .get(entryId) as { teamId: number; cyberRangeId: number } | undefined;
+  if (!entry) {
+    res.status(404).json({ error: 'entry not found' });
+    return false;
   }
+  return assertPairInScope(req, res, entry.teamId, entry.cyberRangeId, 'entry');
+}
+
+router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', requirePermission('documentation.feedback'), (req, res) => {
   const entryId = Number(req.params.entryId);
+  if (!entryInScope(req, res, entryId)) return;
   const result = addFeedback(entryId, Number(req.params.cyberRangeId), req.user!.id, req.body ?? {});
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
@@ -294,12 +289,9 @@ router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', (req,
   res.status(201).json({ entry });
 });
 
-router.delete('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback/:feedbackId', (req, res) => {
-  if (!isStaff(req.user!.role)) {
-    res.status(403).json({ error: 'only an instructor can remove feedback' });
-    return;
-  }
+router.delete('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback/:feedbackId', requirePermission('documentation.feedback'), (req, res) => {
   const entryId = Number(req.params.entryId);
+  if (!entryInScope(req, res, entryId)) return;
   const result = deleteFeedback(entryId, Number(req.params.cyberRangeId), Number(req.params.feedbackId));
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });

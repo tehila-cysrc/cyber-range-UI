@@ -126,9 +126,9 @@ function Sidebar({
 }) {
   const { data: instructorData } = useQuery({
     queryKey: ['admin-instructors'],
-    queryFn: () => apiFetch<{ instructors: Member[] }>('/admin/instructors'),
+    queryFn: () => apiFetch<{ accounts: (Member & { disabledAt: string | null })[] }>('/admin/accounts'),
   });
-  const instructorCount = instructorData?.instructors.length ?? 0;
+  const instructorCount = instructorData?.accounts.filter((a) => !a.disabledAt).length ?? 0;
   const totalStudents = teams.reduce((n, t) => n + t.members.length, 0);
 
   // A top-level row: opens its list; "+" opens the same list with the "New …" card.

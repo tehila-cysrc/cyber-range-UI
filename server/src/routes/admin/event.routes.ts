@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
 import { getActiveEventRunId, createFreshEventRun } from '../../db/seed.js';
 import { activeAdminCount } from '../../services/accounts.service.js';
 import { endActiveSessions, revokeAllShareableLinks, setRemoteAccessFrozen, type EnvironmentRevocation } from '../../services/accessBroker/accessBroker.service.js';
@@ -125,12 +125,12 @@ resetJobsPublicRouter.get('/:jobId', (req, res) => {
   res.json({ job });
 });
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 // Results archive to keep before a reset wipes the RUN tables (UX audit UX-05). ?format=csv gives a
 // one-row-per-team×scenario summary; default is the full JSON (timelines, canvas, scores).
 // ?teamId= limits the Excel/JSON export to that one team (Event Summary page, team picker).
-router.get('/event/export', async (req, res, next) => {
+router.get('/event/export', requirePermission('event.export'), async (req, res, next) => {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   let teamId: number | undefined;
   if (req.query.teamId !== undefined) {
@@ -163,7 +163,7 @@ router.get('/event/export', async (req, res, next) => {
   res.json(buildEventExport({ teamId }));
 });
 
-router.post('/event/reset', (req, res) => {
+router.post('/event/reset', requirePermission('event.reset'), (req, res) => {
   const { confirm, allowUnverifiedRemoteAccess } = req.body ?? {};
   if (confirm !== CONFIRMATION_PHRASE) {
     res.status(400).json({ error: `confirm must be exactly "${CONFIRMATION_PHRASE}"` });
@@ -192,7 +192,7 @@ router.post('/event/reset', (req, res) => {
 
 // Instructor can re-run the revoke on its own at any time (e.g. before handing the range to a new
 // group) — same code path as the reset job's first step, with the normal interactive budget.
-router.post('/remote-access/revoke-all', async (req, res) => {
+router.post('/remote-access/revoke-all', requirePermission('remote_access.revoke_all'), async (req, res) => {
   const endedSessions = endActiveSessions({ all: true, skipLinkCleanup: true }, 'force_closed', req.user!.username, 'manual_revoke_all');
   const remoteAccess = await revokeAllShareableLinks();
   writeAudit(req.user!.username, 'event.remote_access_revoked', 'event_run', getActiveEventRunId(), {

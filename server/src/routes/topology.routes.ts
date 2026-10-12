@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { isStaff } from '../authz/roles.js';
+import { isStudent } from '../authz/roles.js';
+import { requirePermission } from '../authz/requirePermission.js';
+import { assertScenarioInScope } from '../authz/resolve.js';
 import { teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
 import { getPublishedTopology } from '../services/topologyPublication.service.js';
 
@@ -13,19 +15,21 @@ router.use(requireAuth);
 // authenticated user may read it; there is nothing team-specific to leak here. Only the *node
 // visibility* filter differs by role: a student never receives a node the instructor hasn't marked
 // is_visible_to_students, enforced here (server-side), not just hidden client-side.
-router.get('/cyber-ranges/:cyberRangeId/topology', (req, res) => {
+router.get('/cyber-ranges/:cyberRangeId/topology', requirePermission('scenario.read'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const isInstructor = isStaff(req.user!.role);
+  const student = isStudent(req.user!.role);
 
   // A student may only look at scenarios their team has actually been assigned — otherwise any
   // student could preview the next day's range (hosts, IPs, zones) before the instructor starts it.
-  if (!isInstructor && (!req.user!.teamId || !teamHasProgressOn(req.user!.teamId, cyberRangeId))) {
+  if (student && (!req.user!.teamId || !teamHasProgressOn(req.user!.teamId, cyberRangeId))) {
     res.status(403).json({ error: 'this Cyber Range is not assigned to your team' });
     return;
   }
+  // Staff read the live draft only for scenarios in their scope.
+  if (!student && !assertScenarioInScope(req, res, cyberRangeId)) return;
 
-  // Students get the PUBLISHED topology (UX-38) — the live draft is instructor-only.
-  if (!isInstructor) {
+  // Students get the PUBLISHED topology (UX-38) — the live draft is staff-only.
+  if (student) {
     const published = getPublishedTopology(cyberRangeId);
     res.json(published ?? { zones: [], nodes: [], edges: [], publishedAt: null });
     return;

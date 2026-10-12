@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { assertPairInScope } from '../../authz/resolve.js';
+import { teamOrganization } from '../../authz/scope.js';
+import { writeAudit } from '../../services/audit.service.js';
 import { startCyberRangeForTeam } from '../../services/cyberRangeProgress.service.js';
 import { emitProgressChanged } from '../../sockets/emitters.js';
 import { endActiveSessions } from '../../services/accessBroker/accessBroker.service.js';
@@ -9,18 +12,17 @@ import { closeOpenHelpRequests } from '../../services/helpRequests.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 // The only way a team's scenario is assigned/switched — students can't self-assign (see
 // CLAUDE/invariants.md).
-router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', (req, res) => {
+// Assigning a scenario hands the team its topology and starts scoring it against that answer key, so
+// the (team's organization, scenario) pair must be in scope (RBAC PE-6).
+router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', requirePermission('progress.manage'), (req, res) => {
   const teamId = Number(req.params.teamId);
   const cyberRangeId = Number(req.params.cyberRangeId);
 
-  if (!db.prepare('SELECT 1 FROM teams WHERE id = ?').get(teamId)) {
-    res.status(404).json({ error: 'team not found' });
-    return;
-  }
+  if (!assertPairInScope(req, res, teamId, cyberRangeId)) return;
 
   const result = startCyberRangeForTeam(teamId, cyberRangeId);
   if (!result.ok) {
@@ -31,13 +33,15 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/start', (req, res) => {
   // Remote sessions into the previous scenario's VMs stop being authorized the moment it's switched.
   endActiveSessions({ teamId, exceptCyberRangeId: cyberRangeId }, 'force_closed', req.user!.username, 'scenario_changed');
   closeOpenHelpRequests(teamId, { exceptCyberRangeId: cyberRangeId });
+  writeAudit(req.user!.username, 'progress.started', 'team', teamId, null, { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId });
   emitProgressChanged(teamId, { cyberRangeId, status: 'active' });
   res.json({ ok: true });
 });
 
-router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', (req, res) => {
+router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', requirePermission('progress.manage'), (req, res) => {
   const teamId = Number(req.params.teamId);
   const cyberRangeId = Number(req.params.cyberRangeId);
+  if (!assertPairInScope(req, res, teamId, cyberRangeId)) return;
   const completedAt = new Date().toISOString();
 
   const result = db
@@ -55,6 +59,7 @@ router.post('/teams/:teamId/cyber-ranges/:cyberRangeId/complete', (req, res) => 
 
   endActiveSessions({ teamId }, 'force_closed', req.user!.username, 'scenario_completed');
   closeOpenHelpRequests(teamId);
+  writeAudit(req.user!.username, 'progress.completed', 'team', teamId, null, { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId });
   emitProgressChanged(teamId, { cyberRangeId, status: 'completed' });
   res.json({ ok: true });
 });

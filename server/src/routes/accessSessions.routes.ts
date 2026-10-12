@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { requirePermission } from '../authz/requirePermission.js';
 import { endOwnSession, requestAccessSession, restoreOwnSession, revealSessionCredential } from '../services/accessBroker/accessBroker.service.js';
 
 const router = Router();
@@ -10,8 +11,8 @@ router.use(requireAuth);
 // client-supplied value — everything else (which cyber range is "active", whether the node belongs
 // to it, which credential to use) is resolved server-side. See accessBroker.service.ts for the full
 // RBAC chain and CLAUDE/invariants.md for why this mirrors the existing help_requests pattern.
-router.post('/me/access-sessions', async (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.post('/me/access-sessions', requirePermission('access_session.self'), async (req, res) => {
+  if (!req.user!.teamId) {
     res.status(403).json({ error: 'only a student on a team can request an access session' });
     return;
   }
@@ -39,8 +40,8 @@ router.post('/me/access-sessions', async (req, res) => {
 // Page refresh: hand the caller back their OWN still-active session, re-authorized from scratch
 // (expiry, active range, node visibility, access target) and with the link re-read live from Bastion —
 // see restoreOwnSession. `{session: null}` whenever there's nothing valid to restore.
-router.get('/me/access-sessions/active', async (req, res) => {
-  if (req.user!.role !== 'student' || !req.user!.teamId) {
+router.get('/me/access-sessions/active', requirePermission('access_session.self'), async (req, res) => {
+  if (!req.user!.teamId) {
     res.json({ session: null });
     return;
   }
@@ -51,7 +52,7 @@ router.get('/me/access-sessions/active', async (req, res) => {
 // The side panel's explicit "Show credentials" action — separate from opening the connection, and
 // separately audited (design doc §11.5/§11.10). Never bundled into the initial session-request
 // response so a plaintext credential only ever reaches the client when the student deliberately asks.
-router.get('/me/access-sessions/:id/credential', async (req, res) => {
+router.get('/me/access-sessions/:id/credential', requirePermission('access_session.self'), async (req, res) => {
   if (!req.user!.teamId) {
     res.status(403).json({ error: 'no team' });
     return;
@@ -66,7 +67,7 @@ router.get('/me/access-sessions/:id/credential', async (req, res) => {
   res.json(credential);
 });
 
-router.post('/me/access-sessions/:id/end', (req, res) => {
+router.post('/me/access-sessions/:id/end', requirePermission('access_session.self'), (req, res) => {
   if (!req.user!.teamId) {
     res.status(403).json({ error: 'no team' });
     return;

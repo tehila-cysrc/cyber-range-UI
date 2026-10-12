@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
+import { assertPairInScope, assertScenarioExclusive, assertScenarioInScope } from '../../authz/resolve.js';
+import { pairInScope, teamOrganization } from '../../authz/scope.js';
 import { getActiveEventRunId } from '../../db/seed.js';
 import { writeAudit } from '../../services/audit.service.js';
 import { getTactic, getTechnique, isValidTechniqueId, listCatalog } from '../../services/mitreCatalog.js';
@@ -20,12 +22,14 @@ import {
 import { announceCredits, announceLeaderboard, reconcileRangeAndAnnounce } from '../../services/ttpAnnounce.js';
 import { emitTtpChanged } from '../../sockets/emitters.js';
 
-// Instructor-only ATT&CK surface: the scenario's expected techniques, occurrences, reports and credit
+// Staff-only ATT&CK surface: the scenario's expected techniques, occurrences, reports and credit
 // overrides. Everything in this file is answer-key data — nothing here may ever be reachable from a
-// student route (see CLAUDE/invariants.md).
+// student route (see CLAUDE/invariants.md). Instructors: expected techniques of assigned scenarios
+// (shared content — an edit applies to every organization on it); reports, credits and voids only
+// for their (organization, scenario) pairs; occurrences only while the scenario is exclusive to them.
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
 const MAX_POINTS = 1000;
 const MAX_DESCRIPTION = 500;
@@ -97,12 +101,13 @@ function validTacticFor(techniqueId: string, tacticId: unknown): boolean {
   return typeof tacticId === 'string' && (getTechnique(techniqueId)?.tacticIds.includes(tacticId) ?? false);
 }
 
-router.get('/cyber-ranges/:cyberRangeId/expected-ttps', (req, res) => {
+router.get('/cyber-ranges/:cyberRangeId/expected-ttps', requirePermission('scenario.inspect'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   if (!cyberRangeExists(cyberRangeId)) {
     res.status(404).json({ error: 'cyber range not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, cyberRangeId)) return;
   const expected = expectedDTO(cyberRangeId);
   res.json({
     attackVersion: listCatalog().attackVersion,
@@ -112,12 +117,13 @@ router.get('/cyber-ranges/:cyberRangeId/expected-ttps', (req, res) => {
   });
 });
 
-router.post('/cyber-ranges/:cyberRangeId/expected-ttps', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/expected-ttps', requirePermission('scenario.author'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   if (!cyberRangeExists(cyberRangeId)) {
     res.status(404).json({ error: 'cyber range not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, cyberRangeId)) return;
   const body = (req.body ?? {}) as Record<string, unknown>;
   const { techniqueId } = body;
   if (!isValidTechniqueId(techniqueId)) {
@@ -170,7 +176,7 @@ router.post('/cyber-ranges/:cyberRangeId/expected-ttps', (req, res) => {
     return;
   }
 
-  writeAudit(req.user!.username, 'ttp.expected_created', 'expected_ttp', id, { cyberRangeId, techniqueId, points: body.points });
+  writeAudit(req.user!.username, 'ttp.expected_created', 'expected_ttp', id, { cyberRangeId, techniqueId, points: body.points }, { cyberRangeId });
   // A new expectation can credit tags teams already made (detected_at stays the tag's own time).
   reconcileRangeAndAnnounce(cyberRangeId);
   res.status(201).json({ expected: expectedDTO(cyberRangeId).find((e) => e.id === id) });
@@ -178,12 +184,13 @@ router.post('/cyber-ranges/:cyberRangeId/expected-ttps', (req, res) => {
 
 // technique_id is deliberately not editable: changing it would silently re-point existing credits at
 // a different technique. Remove + add instead.
-router.patch('/expected-ttps/:id', (req, res) => {
+router.patch('/expected-ttps/:id', requirePermission('scenario.author'), (req, res) => {
   const existing = getExpectedTtp(Number(req.params.id));
   if (!existing || !existing.isActive) {
     res.status(404).json({ error: 'expected technique not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, existing.cyberRangeId, 'expected technique')) return;
   const body = (req.body ?? {}) as Record<string, unknown>;
   if ('techniqueId' in body && body.techniqueId !== existing.techniqueId) {
     res.status(400).json({ error: "the technique can't be changed — remove this one and add the new technique instead" });
@@ -222,7 +229,7 @@ router.patch('/expected-ttps/:id', (req, res) => {
     cyberRangeId: existing.cyberRangeId,
     techniqueId: existing.techniqueId,
     changes: Object.keys(body),
-  });
+  }, { cyberRangeId: existing.cyberRangeId });
   // Points edits apply to future credits only (existing ones keep their snapshot) — no reconcile needed.
   notifyRange(existing.cyberRangeId);
   res.json({ expected: expectedDTO(existing.cyberRangeId).find((e) => e.id === existing.id) });
@@ -230,12 +237,13 @@ router.patch('/expected-ttps/:id', (req, res) => {
 
 // Soft delete. Credits already awarded against it would otherwise keep points for a technique the
 // scenario no longer expects, so the instructor must explicitly choose to void them.
-router.delete('/expected-ttps/:id', (req, res) => {
+router.delete('/expected-ttps/:id', requirePermission('scenario.author'), (req, res) => {
   const existing = getExpectedTtp(Number(req.params.id));
   if (!existing || !existing.isActive) {
     res.status(404).json({ error: 'expected technique not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, existing.cyberRangeId, 'expected technique')) return;
   const credited = db
     .prepare(`SELECT id FROM ttp_detections WHERE expected_ttp_id = ? AND status = 'credited'`)
     .all(existing.id) as { id: number }[];
@@ -257,7 +265,7 @@ router.delete('/expected-ttps/:id', (req, res) => {
     cyberRangeId: existing.cyberRangeId,
     techniqueId: existing.techniqueId,
     voidedCredits: credited.length,
-  });
+  }, { cyberRangeId: existing.cyberRangeId });
   if (credited.length > 0) announceLeaderboard();
   notifyRange(existing.cyberRangeId);
   res.json({ ok: true, voidedCredits: credited.length });
@@ -265,12 +273,16 @@ router.delete('/expected-ttps/:id', (req, res) => {
 
 // Manual "Mark occurred" — for activity the platform didn't run itself (the external AI Agent
 // Simulator, a hands-on injector). MTTD only: never creates or changes a credit.
-router.post('/expected-ttps/:id/occurrences', (req, res) => {
+// An occurrence moves MTTD for every team on the scenario, so it needs the scenario exclusive to the
+// caller's scope (same rule as VM actions).
+router.post('/expected-ttps/:id/occurrences', requirePermission('ttp.occurrence.mark'), (req, res) => {
   const existing = getExpectedTtp(Number(req.params.id));
   if (!existing || !existing.isActive) {
     res.status(404).json({ error: 'expected technique not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, existing.cyberRangeId, 'expected technique')) return;
+  if (!assertScenarioExclusive(req, res, existing.cyberRangeId)) return;
   const eventRunId = getActiveEventRunId();
   if (eventRunId == null) {
     res.status(409).json({ error: 'no active event run' });
@@ -307,12 +319,12 @@ router.post('/expected-ttps/:id/occurrences', (req, res) => {
     cyberRangeId: existing.cyberRangeId,
     techniqueId: existing.techniqueId,
     occurredAt,
-  });
+  }, { cyberRangeId: existing.cyberRangeId });
   notifyRange(existing.cyberRangeId);
   res.status(201).json({ occurrence: occurrencesForRange(existing.cyberRangeId).find((o) => o.id === Number(result.lastInsertRowid)) });
 });
 
-router.delete('/ttp-occurrences/:id', (req, res) => {
+router.delete('/ttp-occurrences/:id', requirePermission('ttp.occurrence.mark'), (req, res) => {
   const occurrence = db
     .prepare('SELECT id, cyber_range_id AS cyberRangeId, expected_ttp_id AS expectedTtpId, occurred_at AS occurredAt FROM ttp_occurrences WHERE id = ?')
     .get(Number(req.params.id)) as { id: number; cyberRangeId: number; expectedTtpId: number; occurredAt: string } | undefined;
@@ -320,22 +332,28 @@ router.delete('/ttp-occurrences/:id', (req, res) => {
     res.status(404).json({ error: 'occurrence not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, occurrence.cyberRangeId, 'occurrence')) return;
+  if (!assertScenarioExclusive(req, res, occurrence.cyberRangeId)) return;
   db.prepare('DELETE FROM ttp_occurrences WHERE id = ?').run(occurrence.id);
   writeAudit(req.user!.username, 'ttp.occurrence_deleted', 'expected_ttp', occurrence.expectedTtpId, {
     cyberRangeId: occurrence.cyberRangeId,
     occurredAt: occurrence.occurredAt,
-  });
+  }, { cyberRangeId: occurrence.cyberRangeId });
   notifyRange(occurrence.cyberRangeId);
   res.json({ ok: true });
 });
 
-router.get('/cyber-ranges/:cyberRangeId/ttp-report', (req, res) => {
+// One team: its pair must be in scope. Whole scenario: only the teams in the caller's pairs (another
+// organization's results never appear, not even in the MTTD summary).
+router.get('/cyber-ranges/:cyberRangeId/ttp-report', requirePermission('ttp.manage'), (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   if (!cyberRangeExists(cyberRangeId)) {
     res.status(404).json({ error: 'cyber range not found' });
     return;
   }
+  if (!assertScenarioInScope(req, res, cyberRangeId)) return;
   if (req.query.teamId) {
+    if (!assertPairInScope(req, res, Number(req.query.teamId), cyberRangeId)) return;
     const report = buildTeamTtpReport(Number(req.query.teamId), cyberRangeId, { includeInstructorNotes: true });
     if (!report) {
       res.status(404).json({ error: 'team not found' });
@@ -344,15 +362,22 @@ router.get('/cyber-ranges/:cyberRangeId/ttp-report', (req, res) => {
     res.json({ report });
     return;
   }
-  res.json(buildRangeTtpReport(cyberRangeId));
+  res.json(buildRangeTtpReport(cyberRangeId, (teamId) => pairInScope(req.user!, teamId, cyberRangeId)));
 });
 
-router.post('/ttp-detections', (req, res) => {
+router.post('/ttp-detections', requirePermission('ttp.manage'), (req, res) => {
   const { teamId, expectedTtpId, documentationEntryId, note } = req.body ?? {};
   if (typeof teamId !== 'number' || typeof expectedTtpId !== 'number' || typeof documentationEntryId !== 'number') {
     res.status(400).json({ error: 'teamId, expectedTtpId and documentationEntryId are required' });
     return;
   }
+  // The expectation's own scenario decides the pair (manualCredit re-checks the entry belongs to it).
+  const expectation = getExpectedTtp(expectedTtpId);
+  if (!expectation) {
+    res.status(404).json({ error: 'expected technique not found' });
+    return;
+  }
+  if (!assertPairInScope(req, res, teamId, expectation.cyberRangeId)) return;
   if (note != null && (typeof note !== 'string' || note.length > 500)) {
     res.status(400).json({ error: 'note must be text of at most 500 characters' });
     return;
@@ -369,14 +394,22 @@ router.post('/ttp-detections', (req, res) => {
     points: result.points,
     // Instructor-private: never copied into the student-visible scores.note.
     note: typeof note === 'string' && note.trim() ? note.trim() : null,
-  });
+  }, { organizationId: teamOrganization(teamId)?.orgId ?? null, cyberRangeId: result.cyberRangeId });
   announceCredits([{ scoreId: result.scoreId!, teamId, creditedUserId: result.creditedUserId ?? null }]);
   announceLeaderboard();
   emitTtpChanged(teamId, result.cyberRangeId);
   res.status(201).json({ ok: true, detectionId: result.detectionId });
 });
 
-router.post('/ttp-detections/:id/void', (req, res) => {
+router.post('/ttp-detections/:id/void', requirePermission('ttp.manage'), (req, res) => {
+  const detection = db
+    .prepare('SELECT team_id AS teamId, cyber_range_id AS cyberRangeId FROM ttp_detections WHERE id = ?')
+    .get(Number(req.params.id)) as { teamId: number; cyberRangeId: number } | undefined;
+  if (!detection) {
+    res.status(404).json({ error: 'detection not found' });
+    return;
+  }
+  if (!assertPairInScope(req, res, detection.teamId, detection.cyberRangeId, 'detection')) return;
   const reason = req.body?.reason;
   if (reason != null && (typeof reason !== 'string' || reason.length > 500)) {
     res.status(400).json({ error: 'reason must be text of at most 500 characters' });
@@ -390,7 +423,10 @@ router.post('/ttp-detections/:id/void', (req, res) => {
     res.status(result.status).json({ error: result.error });
     return;
   }
-  writeAudit(req.user!.username, 'ttp.credit_voided', 'ttp_detection', detectionId, { teamId: result.teamId, reason: reason ?? null });
+  writeAudit(req.user!.username, 'ttp.credit_voided', 'ttp_detection', detectionId, { teamId: result.teamId, reason: reason ?? null }, {
+    organizationId: teamOrganization(result.teamId)?.orgId ?? null,
+    cyberRangeId: result.cyberRangeId,
+  });
   announceLeaderboard();
   emitTtpChanged(result.teamId, result.cyberRangeId);
   res.json({ ok: true });

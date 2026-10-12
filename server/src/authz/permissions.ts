@@ -39,7 +39,8 @@ export const PERMISSIONS = [
   'access_session.self',
   'access_session.manage',
   // Scenario content (instructor: assigned scenarios; edits apply to every organization using them)
-  'scenario.read',
+  'scenario.read', // catalog + (students) the published topology of an assigned scenario
+  'scenario.inspect', // staff: draft topology, answer key, settings
   'scenario.create',
   'scenario.delete',
   'scenario.author',
@@ -79,6 +80,7 @@ const INSTRUCTOR: readonly Permission[] = [
   'help.manage',
   'access_session.manage',
   'scenario.read',
+  'scenario.inspect',
   'scenario.author',
   'environment.operate',
   'script.read',

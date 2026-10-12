@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { isInstructor } from '../authz/roles.js';
 import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -18,6 +19,10 @@ import { parseAvatar, setOwnAvatar } from '../services/avatar.service.js';
 import { kickRevokedSockets } from '../sockets/index.js';
 import { ensureStaffMembership, findAccountByUsername, scopedInstructorsEnabled, usernameTaken } from '../services/accounts.service.js';
 import { isLoginThrottled, recordLoginFailure, recordLoginSuccess } from '../services/loginThrottle.service.js';
+import { runAsAuditActor, writeAudit } from '../services/audit.service.js';
+import { permissionsFor } from '../authz/permissions.js';
+import { describeScope } from '../authz/describeScope.js';
+import { requirePermission } from '../authz/requirePermission.js';
 
 const router = Router();
 
@@ -63,7 +68,7 @@ router.post('/login', (req, res) => {
     const allowed =
       account.password === password &&
       !account.disabledAt &&
-      (account.role !== 'instructor' || scopedInstructorsEnabled());
+      (!isInstructor(account.role) || scopedInstructorsEnabled());
     if (allowed) {
       const userId = ensureStaffMembership(account)!;
       user = {
@@ -88,10 +93,22 @@ router.post('/login', (req, res) => {
 
   if (!user) {
     recordLoginFailure(ip, username);
+    // Only staff-account failures are audited (a known staff username under attack); student typos
+    // would flood the trail. The attempted username is never logged with a password.
+    if (account) {
+      runAsAuditActor({ accountId: account.id, role: account.role, ip }, () =>
+        writeAudit(account.username, 'auth.login_failed', 'account', account.id, { disabled: !!account.disabledAt }, { outcome: 'denied' }),
+      );
+    }
     res.status(401).json({ error: 'invalid credentials' });
     return;
   }
   recordLoginSuccess(ip, username);
+  if (account) {
+    runAsAuditActor({ accountId: account.id, role: account.role, ip }, () =>
+      writeAudit(account.username, 'auth.login', 'account', account.id, null),
+    );
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
   const createdAt = new Date();
@@ -245,39 +262,48 @@ router.post('/register', (req, res) => {
   });
 });
 
-router.post('/logout', requireAuth, (req, res) => {
+router.post('/logout', requireAuth, requirePermission('profile.self'), (req, res) => {
   const token = req.headers.authorization!.slice(7);
   // A signed-out user must not leave a live remote session (and its Bastion link) behind on a shared
   // lab machine.
   endActiveSessions({ userId: req.user!.id }, 'completed', req.user!.username, 'logout');
   db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
+  if (req.user!.accountId !== null) writeAudit(req.user!.username, 'auth.logout', 'account', req.user!.accountId, null);
   kickRevokedSockets();
   res.json({ ok: true });
 });
 
-router.get('/me', requireAuth, (req, res) => {
+// permissions/scope are for the UI only (what to show) — the server re-checks every request.
+router.get('/me', requireAuth, requirePermission('profile.self'), (req, res) => {
   const user = db
     .prepare(
       'SELECT id, username, role, team_id AS teamId, display_name AS displayName, avatar FROM users WHERE id = ?',
     )
     .get(req.user!.id) as { role: string } | undefined;
-  res.json({ user: user && { ...user, role: req.user!.role, accountId: req.user!.accountId } });
+  res.json({
+    user: user && { ...user, role: req.user!.role, accountId: req.user!.accountId },
+    permissions: permissionsFor(req.user!.role),
+    scope: describeScope(req.user!),
+  });
 });
 
 // Self-service profile edit for any signed-in user — see profile.service.ts for the rules.
-router.patch('/me', requireAuth, (req, res) => {
+router.patch('/me', requireAuth, requirePermission('profile.self'), (req, res) => {
   const token = req.headers.authorization!.slice(7);
   const result = updateOwnProfile(req.user!.id, token, req.body ?? {});
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });
     return;
   }
-  if (result.passwordChanged) kickRevokedSockets();
+  if (result.passwordChanged) {
+    if (req.user!.accountId !== null) writeAudit(req.user!.username, 'auth.password_changed', 'account', req.user!.accountId, null);
+    kickRevokedSockets();
+  }
   res.json({ user: result.user, passwordChanged: result.passwordChanged });
 });
 
 // Pick or clear (null) the signed-in user's preset avatar — see avatar.service.ts.
-router.put('/me/avatar', requireAuth, (req, res) => {
+router.put('/me/avatar', requireAuth, requirePermission('profile.self'), (req, res) => {
   const result = setOwnAvatar(req.user!.id, req.body?.avatar);
   if (!result.ok) {
     res.status(400).json({ error: result.error });

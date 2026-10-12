@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.js';
-import { requireRole } from '../../middleware/requireRole.js';
+import { requirePermission } from '../../authz/requirePermission.js';
 import {
   checkConnectivity,
   createEnvironment,
@@ -20,9 +20,14 @@ import { getEnvironmentPower, requestEnvironmentPower, type VmPowerAction } from
 
 const router = Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth);
 
-router.get('/environments', (_req, res) => {
+// Cloud environments are admin-only: registration, secrets, discovery, linking and environment-wide
+// power reach every scenario (and organization) on the environment. Instructors operate single VMs of
+// their scenarios from Topology Admin instead (environment.operate, scoped + exclusive).
+const MANAGE = requirePermission('environment.manage');
+
+router.get('/environments', MANAGE, (_req, res) => {
   res.json({ environments: listEnvironments() });
 });
 
@@ -30,7 +35,7 @@ router.get('/environments', (_req, res) => {
 // and links it in the same transaction (the Environments page always sends it).
 // The secret comes from exactly one of `clientSecret` or `copySecretFromEnvironmentId` (reuse another
 // environment's stored secret).
-router.post('/environments', (req, res) => {
+router.post('/environments', MANAGE, (req, res) => {
   const {
     provider,
     name,
@@ -102,7 +107,7 @@ router.post('/environments', (req, res) => {
   res.status(201).json({ environment, cyberRangeId });
 });
 
-router.patch('/environments/:id', (req, res) => {
+router.patch('/environments/:id', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   const { name, externalAccountId, externalScope, tenantId, clientId, clientSecret, discoveryMode, discoveryIntervalMinutes } = req.body ?? {};
 
@@ -135,7 +140,7 @@ router.patch('/environments/:id', (req, res) => {
   res.json({ environment });
 });
 
-router.delete('/environments/:id', (req, res) => {
+router.delete('/environments/:id', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   let deleted: boolean;
   try {
@@ -156,7 +161,7 @@ router.delete('/environments/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/environments/:id/connectivity-check', async (req, res) => {
+router.post('/environments/:id/connectivity-check', MANAGE, async (req, res) => {
   const id = Number(req.params.id);
   if (!getEnvironment(id)) {
     res.status(404).json({ error: 'environment not found' });
@@ -167,7 +172,7 @@ router.post('/environments/:id/connectivity-check', async (req, res) => {
   res.json(result);
 });
 
-router.get('/environments/:id/linked-cyber-ranges', (req, res) => {
+router.get('/environments/:id/linked-cyber-ranges', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   if (!getEnvironment(id)) {
     res.status(404).json({ error: 'environment not found' });
@@ -176,7 +181,7 @@ router.get('/environments/:id/linked-cyber-ranges', (req, res) => {
   res.json({ cyberRanges: listLinkedCyberRanges(id) });
 });
 
-router.post('/environments/:id/discover', (req, res) => {
+router.post('/environments/:id/discover', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   const outcome = triggerDiscovery(id, req.user!.username);
   if (!outcome.ok) {
@@ -186,7 +191,7 @@ router.post('/environments/:id/discover', (req, res) => {
   res.status(202).json({ runId: outcome.runId });
 });
 
-router.get('/environments/:id/discovery-runs', (req, res) => {
+router.get('/environments/:id/discovery-runs', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   if (!getEnvironment(id)) {
     res.status(404).json({ error: 'environment not found' });
@@ -200,7 +205,7 @@ function readPowerAction(body: unknown): VmPowerAction | null {
   return action === 'start' || action === 'stop' ? action : null;
 }
 
-router.post('/environments/:id/power', (req, res) => {
+router.post('/environments/:id/power', MANAGE, (req, res) => {
   const action = readPowerAction(req.body);
   if (!action) {
     res.status(400).json({ error: "action must be 'start' or 'stop'" });
@@ -214,7 +219,7 @@ router.post('/environments/:id/power', (req, res) => {
   res.status(202).json({ operation: outcome.operation });
 });
 
-router.get('/environments/:id/power', (req, res) => {
+router.get('/environments/:id/power', MANAGE, (req, res) => {
   const id = Number(req.params.id);
   if (!getEnvironment(id)) {
     res.status(404).json({ error: 'environment not found' });
@@ -223,7 +228,7 @@ router.get('/environments/:id/power', (req, res) => {
   res.json({ operation: getEnvironmentPower(id) });
 });
 
-router.get('/environments/:id/discovery-runs/:runId', (req, res) => {
+router.get('/environments/:id/discovery-runs/:runId', MANAGE, (req, res) => {
   const run = getDiscoveryRun(Number(req.params.runId));
   if (!run || run.environmentId !== Number(req.params.id)) {
     res.status(404).json({ error: 'discovery run not found' });
@@ -232,7 +237,7 @@ router.get('/environments/:id/discovery-runs/:runId', (req, res) => {
   res.json({ run });
 });
 
-router.post('/cyber-ranges/:cyberRangeId/environments', (req, res) => {
+router.post('/cyber-ranges/:cyberRangeId/environments', MANAGE, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const { environmentId } = req.body ?? {};
   if (typeof environmentId !== 'number') {
@@ -248,7 +253,7 @@ router.post('/cyber-ranges/:cyberRangeId/environments', (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-router.delete('/cyber-ranges/:cyberRangeId/environments/:environmentId', (req, res) => {
+router.delete('/cyber-ranges/:cyberRangeId/environments/:environmentId', MANAGE, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
   const environmentId = Number(req.params.environmentId);
 

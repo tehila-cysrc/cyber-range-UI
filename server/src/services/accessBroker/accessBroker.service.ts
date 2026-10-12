@@ -387,6 +387,8 @@ export interface ActiveSessionSummary {
   id: number;
   teamId: number | null;
   teamName: string | null; // null = an instructor's own Connect session, not tied to any team
+  userId: number;
+  cyberRangeId: number;
   username: string;
   topologyNodeId: number;
   nodeLabel: string;
@@ -398,7 +400,7 @@ export interface ActiveSessionSummary {
 export function listActiveSessions(): ActiveSessionSummary[] {
   return db
     .prepare(
-      `SELECT s.id AS id, s.team_id AS teamId, t.name AS teamName, u.username AS username,
+      `SELECT s.id AS id, s.team_id AS teamId, t.name AS teamName, u.username AS username, s.user_id AS userId, s.cyber_range_id AS cyberRangeId,
               s.topology_node_id AS topologyNodeId, tn.label AS nodeLabel, s.protocol AS protocol,
               s.started_at AS startedAt, s.expires_at AS expiresAt
        FROM access_sessions s

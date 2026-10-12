@@ -643,8 +643,10 @@ export function buildTeamTtpReport(teamId: number, cyberRangeId: number, opts: {
 
 // Scenario-wide report: every team that has been on this range, plus pooled MTTD over all their
 // measurable detections (with the same measured-of-detected count).
-export function buildRangeTtpReport(cyberRangeId: number) {
+// `includeTeam` limits the report (and its MTTD summary) to the teams the reader may see.
+export function buildRangeTtpReport(cyberRangeId: number, includeTeam: (teamId: number) => boolean = () => true) {
   const teams = teamIdsOnRange(cyberRangeId)
+    .filter(includeTeam)
     .map((teamId) => buildTeamTtpReport(teamId, cyberRangeId, { includeInstructorNotes: true }))
     .filter((r): r is TeamTtpReport => r !== null);
   const allMttd = teams.flatMap((t) => t.expected.map((e) => e.detection?.mttd).filter((m): m is MttdResult => !!m));
