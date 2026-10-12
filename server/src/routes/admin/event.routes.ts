@@ -79,9 +79,17 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
 
     job.phase = 'Wiping the event';
     const activeRunId = getActiveEventRunId();
+    const instructors = activeRunId !== null ? activeInstructorAccounts(activeRunId) : [];
+    // createFreshEventRun falls back to the well-known default login when given nobody — never let a
+    // reset do that (e.g. every instructor was removed while the revoke step was waiting on Bastion).
+    if (instructors.length === 0) {
+      job.state = 'failed';
+      job.phase = 'Not reset — no active instructor account to keep';
+      job.error = 'no active instructor account would survive the reset — nothing was wiped';
+      return;
+    }
     db.exec('BEGIN');
     let newRunId: number;
-    const instructors = activeRunId !== null ? activeInstructorAccounts(activeRunId) : [];
     try {
       if (activeRunId !== null) db.prepare('DELETE FROM event_runs WHERE id = ?').run(activeRunId);
       newRunId = createFreshEventRun(instructors);
