@@ -16,6 +16,7 @@ import {
 import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
 import { parseAvatar, setOwnAvatar } from '../services/avatar.service.js';
 import { kickRevokedSockets } from '../sockets/index.js';
+import { roleFromUsersRow } from '../authz/roles.js';
 import { isLoginThrottled, recordLoginFailure, recordLoginSuccess } from '../services/loginThrottle.service.js';
 
 const router = Router();
@@ -84,7 +85,7 @@ router.post('/login', (req, res) => {
     user: {
       id: user.id,
       username: user.username,
-      role: user.role,
+      role: roleFromUsersRow(user.role),
       teamId: user.teamId,
       displayName: user.displayName,
       avatar: user.avatar,
@@ -229,8 +230,8 @@ router.get('/me', requireAuth, (req, res) => {
     .prepare(
       'SELECT id, username, role, team_id AS teamId, display_name AS displayName, avatar FROM users WHERE id = ?',
     )
-    .get(req.user!.id);
-  res.json({ user });
+    .get(req.user!.id) as { role: string } | undefined;
+  res.json({ user: user && { ...user, role: req.user!.role } });
 });
 
 // Self-service profile edit for any signed-in user — see profile.service.ts for the rules.

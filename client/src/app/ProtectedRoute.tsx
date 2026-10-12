@@ -1,20 +1,22 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { isStaff } from '../lib/permissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  requireRole?: 'instructor' | 'student';
+  requireStaff?: boolean;
 }
 
-export function ProtectedRoute({ children, requireRole }: ProtectedRouteProps) {
+// UX only — the server enforces every permission on its own.
+export function ProtectedRoute({ children, requireStaff }: ProtectedRouteProps) {
   const { token, user } = useAuthStore();
 
   if (!token || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requireRole && user.role !== requireRole) {
+  if (requireStaff && !isStaff(user.role)) {
     return <Navigate to="/" replace />;
   }
 

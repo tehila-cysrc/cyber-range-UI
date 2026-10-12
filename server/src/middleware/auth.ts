@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '../db/index.js';
+import { roleFromUsersRow } from '../authz/roles.js';
 
 interface TokenRow {
   id: number;
@@ -37,6 +38,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  req.user = { id: row.id, role: row.role as 'student' | 'instructor', teamId: row.teamId, username: row.username };
+  req.user = { id: row.id, role: roleFromUsersRow(row.role), teamId: row.teamId, username: row.username };
   next();
 }

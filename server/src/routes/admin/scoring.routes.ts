@@ -7,7 +7,7 @@ import { teamTotal, studentTotal } from '../../services/scoring.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 const MAX_POINTS_PER_AWARD = 1000;
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isStaff } from '../authz/roles.js';
 import { budgetFor, buildTeamTtpReport } from '../services/ttpScoring.service.js';
 import { certificateStatus } from '../services/certificate.service.js';
 
@@ -9,7 +10,7 @@ const router = Router();
 router.use(requireAuth);
 
 function requireTeam(req: import('express').Request, res: import('express').Response): number | null {
-  if (req.user!.role === 'instructor') {
+  if (isStaff(req.user!.role)) {
     res.status(400).json({ error: 'instructor has no team — use /api/admin/teams' });
     return null;
   }

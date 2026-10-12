@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isStaff } from '../authz/roles.js';
 import {
   emitInvestigationCanvasNodeCreated,
   emitInvestigationCanvasNodeUpdated,
@@ -24,7 +25,7 @@ router.use(requireAuth);
 // Same shape as documentation.routes.ts's resolveTeamId: instructor must pass ?teamId= explicitly
 // (never a merged cross-team view), a student implicitly gets their own team.
 function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (req.user!.role === 'instructor') {
+  if (isStaff(req.user!.role)) {
     const teamId = Number(req.query.teamId);
     if (!teamId) {
       res.status(400).json({ error: 'instructor must pass ?teamId=' });

@@ -11,7 +11,7 @@ import { kickRevokedSockets } from '../../sockets/index.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // Instructor accounts of the active run (Roster → Instructors). Students are listed per team by
 // GET /admin/teams instead.

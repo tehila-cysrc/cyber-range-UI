@@ -12,6 +12,7 @@ import { FlagIcon } from '../../components/icons';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
 import { useDraftStore } from '../../stores/draftStore';
 import { useAuthStore } from '../../stores/authStore';
+import { isStaff } from '../../lib/permissions';
 import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
 import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
@@ -152,7 +153,7 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB raw file, before base64 inflatio
 export function InvestigationPage() {
   const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
-  const isInstructor = role === 'instructor';
+  const isInstructor = isStaff(role);
   const ownTeamId = useAuthStore((s) => s.user?.teamId);
 
   // Kept in the URL so a refresh or a link returns to the same tab (it always reset to Timeline).

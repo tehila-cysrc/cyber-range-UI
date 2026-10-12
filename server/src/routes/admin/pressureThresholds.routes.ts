@@ -5,7 +5,7 @@ import { requireRole } from '../../middleware/requireRole.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/cyber-ranges/:cyberRangeId/pressure-thresholds', (req, res) => {
   const thresholds = db

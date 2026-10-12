@@ -130,7 +130,7 @@ resetJobsPublicRouter.get('/:jobId', (req, res) => {
   res.json({ job });
 });
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // Results archive to keep before a reset wipes the RUN tables (UX audit UX-05). ?format=csv gives a
 // one-row-per-team×scenario summary; default is the full JSON (timelines, canvas, scores).

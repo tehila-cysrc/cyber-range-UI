@@ -6,7 +6,7 @@ import { teamTtpSummary } from '../../services/ttpScoring.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 interface TeamRow {
   id: number;

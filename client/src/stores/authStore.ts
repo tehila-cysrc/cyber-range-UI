@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export interface AuthUser {
   id: number;
   username: string;
-  role: 'student' | 'instructor';
+  role: 'student' | 'instructor' | 'admin';
   teamId: number | null;
   displayName: string;
   avatar?: string | null; // preset key (lib/avatars.ts); absent on sessions stored before avatars existed

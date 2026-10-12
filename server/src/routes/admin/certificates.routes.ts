@@ -7,7 +7,7 @@ import { emitCertificateChanged } from '../../sockets/emitters.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // Students the instructor granted the certificate to directly, plus the teams that earned it by
 // completing a scenario (Roster → Students shows those as "Earned" instead of offering a grant).

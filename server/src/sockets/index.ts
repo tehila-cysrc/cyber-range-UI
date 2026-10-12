@@ -1,11 +1,12 @@
 import type { Server, Socket } from 'socket.io';
 import { db } from '../db/index.js';
+import { isStaff, roleFromUsersRow, type Role } from '../authz/roles.js';
 import { teamRoom, INSTRUCTOR_ROOM } from './rooms.js';
 import { getIo } from './io.js';
 
 interface AuthedUser {
   id: number;
-  role: 'student' | 'instructor';
+  role: Role;
   teamId: number | null;
 }
 
@@ -31,7 +32,7 @@ function authenticate(token: string | undefined): AuthedUser | null {
   if (!row) return null;
   if (new Date(row.expiresAt).getTime() < Date.now()) return null;
 
-  return { id: row.id, role: row.role as 'student' | 'instructor', teamId: row.teamId };
+  return { id: row.id, role: roleFromUsersRow(row.role), teamId: row.teamId };
 }
 
 // A socket's rooms are decided at handshake, so its token is re-checked afterwards: logout, expiry,
@@ -80,7 +81,7 @@ export function setupSockets(io: Server) {
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user as AuthedUser;
 
-    if (user.role === 'instructor') {
+    if (isStaff(user.role)) {
       socket.join(INSTRUCTOR_ROOM);
     } else if (user.teamId != null) {
       socket.join(teamRoom(user.teamId));

@@ -6,7 +6,7 @@ import { emitHelpRequestResolved } from '../../sockets/emitters.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/help-requests', (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : null;

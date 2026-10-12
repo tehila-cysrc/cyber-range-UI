@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { roleFromUsersRow } from '../authz/roles.js';
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -91,7 +92,7 @@ export function updateOwnProfile(userId: number, currentToken: string, input: Pr
 
   return {
     ok: true,
-    user: { id: user.id, username, role: user.role, teamId: user.teamId, displayName, avatar: user.avatar },
+    user: { id: user.id, username, role: roleFromUsersRow(user.role), teamId: user.teamId, displayName, avatar: user.avatar },
     passwordChanged,
   };
 }

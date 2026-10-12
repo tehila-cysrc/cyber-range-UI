@@ -10,7 +10,7 @@ import {
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/access-sessions', (_req, res) => {
   res.json({ sessions: listActiveSessions() });

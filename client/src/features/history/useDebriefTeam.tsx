@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/apiClient';
 import { useAuthStore } from '../../stores/authStore';
+import { isStaff } from '../../lib/permissions';
 import { useLockedTeam } from '../team/LockedTeamContext';
 import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 
@@ -9,7 +10,7 @@ import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 // so they pick one (kept in `?teamId=` so links between the Debrief pages and a browser refresh keep
 // it). The server already accepts `?teamId=` from instructors on every /history route.
 export function useDebriefTeam() {
-  const isInstructor = useAuthStore((s) => s.user?.role === 'instructor');
+  const isInstructor = useAuthStore((s) => isStaff(s.user?.role));
   const locked = useLockedTeam();
   const [params, setParams] = useSearchParams();
   const teamId = isInstructor ? locked ?? (Number(params.get('teamId')) || null) : null;

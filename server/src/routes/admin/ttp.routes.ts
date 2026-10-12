@@ -25,7 +25,7 @@ import { emitTtpChanged } from '../../sockets/emitters.js';
 // student route (see CLAUDE/invariants.md).
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 const MAX_POINTS = 1000;
 const MAX_DESCRIPTION = 500;

@@ -9,7 +9,7 @@ import { closeOpenHelpRequests } from '../../services/helpRequests.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // The only way a team's scenario is assigned/switched — students can't self-assign (see
 // CLAUDE/invariants.md).

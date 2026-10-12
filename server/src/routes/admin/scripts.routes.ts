@@ -5,7 +5,7 @@ import { createScript, deleteScript, getScript, listScripts, updateScript, type 
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 const VALID_SCRIPT_TYPES: ScriptType[] = ['powershell', 'bash'];
 

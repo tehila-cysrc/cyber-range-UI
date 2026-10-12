@@ -1,3 +1,4 @@
+import { isStaff, type Role } from '../authz/roles.js';
 import { db } from '../db/index.js';
 
 export interface LeaderboardEntry {
@@ -28,8 +29,8 @@ export function computeLeaderboard(organizationId?: number): LeaderboardEntry[] 
 // their own organization — their team and the team(s) it competes with — and nothing at all (the
 // tab is hidden) while their team has no organization or is alone in it. There is no instructor
 // on/off switch: the board is on by default.
-export function leaderboardFor(user: { role: string; teamId: number | null }): { enabled: boolean; teams: LeaderboardEntry[] } {
-  if (user.role === 'instructor') return { enabled: true, teams: computeLeaderboard() };
+export function leaderboardFor(user: { role: Role; teamId: number | null }): { enabled: boolean; teams: LeaderboardEntry[] } {
+  if (isStaff(user.role)) return { enabled: true, teams: computeLeaderboard() };
   const row = user.teamId === null
     ? undefined
     : (db.prepare('SELECT organization_id AS orgId FROM teams WHERE id = ?').get(user.teamId) as { orgId: number | null } | undefined);

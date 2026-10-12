@@ -20,7 +20,7 @@ import { getEnvironmentPower, requestEnvironmentPower, type VmPowerAction } from
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/environments', (_req, res) => {
   res.json({ environments: listEnvironments() });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
+import { isStaff } from '../lib/permissions';
 import { useClockStore } from '../stores/clockStore';
 import { disconnectSocket, getSocket } from '../lib/socketClient';
 import { apiFetch } from '../lib/apiClient';
@@ -429,7 +430,7 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const resetClock = useClockStore((s) => s.reset);
   const isStudent = user?.role === 'student';
-  const isInstructor = user?.role === 'instructor';
+  const isInstructor = isStaff(user?.role);
   useMissionClockSync(isStudent);
   useOwnHelpRequestSync(isStudent);
   useEntryFeedbackToast(isStudent);

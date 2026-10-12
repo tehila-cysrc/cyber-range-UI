@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { isStaff } from '../../lib/permissions';
 import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { Avatar } from '../../components/Avatar';
@@ -41,7 +42,7 @@ export function LeaderboardPage() {
   // Team -> organization comes from the instructor-only /admin/teams; /leaderboard and the student
   // view never fetch it (the server already limits a student to their own organization). Kept in the
   // URL (?org=<id>|none).
-  const isInstructor = useAuthStore((s) => s.user?.role === 'instructor');
+  const isInstructor = useAuthStore((s) => isStaff(s.user?.role));
   const { data: rosterData } = useQuery({
     queryKey: ['admin-teams'],
     queryFn: () => apiFetch<{ teams: TeamOrganization[] }>('/admin/teams'),

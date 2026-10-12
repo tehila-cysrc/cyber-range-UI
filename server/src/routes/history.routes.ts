@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isStaff } from '../authz/roles.js';
 import { feedbackByEntry } from '../services/documentationFeedback.service.js';
 
 const router = Router();
@@ -8,7 +9,7 @@ const router = Router();
 router.use(requireAuth);
 
 function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (req.user!.role === 'instructor') {
+  if (isStaff(req.user!.role)) {
     const teamId = Number(req.query.teamId);
     if (!teamId) {
       res.status(400).json({ error: 'instructor must pass ?teamId=' });

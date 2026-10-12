@@ -19,7 +19,7 @@ import { emitLeaderboardUpdate } from '../../sockets/emitters.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 function fail(res: Response, r: Extract<OrgResult<unknown>, { ok: false }>) {
   res.status(r.status).json({ error: r.error });

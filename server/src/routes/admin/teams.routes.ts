@@ -12,7 +12,7 @@ import { kickRevokedSockets } from '../../sockets/index.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 router.get('/teams', (_req, res) => {
   const teams = db

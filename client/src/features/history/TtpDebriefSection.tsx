@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/apiClient';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useAuthStore } from '../../stores/authStore';
+import { isStaff } from '../../lib/permissions';
 import {
   mttdLabel,
   mttdSummaryLabel,
@@ -28,7 +29,7 @@ const monoLabel: React.CSSProperties = {
 // team's own breakdown (student, only once the scenario is completed for every team on it; before
 // that it would give away which techniques are still worth hunting for).
 export function TtpDebriefSection({ cyberRangeId }: { cyberRangeId: number }) {
-  const isInstructor = useAuthStore((s) => s.user?.role) === 'instructor';
+  const isInstructor = isStaff(useAuthStore((s) => s.user?.role));
 
   const { data: rangeReport } = useQuery({
     queryKey: ['ttp-range-report', cyberRangeId],

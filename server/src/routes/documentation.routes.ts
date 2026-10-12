@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { isStaff } from '../authz/roles.js';
 import { emitDocumentationFeedback, emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
 import { activeCyberRangeIdForTeam, teamHasProgressOn } from '../services/cyberRangeProgress.service.js';
@@ -48,7 +49,7 @@ router.get('/documentation-categories', (_req, res) => {
 });
 
 function resolveTeamId(req: import('express').Request, res: import('express').Response): number | null {
-  if (req.user!.role === 'instructor') {
+  if (isStaff(req.user!.role)) {
     const teamId = Number(req.query.teamId);
     if (!teamId) {
       res.status(400).json({ error: 'instructor must pass ?teamId=' });
@@ -277,7 +278,7 @@ router.put('/cyber-ranges/:cyberRangeId/documentation/:entryId/ttps', (req, res)
 // documentationFeedback.service.ts. Allowed on any of the team's scenarios, not just the active one,
 // so an instructor can still comment during review. The entry itself is untouched.
 router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', (req, res) => {
-  if (req.user!.role !== 'instructor') {
+  if (!isStaff(req.user!.role)) {
     res.status(403).json({ error: 'only an instructor can give feedback' });
     return;
   }
@@ -294,7 +295,7 @@ router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', (req,
 });
 
 router.delete('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback/:feedbackId', (req, res) => {
-  if (req.user!.role !== 'instructor') {
+  if (!isStaff(req.user!.role)) {
     res.status(403).json({ error: 'only an instructor can remove feedback' });
     return;
   }

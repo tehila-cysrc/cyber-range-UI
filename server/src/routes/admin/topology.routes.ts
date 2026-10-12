@@ -14,7 +14,7 @@ import { getNodePower, requestNodePower, type VmPowerAction } from '../../servic
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // Publishing (UX-38): students see only what was last published.
 router.get('/cyber-ranges/:cyberRangeId/topology/publication', (req, res) => {

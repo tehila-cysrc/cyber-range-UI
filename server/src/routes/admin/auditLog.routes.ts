@@ -5,7 +5,7 @@ import { listAuditLog } from '../../services/audit.service.js';
 
 const router = Router();
 
-router.use(requireAuth, requireRole('instructor'));
+router.use(requireAuth, requireRole('admin'));
 
 // Read-only view of the compliance trail (Phase 5). Optional ?entityType= filter and ?before=<id>
 // for simple keyset pagination (pass the last row's id back to page further into the past).
