@@ -1,4 +1,26 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { db } from '../db/index.js';
+
+// Who is acting in the current request — set once by requireAuth, read by every writeAudit call below
+// it, so no call site can forget the actor's role/account/IP.
+export interface AuditActor {
+  accountId: number | null;
+  role: string;
+  ip: string | null;
+}
+const actorContext = new AsyncLocalStorage<AuditActor>();
+
+// Runs the rest of the request (sync and async) with this actor; scoped, so it can never leak into
+// another request on the same connection.
+export function runAsAuditActor(actor: AuditActor, fn: () => void) {
+  actorContext.run(actor, fn);
+}
+
+export interface AuditScope {
+  organizationId?: number | null;
+  cyberRangeId?: number | null;
+  outcome?: 'allowed' | 'denied';
+}
 
 // One shared, append-only compliance trail (CONFIG — never touched by event reset, see
 // CLAUDE/invariants.md). Called from every mutating action on cloud environments/credentials so the
@@ -9,11 +31,27 @@ export function writeAudit(
   entityType: string,
   entityId: number | null,
   metadata: Record<string, unknown> | null = null,
+  scope: AuditScope = {},
 ): void {
+  const actor = actorContext.getStore();
   db.prepare(
-    `INSERT INTO audit_log (actor_username, action, entity_type, entity_id, metadata_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(actorUsername, action, entityType, entityId, metadata ? JSON.stringify(metadata) : null, new Date().toISOString());
+    `INSERT INTO audit_log (actor_username, action, entity_type, entity_id, metadata_json, created_at,
+       actor_account_id, actor_role, organization_id, cyber_range_id, outcome, client_ip)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    actorUsername,
+    action,
+    entityType,
+    entityId,
+    metadata ? JSON.stringify(metadata) : null,
+    new Date().toISOString(),
+    actor?.accountId ?? null,
+    actor?.role ?? null,
+    scope.organizationId ?? null,
+    scope.cyberRangeId ?? null,
+    scope.outcome ?? 'allowed',
+    actor?.ip ?? null,
+  );
 }
 
 export interface AuditLogEntry {

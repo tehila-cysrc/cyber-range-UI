@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../authz/principal.js';
+import { runAsAuditActor } from '../services/audit.service.js';
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
@@ -17,5 +18,5 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   req.user = principal;
-  next();
+  runAsAuditActor({ accountId: principal.accountId, role: principal.role, ip: req.ip ?? null }, next);
 }
