@@ -7,6 +7,7 @@ import { endActiveSessions } from '../../services/accessBroker/accessBroker.serv
 import { MIN_PASSWORD_LENGTH } from '../auth.routes.js';
 import { parseAvatar } from '../../services/avatar.service.js';
 import { writeAudit } from '../../services/audit.service.js';
+import { kickRevokedSockets } from '../../sockets/index.js';
 
 const router = Router();
 
@@ -121,6 +122,7 @@ router.patch('/users/:id', (req, res) => {
     db.exec('ROLLBACK');
     throw err;
   }
+  kickRevokedSockets();
   res.json({ ok: true });
 });
 
@@ -132,8 +134,8 @@ router.delete('/users/:id', (req, res) => {
   }
   // A removed account's live remote session would otherwise keep its Bastion link after the cascade.
   endActiveSessions({ userId: id }, 'force_closed', req.user!.username, 'user_deleted');
-  const user = db.prepare('SELECT username FROM users WHERE id = ? AND deactivated_at IS NULL').get(id) as
-    | { username: string }
+  const user = db.prepare('SELECT username, role FROM users WHERE id = ? AND deactivated_at IS NULL').get(id) as
+    | { username: string; role: string }
     | undefined;
   if (!user) {
     res.status(404).json({ error: 'user not found' });
@@ -154,10 +156,13 @@ router.delete('/users/:id', (req, res) => {
       db.exec('ROLLBACK');
       throw err;
     }
-    writeAudit(req.user!.username, 'user.deactivated', 'user', id, { username: user.username });
+    writeAudit(req.user!.username, 'user.deactivated', 'user', id, { username: user.username, role: user.role });
+    kickRevokedSockets();
     res.json({ ok: true, deactivated: true });
     return;
   }
+  writeAudit(req.user!.username, 'user.deleted', 'user', id, { username: user.username, role: user.role });
+  kickRevokedSockets();
   res.json({ ok: true });
 });
 

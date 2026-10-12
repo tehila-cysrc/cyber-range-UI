@@ -28,7 +28,7 @@ interface ResetJob {
   endedSessions: number;
   remoteAccess: RemoteAccessResult | null;
   error: string | null;
-  newInstructor: { username: string; password: string } | null;
+  keptInstructors: string[] | null;
 }
 
 const POLL_MS = 3000;
@@ -135,15 +135,21 @@ export function EventResetPage() {
       <div className="page" style={{ padding: 'var(--space-xl)', maxWidth: 640 }}>
         <h1 style={{ fontSize: 22, color: 'var(--signal-primary)' }}>Event reset complete</h1>
         <p style={{ color: 'var(--text-muted)' }}>
-          All teams, accounts, documentation, scores, and help requests have been wiped. Cyber Range
+          All teams, student accounts, documentation, scores, and help requests have been wiped. Cyber Range
           definitions, topology, and categories were preserved. Student self-registration is closed
           for the new event until you open it on the Teams &amp; Students page.
         </p>
         {result.remoteAccess && <RemoteAccessSummary result={result.remoteAccess} endedSessions={result.endedSessions} />}
-        {result.newInstructor && (
+        {result.keptInstructors && result.keptInstructors.length > 0 && (
           <p style={{ color: 'var(--text-primary)' }}>
-            Log back in as: <code>{result.newInstructor.username}</code> /{' '}
-            <code>{result.newInstructor.password}</code>
+            Instructor accounts were kept with their current passwords — log back in with yours (
+            {result.keptInstructors.map((u, i) => (
+              <span key={u}>
+                {i > 0 && ', '}
+                <code>{u}</code>
+              </span>
+            ))}
+            ).
           </p>
         )}
         <a href="/login" style={{ color: 'var(--signal-secondary)' }}>
@@ -161,8 +167,8 @@ export function EventResetPage() {
         Reset Event
       </h1>
       <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
-        This permanently deletes every team, student/instructor account, documentation entry, score,
-        and help request for the current event run. Cyber Range definitions, topology, and
+        This permanently deletes every team, student account, documentation entry, score, and help
+        request for the current event run. Instructor accounts, Cyber Range definitions, topology, and
         documentation categories are kept. This cannot be undone.
       </p>
       <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>

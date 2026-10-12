@@ -12,7 +12,7 @@ export interface TopologyZoneData {
 
 export interface TopologyNodeData {
   id: number;
-  externalKey: string;
+  externalKey: string | null; // null for students (not sent to them)
   label: string;
   nodeType: string;
   role: string | null;

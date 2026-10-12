@@ -70,3 +70,19 @@ test('hidden nodes are never published, and status is overlaid live', () => {
   db.prepare("UPDATE topology_nodes SET status = 'running' WHERE id = ?").run(dc);
   assert.equal(pub.getPublishedTopology(rangeId).nodes.find((n) => n.id === dc).status, 'running');
 });
+
+test('students get no ARM ids or Azure inventory fields — only OS and private IP', () => {
+  const id = addNode('ArmVm');
+  db.prepare('UPDATE topology_nodes SET external_key = ?, metadata_json = ? WHERE id = ?').run(
+    '/subscriptions/0000/resourceGroups/rg-x/providers/Microsoft.Compute/virtualMachines/ArmVm',
+    JSON.stringify({ osType: 'Windows', privateIpAddress: '10.0.0.4', resourceGroup: 'rg-x', location: 'westeurope', vmSize: 'Standard_B2s' }),
+    id,
+  );
+  pub.publishTopology(rangeId, 'instructor');
+  const node = pub.getPublishedTopology(rangeId).nodes.find((n) => n.id === id);
+  assert.equal(node.externalKey, null);
+  assert.deepEqual(JSON.parse(node.metadataJson), { osType: 'Windows', privateIpAddress: '10.0.0.4' });
+  for (const z of pub.getPublishedTopology(rangeId).zones) assert.equal(z.externalKey, null);
+  // The instructor's publish-status diff still compares the full snapshot.
+  assert.equal(pub.publicationStatus(rangeId).hasUnpublishedChanges, false);
+});

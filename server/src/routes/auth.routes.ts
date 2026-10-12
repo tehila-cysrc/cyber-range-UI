@@ -15,6 +15,8 @@ import {
 } from '../services/registration.service.js';
 import { MIN_PASSWORD_LENGTH, updateOwnProfile } from '../services/profile.service.js';
 import { parseAvatar, setOwnAvatar } from '../services/avatar.service.js';
+import { kickRevokedSockets } from '../sockets/index.js';
+import { isLoginThrottled, recordLoginFailure, recordLoginSuccess } from '../services/loginThrottle.service.js';
 
 const router = Router();
 
@@ -37,6 +39,11 @@ router.post('/login', (req, res) => {
     res.status(400).json({ error: 'username and password are required' });
     return;
   }
+  const ip = req.ip ?? 'unknown';
+  if (isLoginThrottled(ip, username)) {
+    res.status(429).json({ error: 'too many failed sign-in attempts — wait a few minutes and try again' });
+    return;
+  }
 
   const activeRun = db.prepare('SELECT id FROM event_runs WHERE is_active = 1').get() as
     | { id: number }
@@ -55,9 +62,11 @@ router.post('/login', (req, res) => {
     .get(activeRun.id, username) as UserRow | undefined;
 
   if (!user || user.password !== password) {
+    recordLoginFailure(ip, username);
     res.status(401).json({ error: 'invalid credentials' });
     return;
   }
+  recordLoginSuccess(ip, username);
 
   const token = crypto.randomBytes(32).toString('hex');
   const createdAt = new Date();
@@ -211,6 +220,7 @@ router.post('/logout', requireAuth, (req, res) => {
   // lab machine.
   endActiveSessions({ userId: req.user!.id }, 'completed', req.user!.username, 'logout');
   db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
+  kickRevokedSockets();
   res.json({ ok: true });
 });
 
@@ -231,6 +241,7 @@ router.patch('/me', requireAuth, (req, res) => {
     res.status(result.status).json({ error: result.error });
     return;
   }
+  if (result.passwordChanged) kickRevokedSockets();
   res.json({ user: result.user, passwordChanged: result.passwordChanged });
 });
 

@@ -41,6 +41,12 @@ function resolveClientDist(): string | null {
 
 export function createApp() {
   const app = express();
+  // Behind a reverse proxy (Coolify's Traefik) every request otherwise shares the proxy's IP, which
+  // turns the per-IP login/join-code limiters into one global bucket. TRUST_PROXY = number of proxy
+  // hops (or an Express trust-proxy string). Leave unset when clients reach the server directly —
+  // trusting X-Forwarded-For there would let a client pick its own IP and dodge the limiters.
+  const trustProxy = process.env.TRUST_PROXY;
+  if (trustProxy) app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
   app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173' }));
   // Default 100kb is too small for a documentation entry's optional base64 image attachment.

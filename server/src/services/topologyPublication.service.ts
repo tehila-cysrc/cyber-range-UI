@@ -66,6 +66,28 @@ export function publishTopology(cyberRangeId: number, actorUsername: string) {
   return { publishedAt, nodeCount: snapshot.nodes.length };
 }
 
+// Students get only what the viewer shows (OS, private IP). The raw metadata and external keys carry
+// the full ARM resource id (subscription id), resource group, location and VM size. Projected at read
+// time so snapshots published before this change are covered too.
+const STUDENT_METADATA_KEYS = ['osType', 'privateIpAddress'] as const;
+
+function studentMetadata(metadataJson: unknown): string | null {
+  if (typeof metadataJson !== 'string') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(metadataJson);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const out: Record<string, unknown> = {};
+  for (const key of STUDENT_METADATA_KEYS) {
+    const value = (parsed as Record<string, unknown>)[key];
+    if (value !== undefined) out[key] = value;
+  }
+  return JSON.stringify(out);
+}
+
 // What students get: the published snapshot with live status / hasAccessTarget, or null if the
 // instructor never published this range.
 export function getPublishedTopology(cyberRangeId: number): (StudentTopology & { publishedAt: string }) | null {
@@ -83,11 +105,18 @@ export function getPublishedTopology(cyberRangeId: number): (StudentTopology & {
     ).map((n) => [n.id, n]),
   );
   return {
-    zones: published.snapshot.zones,
+    zones: published.snapshot.zones.map((z) => ({ ...(z as object), externalKey: null })),
     edges: published.snapshot.edges,
     nodes: published.snapshot.nodes.map((n) => {
       const current = live.get(n.id);
-      return { ...n, isVisibleToStudents: 1, status: current?.status ?? null, hasAccessTarget: current ? current.hasAccessTarget : 0 };
+      return {
+        ...n,
+        externalKey: null,
+        metadataJson: studentMetadata(n.metadataJson),
+        isVisibleToStudents: 1,
+        status: current?.status ?? null,
+        hasAccessTarget: current ? current.hasAccessTarget : 0,
+      };
     }),
     publishedAt: published.publishedAt,
   };

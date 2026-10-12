@@ -65,19 +65,42 @@ export function getActiveEventRunId(): number | null {
 export const DEFAULT_INSTRUCTOR_USERNAME = 'instructor';
 export const DEFAULT_INSTRUCTOR_PASSWORD = 'instructor123';
 
-// Creates a new active event_runs row with exactly one instructor account — the minimum needed for
-// the system to be usable (someone has to be able to log in to create the new cohort's teams/
-// students). Shared by the dev seed script and the event-reset endpoint (server/src/routes/
-// admin/event.routes.ts) so both leave the system in the same "ready to configure" state.
-export function createFreshEventRun(): number {
+export interface CarriedInstructor {
+  username: string;
+  password: string;
+  displayName: string;
+  avatar: string | null;
+}
+
+// Every active instructor account of the current run, so a reset can carry them into the next one.
+export function activeInstructorAccounts(runId: number): CarriedInstructor[] {
+  return db
+    .prepare(
+      `SELECT username, password, display_name AS displayName, avatar
+       FROM users WHERE event_run_id = ? AND role = 'instructor' AND deactivated_at IS NULL ORDER BY id`,
+    )
+    .all(runId) as unknown as CarriedInstructor[];
+}
+
+// Creates a new active event_runs row with its instructor accounts — the minimum needed for the system
+// to be usable (someone has to be able to log in to create the new cohort's teams/students). Shared by
+// the dev seed script and the event-reset endpoint (server/src/routes/admin/event.routes.ts).
+// The reset passes the previous run's instructors so they keep their own logins; only a run with no
+// instructor to carry over (first seed) gets the well-known default account — a reset must never
+// re-create `instructor`/`instructor123` on a deploy whose instructors changed it.
+export function createFreshEventRun(instructors: CarriedInstructor[] = []): number {
   const runId = db
     .prepare('INSERT INTO event_runs (started_at, is_active) VALUES (?, 1)')
     .run(nowIso()).lastInsertRowid as number;
 
-  db.prepare(
-    `INSERT INTO users (event_run_id, username, password, role, team_id, display_name)
-     VALUES (?, ?, ?, 'instructor', NULL, 'Instructor')`,
-  ).run(runId, DEFAULT_INSTRUCTOR_USERNAME, DEFAULT_INSTRUCTOR_PASSWORD);
+  const accounts: CarriedInstructor[] = instructors.length
+    ? instructors
+    : [{ username: DEFAULT_INSTRUCTOR_USERNAME, password: DEFAULT_INSTRUCTOR_PASSWORD, displayName: 'Instructor', avatar: null }];
+  const insert = db.prepare(
+    `INSERT INTO users (event_run_id, username, password, role, team_id, display_name, avatar)
+     VALUES (?, ?, ?, 'instructor', NULL, ?, ?)`,
+  );
+  for (const a of accounts) insert.run(runId, a.username, a.password, a.displayName, a.avatar);
 
   return runId;
 }

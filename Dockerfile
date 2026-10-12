@@ -21,10 +21,12 @@ FROM node:24-bookworm-slim AS runtime
 
 WORKDIR /app
 
+# TRUST_PROXY=1: Coolify serves the container through one Traefik hop — see server/src/app.ts.
 ENV NODE_ENV=production \
     PORT=4000 \
     DB_PATH=/data/cyber-range.db \
-    CLIENT_DIST=/app/client/dist
+    CLIENT_DIST=/app/client/dist \
+    TRUST_PROXY=1
 
 COPY package.json package-lock.json ./
 COPY client/package.json client/package.json

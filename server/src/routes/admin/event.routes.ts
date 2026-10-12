@@ -3,14 +3,10 @@ import crypto from 'node:crypto';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/requireRole.js';
-import {
-  getActiveEventRunId,
-  createFreshEventRun,
-  DEFAULT_INSTRUCTOR_USERNAME,
-  DEFAULT_INSTRUCTOR_PASSWORD,
-} from '../../db/seed.js';
+import { getActiveEventRunId, createFreshEventRun, activeInstructorAccounts } from '../../db/seed.js';
 import { endActiveSessions, revokeAllShareableLinks, setRemoteAccessFrozen, type EnvironmentRevocation } from '../../services/accessBroker/accessBroker.service.js';
 import { writeAudit } from '../../services/audit.service.js';
+import { kickRevokedSockets } from '../../sockets/index.js';
 import { buildEventExport, buildEventExportCsv, buildEventExportXlsx } from '../../services/eventExport.service.js';
 
 const router = Router();
@@ -39,7 +35,8 @@ interface ResetJob {
   endedSessions: number;
   remoteAccess: RemoteAccessResult | null;
   error: string | null;
-  newInstructor: { username: string; password: string } | null;
+  // Usernames only — this is served by a token-less route, so it never carries a password.
+  keptInstructors: string[] | null;
 }
 
 // In-memory on purpose: the destructive step (the wipe) is the LAST thing a job does, so a server
@@ -49,7 +46,8 @@ let runningJobId: string | null = null;
 
 // Wipes every RUN table (teams, users, auth_tokens, progress, documentation, scores, help_requests,
 // access_sessions) by deleting the active event_runs row — ON DELETE CASCADE does the rest — then
-// creates a fresh empty run with one instructor account (registration closed). CONFIG tables are never
+// creates a fresh empty run carrying over the instructor accounts with their own passwords
+// (registration closed). CONFIG tables are never
 // touched; see CLAUDE/invariants.md.
 //
 // Remote access comes first: the cascade removes access_sessions rows but can't touch Azure, and a
@@ -83,9 +81,10 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
     const activeRunId = getActiveEventRunId();
     db.exec('BEGIN');
     let newRunId: number;
+    const instructors = activeRunId !== null ? activeInstructorAccounts(activeRunId) : [];
     try {
       if (activeRunId !== null) db.prepare('DELETE FROM event_runs WHERE id = ?').run(activeRunId);
-      newRunId = createFreshEventRun();
+      newRunId = createFreshEventRun(instructors);
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
@@ -96,7 +95,8 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
         remaining: remoteAccess.environments.flatMap((e) => e.remaining),
       });
     }
-    job.newInstructor = { username: DEFAULT_INSTRUCTOR_USERNAME, password: DEFAULT_INSTRUCTOR_PASSWORD };
+    kickRevokedSockets();
+    job.keptInstructors = instructors.map((i) => i.username);
     job.state = 'done';
     job.phase = 'Event reset complete';
   } catch (err) {
@@ -110,9 +110,9 @@ async function runResetJob(job: ResetJob, actor: string, allowUnverifiedRemoteAc
   }
 }
 
-// Job status by its unguessable id. Deliberately NOT behind requireAuth: the reset deletes the very
-// instructor account (and token) that started it, so the page must still be able to read the outcome
-// afterwards. It exposes only job progress plus the fixed, documented default instructor login.
+// Job status by its unguessable id. Deliberately NOT behind requireAuth: the reset deletes the token
+// that started it, so the page must still be able to read the outcome afterwards. It exposes only job
+// progress and the kept instructor usernames — never a password.
 resetJobsPublicRouter.get('/:jobId', (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) {
@@ -180,7 +180,7 @@ router.post('/event/reset', (req, res) => {
     endedSessions: 0,
     remoteAccess: null,
     error: null,
-    newInstructor: null,
+    keptInstructors: null,
   };
   jobs.set(job.id, job);
   runningJobId = job.id;

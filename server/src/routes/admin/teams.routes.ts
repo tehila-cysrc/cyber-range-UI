@@ -8,6 +8,7 @@ import { generateUniqueJoinCode, getActiveRunRegistration, setRegistrationCode }
 import { writeAudit } from '../../services/audit.service.js';
 import { setTeamOrganization } from '../../services/organizations.service.js';
 import { emitLeaderboardUpdate } from '../../sockets/emitters.js';
+import { kickRevokedSockets } from '../../sockets/index.js';
 
 const router = Router();
 
@@ -117,6 +118,7 @@ router.delete('/teams/:id', (req, res) => {
     res.status(404).json({ error: 'team not found' });
     return;
   }
+  kickRevokedSockets();
   emitLeaderboardUpdate();
   res.json({ ok: true });
 });
