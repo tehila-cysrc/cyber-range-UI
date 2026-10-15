@@ -850,6 +850,22 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
   - live and final runs against the real agent with the seed fixture produce schema-valid results;
   - cross-pair 404s;
   - the leaderboard is unchanged after a decision.
+- **Status: done 2026-10-15 against a MOCKED Foundry only.** The acceptance item "live and final runs against the real agent" is **not yet verified**: it needs the live agent configured with the real instructions and the full envelope schema, plus your approval for model calls.
+- **Implemented as planned:**
+  - the pair-scoped routes;
+  - the strict request body (a client-sent vector store id is rejected);
+  - the session-pinned store;
+  - reuse on an unchanged snapshot hash, pinned version and rubric;
+  - one job per team/scenario/mode, the global cap and 30/hour/account;
+  - one retry on a retryable validation failure;
+  - failures store no result;
+  - the decision route needs `score.award` too.
+- **Decided while implementing:**
+  - **No automatic re-indexing:** `ground_truth_unavailable` is returned instead, because re-indexing would create Foundry resources without approval.
+  - **List route needs both ids:** `GET /admin/ai-assessments` requires `teamId` and `cyberRangeId`, so it's one pair check instead of an SQL scope filter.
+  - **Raw model output isn't returned:** the debugging excerpt of a failed reply is stored but never returned by the API.
+  - **Real author names:** the detail maps record ids to real display names server-side; Foundry only sees pseudonyms (decision 2026-10-15).
+  - **New static guard:** AI code never writes `documentation_feedback` or `scores`.
 
 **Phase 6 — Live review UI.**
 - **Tasks:**

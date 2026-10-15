@@ -56,6 +56,15 @@ test('services/ai/ never writes the scores table', () => {
   assert.deepEqual(ai.filter((f) => /(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+scores\b/i.test(f.text)).map((f) => f.path), []);
 });
 
+// AI output reaches students only when an instructor submits it through the existing feedback form:
+// nothing in the AI code (services or routes) may write student-visible feedback or award points.
+test('AI code never writes documentation_feedback or scores (no automatic publishing)', () => {
+  const ai = files.filter((f) => f.path.startsWith('services/ai/') || /routes\/admin\/ai[A-Z]/.test(f.path));
+  assert.ok(ai.some((f) => f.path.includes('routes/admin/aiAssessments')));
+  const writes = /(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(documentation_feedback|scores)\b|addFeedback\(|documentationFeedback\.service/i;
+  assert.deepEqual(ai.filter((f) => writes.test(f.text)).map((f) => f.path), []);
+});
+
 test('socket events leave only through sockets/ (scoped delivery), never a raw getIo() emit', () => {
   const raw = outsideAuthz.filter((f) => !f.path.startsWith('sockets/') && /getIo\(\)|INSTRUCTOR_ROOM/.test(f.text)).map((f) => f.path);
   assert.deepEqual(raw, []);
