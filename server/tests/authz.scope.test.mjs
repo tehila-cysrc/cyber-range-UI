@@ -33,6 +33,7 @@ const ADMIN_ONLY = [
   'event.reset',
   'event.export',
   'remote_access.revoke_all',
+  'ai_resources.manage',
 ];
 const STUDENT_ONLY = ['team.self', 'documentation.write', 'canvas.write', 'help.request', 'access_session.self'];
 

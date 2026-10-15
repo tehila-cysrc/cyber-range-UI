@@ -60,6 +60,7 @@ export const PERMISSIONS = [
   // AI Investigation Assessment: run and read AI assessments of in-scope team work (pair scope applies).
   // Uploading a scenario's ground-truth document uses scenario.author; the decision route also needs score.award.
   'ai_assessment.use',
+  'ai_resources.manage', // admin: list / delete the app's Foundry files and vector stores (explicit cleanup only)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

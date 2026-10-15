@@ -73,6 +73,10 @@ export function deleteCyberRange(id: number, actorUsername: string): DeleteCyber
     };
   }
 
+  // AI ground-truth versions cascade with the scenario; their Foundry resources stay recorded in
+  // ai_foundry_resources (now unused) for the admin's explicit cleanup — nothing is deleted in Foundry here.
+  const aiDocuments = (db.prepare('SELECT COUNT(*) AS n FROM scenario_ai_documents WHERE cyber_range_id = ?').get(id) as { n: number }).n;
+
   db.exec('BEGIN');
   try {
     for (const table of [
@@ -96,6 +100,6 @@ export function deleteCyberRange(id: number, actorUsername: string): DeleteCyber
     };
   }
 
-  writeAudit(actorUsername, 'cyber_range.deleted', 'cyber_range', id, { name: range.name });
+  writeAudit(actorUsername, 'cyber_range.deleted', 'cyber_range', id, aiDocuments ? { name: range.name, aiDocumentVersionsRemoved: aiDocuments } : { name: range.name });
   return { ok: true };
 }

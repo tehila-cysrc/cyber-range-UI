@@ -53,16 +53,21 @@ export function startCyberRangeForTeam(teamId: number, cyberRangeId: number): St
        WHERE team_id = ? AND cyber_range_id != ? AND status = 'active'`,
     ).run(teamId, cyberRangeId);
 
+    // ai_document_id = the AI ground-truth version this session uses (the scenario's current READY
+    // version at session start). Pinned once: resume / restart never moves it, so replacing the
+    // document never changes the reference of a session already under way (CLAUDE/invariants.md).
     db.prepare(
-      `INSERT INTO team_cyber_range_progress (team_id, cyber_range_id, status, started_at, first_started_at, time_limit_seconds)
-       VALUES (?, ?, 'active', ?, ?, ?)
+      `INSERT INTO team_cyber_range_progress (team_id, cyber_range_id, status, started_at, first_started_at, time_limit_seconds, ai_document_id)
+       VALUES (?, ?, 'active', ?, ?, ?,
+               (SELECT id FROM scenario_ai_documents WHERE cyber_range_id = ? AND is_current = 1 AND status = 'ready'))
        ON CONFLICT (team_id, cyber_range_id) DO UPDATE SET
          status = 'active',
          started_at = excluded.started_at,
          first_started_at = COALESCE(team_cyber_range_progress.first_started_at, excluded.first_started_at),
          time_limit_seconds = excluded.time_limit_seconds,
-         completed_at = NULL`,
-    ).run(teamId, cyberRangeId, startedAt, startedAt, timeLimitSeconds);
+         completed_at = NULL,
+         ai_document_id = COALESCE(team_cyber_range_progress.ai_document_id, excluded.ai_document_id)`,
+    ).run(teamId, cyberRangeId, startedAt, startedAt, timeLimitSeconds, cyberRangeId);
 
     db.exec('COMMIT');
   } catch (err) {

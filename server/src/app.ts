@@ -32,6 +32,7 @@ import adminCyberRangesRoutes from './routes/admin/cyberRanges.routes.js';
 import adminScriptsRoutes from './routes/admin/scripts.routes.js';
 import mitreRoutes from './routes/mitre.routes.js';
 import adminTtpRoutes from './routes/admin/ttp.routes.js';
+import adminAiDocumentsRoutes from './routes/admin/aiDocuments.routes.js';
 
 // Same path from `server/src` (tsx) and `server/dist` (compiled): the built SPA sits at repo `client/dist`.
 function resolveClientDist(): string | null {
@@ -88,6 +89,7 @@ export function createApp() {
   app.use('/api/admin', adminScriptsRoutes);
   app.use('/api', mitreRoutes);
   app.use('/api/admin', adminTtpRoutes);
+  app.use('/api/admin', adminAiDocumentsRoutes);
 
   const clientDist = resolveClientDist();
   if (clientDist) {

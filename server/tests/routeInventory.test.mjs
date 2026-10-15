@@ -154,6 +154,12 @@ const EXPECTED = {
   'GET /api/admin/cyber-ranges/:cyberRangeId/ttp-report': 'ttp.manage',
   'POST /api/admin/ttp-detections': 'ttp.manage',
   'POST /api/admin/ttp-detections/:id/void': 'ttp.manage',
+  'GET /api/admin/cyber-ranges/:cyberRangeId/ai-documents': 'scenario.inspect',
+  'POST /api/admin/cyber-ranges/:cyberRangeId/ai-documents': 'scenario.author',
+  'POST /api/admin/cyber-ranges/:cyberRangeId/ai-documents/:documentId/retry': 'scenario.author',
+  'PUT /api/admin/cyber-ranges/:cyberRangeId/ai-rubric': 'scenario.author',
+  'GET /api/admin/ai/foundry-resources': 'ai_resources.manage',
+  'POST /api/admin/ai/foundry-resources/cleanup': 'ai_resources.manage',
 };
 
 let server;

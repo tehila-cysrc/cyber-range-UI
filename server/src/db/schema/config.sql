@@ -307,3 +307,23 @@ CREATE TABLE IF NOT EXISTS scenario_ai_documents (
 -- At most one current (ready, newest) version per scenario — what NEW sessions get pinned to.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_ai_documents_current
   ON scenario_ai_documents (cyber_range_id) WHERE is_current = 1;
+
+-- Every Foundry resource (uploaded file / vector store) the app creates, recorded the moment it exists,
+-- so an id is never lost — not on retry, failure, replacement, event reset or scenario deletion.
+-- CONFIG: outlives the scenario (cyber_range_id is a plain snapshot, document_id goes NULL when the
+-- version row is deleted). Deletion in Foundry happens ONLY through the admin's explicit cleanup action
+-- (POST /api/admin/ai/foundry-resources/cleanup) on resources the server lists as unused — never
+-- automatically (user decision 2026-10-15).
+CREATE TABLE IF NOT EXISTS ai_foundry_resources (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('file', 'vector_store')),
+  foundry_id TEXT NOT NULL UNIQUE,
+  document_id INTEGER REFERENCES scenario_ai_documents(id) ON DELETE SET NULL,
+  cyber_range_id INTEGER, -- snapshot, not an FK
+  document_version INTEGER, -- snapshot
+  created_at TEXT NOT NULL,
+  deleted_at TEXT,
+  deleted_by_username TEXT,
+  delete_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_foundry_resources_document ON ai_foundry_resources (document_id);

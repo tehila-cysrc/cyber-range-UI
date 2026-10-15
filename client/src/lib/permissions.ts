@@ -47,7 +47,8 @@ export type Permission =
   | 'remote_access.revoke_all'
   | 'mitre.read'
   | 'profile.self'
-  | 'ai_assessment.use';
+  | 'ai_assessment.use'
+  | 'ai_resources.manage';
 
 // Admin and instructor both use the staff UI; the server decides what each may actually do.
 export function isStaff(role: Role | null | undefined): boolean {

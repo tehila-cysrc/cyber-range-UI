@@ -218,11 +218,11 @@ flowchart LR
   - mark the previous current version `superseded`;
   - **first-ready backfill:** `UPDATE team_cyber_range_progress SET ai_document_id = :newId WHERE cyber_range_id = :rid AND ai_document_id IS NULL`. This covers only sessions that started before *any* version existed. Sessions already pinned are never touched.
   - On failure: `status='failed'` with `error_code`. The previous ready version **stays current**. A failed replacement never breaks a working scenario or any pinned session.
-- `collectUnreferencedStores()`: deletes the Foundry vector store and file of a `superseded` version (best-effort, sets `foundry_deleted_at`) only when:
-  - **no** `team_cyber_range_progress` row pins it, **and**
-  - no assessment for it is pending or running.
-
-  It runs after a supersede, after an event reset (when the sessions are wiped), after a team delete, and at startup. A pinned superseded version stays fully usable.
+- **Cleanup is never automatic** (changed at Phase 2 approval, 2026-10-15, replacing the original auto-delete hooks):
+  - Every Foundry id is recorded in `ai_foundry_resources` (CONFIG) the moment it is created.
+  - `listFoundryResources('candidates')` lists unused ones: not pinned by any session, no pending or running assessment, and not the current id of a ready or processing version. Each carries a reason.
+  - The admin deletes exactly the ids they approve via `POST /admin/ai/foundry-resources/cleanup`. The server re-checks every id as a candidate, all-or-nothing. When all of a version's resources are gone, it sets `foundry_deleted_at`.
+  - Supersede, reset, team or scenario deletion and startup **never** delete anything. A pinned superseded version stays fully usable.
 - `retry(id)` re-indexes from the stored bytes. The same path, `reindex`, restores a pinned version whose store is missing (Foundry 404).
 - `resolveSessionVersion(teamId, cyberRangeId)` is the **only** resolver of `vector_store_id`. It returns the session's pinned `ai_document_id`, never "the current version". If the pin is null (no version was ever ready), the assessment is refused with `ground_truth_not_ready`.
 - On scenario delete: best-effort Foundry cleanup (hook in the existing scenario delete route).
@@ -792,8 +792,8 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
 - **Tasks:**
   - `scenarioAiDocuments.service.ts`, `aiDocuments.routes.ts`, mount, inventory rows, audit;
   - session pin in `startCyberRangeForTeam` plus the first-ready backfill;
-  - `collectUnreferencedStores` (hooked after reset, team delete and startup);
-  - scenario-delete cleanup hook;
+  - ~~`collectUnreferencedStores` (hooked after reset, team delete and startup)~~ → approval-only cleanup (see the status note below);
+  - scenario deletion keeps the Foundry ids recorded as candidates (no deletion);
   - tests, including `aiVersionPinning.test.mjs`.
 - **Acceptance:**
   - Upload, index, ready and replace work against the real Foundry.
@@ -803,6 +803,14 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
   - RBAC tests pass.
   - Existing progress, start and complete tests still pass unchanged.
 - **Risks:** indexing latency; orphaned Foundry stores (mitigated by best-effort cleanup plus a logged `cleanup_failed`).
+- **Status: done 2026-10-15 (local tests only).** Changes from the plan, required by the Phase 2 restrictions:
+  - **Cleanup:** approval-only, as above. It is backed by the new CONFIG table `ai_foundry_resources` and two admin-only routes behind a new admin-only permission, `ai_resources.manage` (list candidates; delete approved ids).
+  - **No live Foundry check yet.** "Upload, index, ready and replace work against the real Foundry" is **not yet verified**: every test uses a fake Foundry client, and creating real files or vector stores needs your approval.
+  - **No document routes when AI is off:** with AI disabled, upload and retry return 503 `ai_disabled`.
+  - **Startup recovery** marks interrupted documents and assessments failed (retryable); it never deletes.
+  - **Scenario deletion** cascades the version rows; their Foundry ids stay recorded as `document_deleted` candidates.
+  - **Tests:** `aiVersionPinning` is covered inside `tests/ai.documents.test.mjs`.
+  - **Not built yet:** an admin UI for the cleanup list (BACKLOG). The API is usable directly.
 
 **Phase 3 — AI Scenario Configuration UI.**
 - **Tasks:** `AiScenarioConfigSection.tsx` mounted in `ScenarioConfigPage.tsx`; `client/src/lib/permissions.ts`.
