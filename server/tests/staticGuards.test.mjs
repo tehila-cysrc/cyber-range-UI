@@ -40,6 +40,22 @@ test('no requireRole() — routes declare a permission instead', () => {
 });
 
 
+// AI Investigation Assessment: the Foundry client secret is read in exactly one place (the credential
+// builder) and its presence checked in aiConfig — nowhere else may touch it, so it can't leak into a
+// response, a log line or another integration by accident.
+test('AZURE_CLIENT_SECRET is read only by services/ai/foundryClient.ts (and checked for presence in aiConfig.ts)', () => {
+  const allowed = ['services/ai/foundryClient.ts', 'services/ai/aiConfig.ts'];
+  const readers = files.filter((f) => /AZURE_CLIENT_SECRET/.test(f.text.replace(/^\s*\/\/.*$/gm, ''))).map((f) => f.path);
+  assert.deepEqual(readers.filter((p) => !allowed.includes(p)), []);
+});
+
+// The AI assessment never writes official scores: only the existing scoring paths insert into `scores`.
+test('services/ai/ never writes the scores table', () => {
+  const ai = files.filter((f) => f.path.startsWith('services/ai/'));
+  assert.ok(ai.length > 0);
+  assert.deepEqual(ai.filter((f) => /(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+scores\b/i.test(f.text)).map((f) => f.path), []);
+});
+
 test('socket events leave only through sockets/ (scoped delivery), never a raw getIo() emit', () => {
   const raw = outsideAuthz.filter((f) => !f.path.startsWith('sockets/') && /getIo\(\)|INSTRUCTOR_ROOM/.test(f.text)).map((f) => f.path);
   assert.deepEqual(raw, []);

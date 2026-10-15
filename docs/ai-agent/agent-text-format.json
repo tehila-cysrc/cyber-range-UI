@@ -1,0 +1,681 @@
+{
+  "format": {
+    "type": "json_schema",
+    "name": "assessment_envelope",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "enum": [
+            "1"
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "live",
+            "final"
+          ]
+        },
+        "live": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "on_track",
+                    "partially_on_track",
+                    "needs_guidance",
+                    "insufficient_evidence"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "correctlyIdentified": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "concept": {
+                        "type": "string"
+                      },
+                      "judgement": {
+                        "type": "string",
+                        "enum": [
+                          "correct",
+                          "partial",
+                          "incorrect",
+                          "not_documented",
+                          "insufficient_information"
+                        ]
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "timeline_entry",
+                                "canvas_node",
+                                "canvas_edge"
+                              ]
+                            },
+                            "id": {
+                              "type": "integer"
+                            },
+                            "quote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "id",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "interpretation": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "concept",
+                      "judgement",
+                      "evidence",
+                      "interpretation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "partiallyUnderstood": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "concept": {
+                        "type": "string"
+                      },
+                      "judgement": {
+                        "type": "string",
+                        "enum": [
+                          "correct",
+                          "partial",
+                          "incorrect",
+                          "not_documented",
+                          "insufficient_information"
+                        ]
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "timeline_entry",
+                                "canvas_node",
+                                "canvas_edge"
+                              ]
+                            },
+                            "id": {
+                              "type": "integer"
+                            },
+                            "quote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "id",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "interpretation": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "concept",
+                      "judgement",
+                      "evidence",
+                      "interpretation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "missingOrUnclear": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "topic": {
+                        "type": "string"
+                      },
+                      "expectedByNow": {
+                        "type": "string",
+                        "enum": [
+                          "yes",
+                          "no",
+                          "unknown"
+                        ]
+                      },
+                      "whyItMatters": {
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "timeline_entry",
+                                "canvas_node",
+                                "canvas_edge"
+                              ]
+                            },
+                            "id": {
+                              "type": "integer"
+                            },
+                            "quote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "id",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "topic",
+                      "expectedByNow",
+                      "whyItMatters",
+                      "evidence"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "direction": {
+                  "type": "object",
+                  "properties": {
+                    "assessment": {
+                      "type": "string",
+                      "enum": [
+                        "right_direction",
+                        "mixed",
+                        "wrong_direction",
+                        "too_early"
+                      ]
+                    },
+                    "explanation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "assessment",
+                    "explanation"
+                  ],
+                  "additionalProperties": false
+                },
+                "instructorOnlyNotes": {
+                  "type": "string"
+                },
+                "studentSafeFeedback": {
+                  "type": "object",
+                  "properties": {
+                    "teamLevel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "entryFeedback": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "entryId": {
+                            "type": "integer"
+                          },
+                          "verdict": {
+                            "type": "string",
+                            "enum": [
+                              "on_track",
+                              "off_track",
+                              "comment"
+                            ]
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "entryId",
+                          "verdict",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "guidingQuestion": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "teamLevel",
+                    "entryFeedback",
+                    "guidingQuestion"
+                  ],
+                  "additionalProperties": false
+                },
+                "suggestedEntryScores": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entryId": {
+                        "type": "integer"
+                      },
+                      "points": {
+                        "type": "integer"
+                      },
+                      "rationale": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "entryId",
+                      "points",
+                      "rationale"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "confidence": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "status",
+                "summary",
+                "correctlyIdentified",
+                "partiallyUnderstood",
+                "missingOrUnclear",
+                "direction",
+                "instructorOnlyNotes",
+                "studentSafeFeedback",
+                "suggestedEntryScores",
+                "confidence",
+                "warnings"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "investigationSummary": {
+                  "type": "string"
+                },
+                "overallAssessment": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": [
+                        "excellent",
+                        "good",
+                        "fair",
+                        "limited",
+                        "insufficient"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                },
+                "stages": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "stage": {
+                        "type": "string"
+                      },
+                      "judgement": {
+                        "type": "string",
+                        "enum": [
+                          "correct",
+                          "partial",
+                          "incorrect",
+                          "not_documented",
+                          "insufficient_information"
+                        ]
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "timeline_entry",
+                                "canvas_node",
+                                "canvas_edge"
+                              ]
+                            },
+                            "id": {
+                              "type": "integer"
+                            },
+                            "quote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "id",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "interpretation": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "stage",
+                      "judgement",
+                      "evidence",
+                      "interpretation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "incorrectConclusions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "timeline_entry",
+                                "canvas_node",
+                                "canvas_edge"
+                              ]
+                            },
+                            "id": {
+                              "type": "integer"
+                            },
+                            "quote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "id",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "correction": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "claim",
+                      "evidence",
+                      "correction"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "strengths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "areasForImprovement": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "criteria": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "enum": [
+                              "identification",
+                              "understanding",
+                              "connections",
+                              "clarity"
+                            ]
+                          },
+                          "maxPoints": {
+                            "type": "integer"
+                          },
+                          "awardedPoints": {
+                            "type": "integer"
+                          },
+                          "rationale": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "maxPoints",
+                          "awardedPoints",
+                          "rationale"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "recommendedTotal": {
+                      "type": "integer"
+                    },
+                    "maxTotal": {
+                      "type": "integer"
+                    },
+                    "explanation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "criteria",
+                    "recommendedTotal",
+                    "maxTotal",
+                    "explanation"
+                  ],
+                  "additionalProperties": false
+                },
+                "suggestedFinalFeedback": {
+                  "type": "object",
+                  "properties": {
+                    "instructorVersion": {
+                      "type": "string"
+                    },
+                    "studentSafeVersion": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "instructorVersion",
+                    "studentSafeVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                "confidence": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "investigationSummary",
+                "overallAssessment",
+                "stages",
+                "incorrectConclusions",
+                "strengths",
+                "areasForImprovement",
+                "score",
+                "suggestedFinalFeedback",
+                "confidence",
+                "warnings"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "contractVersion",
+        "mode",
+        "live",
+        "final"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -292,6 +292,21 @@ export function migrate() {
   backfillStaffAccounts();
   addStaffMembershipGuards();
 
+  // AI Investigation Assessment (docs/ai-investigation-assessment-plan.md §G). Optional per-scenario
+  // rubric weights (NULL = default 40/30/20/10). The session pin: the scenario_ai_documents version a
+  // team's scenario session uses for every assessment — set at session start and never moved by a
+  // later document replacement. RUN -> CONFIG reference (allowed); existing rows start NULL.
+  addColumnIfMissing('cyber_ranges', 'ai_rubric_json', 'TEXT');
+  addColumnIfMissing(
+    'team_cyber_range_progress',
+    'ai_document_id',
+    'INTEGER REFERENCES scenario_ai_documents(id) ON DELETE SET NULL',
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_team_cyber_range_progress_ai_document
+       ON team_cyber_range_progress (ai_document_id) WHERE ai_document_id IS NOT NULL`,
+  );
+
   // Topology publishing (UX-38) arrived after ranges already had student-visible topology. Publish
   // each such range's current student view exactly once, when the table is first created, so nothing
   // disappears from students' screens on upgrade. Never re-run: after this, only the instructor publishes.

@@ -288,3 +288,47 @@ CREATE TABLE IF NOT EXISTS certificate_grants (
   granted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   granted_at TEXT NOT NULL
 );
+
+-- AI Investigation Assessment (docs/ai-investigation-assessment-plan.md §G): one row per assessment
+-- request — the job status, the pinned ground-truth version, the exact investigation snapshot sent,
+-- the validated result and the instructor's decision. RUN: cascades with the team, so an event reset
+-- wipes it. Deliberately NOT connected to `scores`: an approved AI score is a recorded recommendation
+-- and never enters any total or the leaderboard (CLAUDE/invariants.md → AI Investigation Assessment).
+CREATE TABLE IF NOT EXISTS ai_assessments (
+  id INTEGER PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id) ON DELETE CASCADE,
+  organization_id INTEGER, -- snapshot of the team's organization at request time (audit), not an FK
+  mode TEXT NOT NULL CHECK (mode IN ('live', 'final')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'succeeded', 'failed')),
+  document_id INTEGER REFERENCES scenario_ai_documents(id) ON DELETE SET NULL,
+  document_version INTEGER NOT NULL,
+  document_sha256 TEXT NOT NULL,
+  rubric_json TEXT,
+  snapshot_json TEXT NOT NULL,
+  snapshot_sha256 TEXT NOT NULL,
+  agent_name TEXT NOT NULL,
+  agent_version TEXT,
+  model TEXT,
+  foundry_response_id TEXT,
+  contract_version TEXT NOT NULL,
+  result_json TEXT,
+  warnings_json TEXT,
+  raw_output_excerpt TEXT,
+  error_code TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  duration_ms INTEGER,
+  requested_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  requested_by_username TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  decision TEXT CHECK (decision IN ('approved', 'edited', 'rejected')),
+  decided_score INTEGER CHECK (decided_score IS NULL OR (decided_score BETWEEN 0 AND 100)),
+  decision_note TEXT,
+  decided_by_username TEXT,
+  decided_at TEXT,
+  CHECK (decision IS NULL OR mode = 'final')
+);
+CREATE INDEX IF NOT EXISTS idx_ai_assessments_team_range
+  ON ai_assessments (team_id, cyber_range_id, mode, created_at);

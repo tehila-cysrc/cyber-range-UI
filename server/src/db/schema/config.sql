@@ -276,3 +276,34 @@ WHEN (SELECT role FROM accounts WHERE id = NEW.account_id) IS NOT 'instructor'
 BEGIN
   SELECT RAISE(ABORT, 'assignments are only for instructor accounts');
 END;
+
+-- AI Investigation Assessment (docs/ai-investigation-assessment-plan.md §G). One row per uploaded
+-- version of a scenario's ground-truth document. CONFIG: survives an event reset, like the scenario
+-- itself. The original bytes are kept (re-index + audit) and are NEVER served to any client; the
+-- Foundry file/vector-store ids are server-side only. A version a team session still pins
+-- (team_cyber_range_progress.ai_document_id) keeps its Foundry store until no session pins it.
+CREATE TABLE IF NOT EXISTS scenario_ai_documents (
+  id INTEGER PRIMARY KEY,
+  cyber_range_id INTEGER NOT NULL REFERENCES cyber_ranges(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  original_filename TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  content BLOB NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('processing', 'ready', 'failed', 'superseded')),
+  is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
+  foundry_file_id TEXT,
+  foundry_vector_store_id TEXT,
+  foundry_deleted_at TEXT,
+  error_code TEXT,
+  uploaded_by_account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  uploaded_by_username TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  ready_at TEXT,
+  superseded_at TEXT,
+  UNIQUE (cyber_range_id, version)
+);
+-- At most one current (ready, newest) version per scenario — what NEW sessions get pinned to.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_ai_documents_current
+  ON scenario_ai_documents (cyber_range_id) WHERE is_current = 1;

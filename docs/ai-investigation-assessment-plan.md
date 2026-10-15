@@ -780,6 +780,13 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
   - Contract tests pass.
   - The app runs unchanged with AI disabled.
 - **Risks:** SDK and Node version compatibility. Mitigated by Phase 0.
+- **Status: done 2026-10-15.** Implementation notes and deviations:
+  - **No Foundry SDK.** `foundryClient.ts` uses raw REST plus `@azure/identity`, the exact wire format proven in Phase 0. Rationale: no new dependency, and the verified protocol is what ships.
+  - **No new dependency for the schema.** The contract uses `zod/v4` (bundled in zod 3.25; the server range was raised from `^3.24.1` to `^3.25.0`, while the installed 3.25.76 is unchanged), and `z.toJSONSchema` generates the agent schema.
+  - **Credential names:** `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`, as already configured. A Service Principal is required; a managed-identity fallback is not built (deferred until the app is hosted on Azure).
+  - **Not verified live:** `FOUNDRY_AGENT_VERSION` pinning (sending `agent_reference.version`).
+  - **Contract details:** `Evidence.quote` is nullable rather than optional, as strict mode requires. Length and range limits are enforced in Phase 4 validation, not in the agent schema.
+  - **Generated agent schema:** `docs/ai-agent/`. It has **not** been applied to the live agent (no Foundry changes in Phase 1).
 
 **Phase 2 — Scenario documents and session pinning (backend).**
 - **Tasks:**

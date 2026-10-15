@@ -57,6 +57,9 @@ export const PERMISSIONS = [
   'remote_access.revoke_all',
   'mitre.read',
   'profile.self',
+  // AI Investigation Assessment: run and read AI assessments of in-scope team work (pair scope applies).
+  // Uploading a scenario's ground-truth document uses scenario.author; the decision route also needs score.award.
+  'ai_assessment.use',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -87,6 +90,7 @@ const INSTRUCTOR: readonly Permission[] = [
   'audit.read',
   'mitre.read',
   'profile.self',
+  'ai_assessment.use',
 ];
 
 const STUDENT: readonly Permission[] = [
