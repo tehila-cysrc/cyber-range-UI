@@ -9,6 +9,8 @@ import { useDebriefTeam } from './useDebriefTeam';
 import { TtpDebriefSection } from './TtpDebriefSection';
 import { useAuthStore } from '../../stores/authStore';
 import { EntryFeedbackList, type EntryFeedbackItem } from '../documentation/EntryFeedback';
+import { FinalAssessmentPanel } from '../aiAssessment/FinalAssessmentPanel';
+import { useAiStatus } from '../aiAssessment/useAiAssessments';
 
 // Same code-split as the Investigation page — React Flow only loads when a debrief is opened.
 const InvestigationCanvasContainer = lazy(() =>
@@ -97,6 +99,8 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
 
   const { query, ready, links, isInstructor, teamId } = useDebriefTeam();
   const ownTeamId = useAuthStore((s) => s.user?.teamId);
+  // Staff only: students never hold ai_assessment.use, so this stays off for them (and the API is /admin).
+  const { available: aiAvailable } = useAiStatus();
   const { data, isError } = useQuery({
     queryKey: ['history', cyberRangeId, query],
     queryFn: () => apiFetch<SummaryResponse>(`/history/${cyberRangeId}${query}`),
@@ -152,6 +156,13 @@ export function CyberRangeSummaryPage({ cyberRangeIdOverride }: { cyberRangeIdOv
           </div>
 
           <TtpDebriefSection cyberRangeId={data.cyberRange.id} />
+
+          {isInstructor && aiAvailable && teamId != null && (
+            <div style={{ marginBottom: 'var(--space-xl)' }}>
+              <SectionHeader>Final AI assessment (staff only)</SectionHeader>
+              <FinalAssessmentPanel teamId={teamId} cyberRangeId={data.cyberRange.id} scenarioName={null} />
+            </div>
+          )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
             <span

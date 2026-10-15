@@ -23,7 +23,7 @@ const now = () => new Date().toISOString();
 
 export const RUBRIC_KEYS = ['identification', 'understanding', 'connections', 'clarity'] as const;
 export type RubricKey = (typeof RUBRIC_KEYS)[number];
-const RUBRIC_LABELS: Record<RubricKey, string> = {
+export const RUBRIC_LABELS: Record<RubricKey, string> = {
   identification: 'Identifying important attack events and actions',
   understanding: 'Understanding the meaning of identified events',
   connections: 'Connecting related findings and attack stages',

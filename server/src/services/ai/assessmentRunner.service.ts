@@ -18,7 +18,7 @@ import { CONTRACT_VERSION, type AssessmentMode } from './assessmentContract.js';
 import { FoundryError, getFoundryClient } from './foundryClient.js';
 import { SnapshotError, buildSnapshot, evidenceIndexFromSnapshot, leakScanContext, type InvestigationSnapshot } from './assessmentSnapshot.service.js';
 import { validateAssessment, type RubricCriterion } from './assessmentValidation.js';
-import { getRubric, resolveSessionVersion } from './scenarioAiDocuments.service.js';
+import { RUBRIC_LABELS, getRubric, resolveSessionVersion, type RubricKey } from './scenarioAiDocuments.service.js';
 
 const now = () => new Date().toISOString();
 
@@ -95,24 +95,28 @@ export interface AssessmentSummary {
   decision: 'approved' | 'edited' | 'rejected' | null;
   decidedScore: number | null;
   leakSuspected: boolean;
+  recommendedTotal: number | null; // final + succeeded only: the validated AI total (0..100)
 }
 
 const SUMMARY_COLUMNS = `a.id, a.team_id AS teamId, a.cyber_range_id AS cyberRangeId, a.mode, a.status, a.document_version AS documentVersion,
   a.requested_by_username AS requestedBy, a.created_at AS createdAt, a.completed_at AS completedAt, a.error_code AS errorCode,
   a.decision, a.decided_score AS decidedScore, a.result_json AS resultJson`;
 
-type SummaryRow = Omit<AssessmentSummary, 'leakSuspected'> & { resultJson: string | null };
+type SummaryRow = Omit<AssessmentSummary, 'leakSuspected' | 'recommendedTotal'> & { resultJson: string | null };
 function toSummary(r: SummaryRow): AssessmentSummary {
   const { resultJson, ...rest } = r;
   let leakSuspected = false;
+  let recommendedTotal: number | null = null;
   if (resultJson) {
     try {
-      leakSuspected = !!JSON.parse(resultJson)?.flags?.leakSuspected;
+      const parsed = JSON.parse(resultJson);
+      leakSuspected = !!parsed?.flags?.leakSuspected;
+      if (rest.mode === 'final' && typeof parsed?.result?.score?.recommendedTotal === 'number') recommendedTotal = parsed.result.score.recommendedTotal;
     } catch {
       /* stored by us; ignore */
     }
   }
-  return { ...rest, leakSuspected };
+  return { ...rest, leakSuspected, recommendedTotal };
 }
 
 export function getAssessmentSummary(id: number): AssessmentSummary | null {
@@ -173,7 +177,7 @@ export interface EvidenceRef {
 export interface AssessmentDetail extends AssessmentSummary {
   result: unknown | null; // validated result + flags (succeeded only)
   warnings: { validation: string[]; agent: string[] } | null;
-  rubric: RubricCriterion[] | null;
+  rubric: (RubricCriterion & { label: string })[] | null; // the rubric SENT with this final, with display labels
   model: string | null;
   agentVersion: string | null;
   durationMs: number | null;
@@ -230,7 +234,7 @@ export function getAssessmentDetail(id: number): AssessmentDetail | null {
     ...toSummary({ ...rest, resultJson } as SummaryRow),
     result: parsed,
     warnings: warningsJson ? JSON.parse(warningsJson) : null,
-    rubric: rubricJson ? JSON.parse(rubricJson) : null,
+    rubric: rubricJson ? (JSON.parse(rubricJson) as RubricCriterion[]).map((c) => ({ ...c, label: RUBRIC_LABELS[c.key as RubricKey] ?? c.key })) : null,
     model: rest.model,
     agentVersion: rest.agentVersion,
     durationMs: rest.durationMs,

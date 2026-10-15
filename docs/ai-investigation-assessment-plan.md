@@ -895,6 +895,15 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
 - **Acceptance:**
   - Approve, edit and reject are recorded and audited, and the leaderboard is unchanged.
   - The Excel file keeps all existing sheets and values and adds the AI sheet with the correct status rows.
+- **Status: done 2026-10-15** (browser QA on an isolated database with a mocked Foundry; no real model calls, no Azure). Both acceptance items pass.
+- **Decided while implementing:**
+  - **Shared frame:** live and final share one panel (`AssessmentRunPanel.tsx`: pinned version, run buttons, running/failed states, history). `FinalAssessmentPanel` is used in the AI Review tab (a "Progress review / Final assessment" switch) and in the staff-only Debrief section.
+  - **Still-running confirmation:** generating a final while the scenario is active asks for confirmation first (§N-3).
+  - **"Δ vs previous final":** the list summary now carries `recommendedTotal` (finals only), so the change is shown without extra requests. The detail's `rubric` carries display labels.
+  - **Decision form:** Approve / Edit (0–100 + required note) / Reject (optional note). "Change decision…" re-decides with `override`. Without `score.award` the form is read-only.
+  - **Student-safe final feedback:** copy-only, gated by the same leak tick. The instructor version is shown separately and is never exported.
+  - **Excel:** the sheet is built by `services/ai/aiAssessmentExport.ts` (read-only). A note row sits above the header (frozen at row 2). "Most recent approved" means the newest approved/edited final, even when a later final was rejected. The JSON archive is untouched (no team ids added).
+  - **Not done (P2, optional):** the pre-filled "Award…" from a suggested entry score (BACKLOG).
 
 **Phase 8 — Evaluation and hardening.**
 - **Tasks:**

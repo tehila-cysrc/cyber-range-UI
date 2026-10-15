@@ -25,6 +25,7 @@ export interface AssessmentSummary {
   decision: 'approved' | 'edited' | 'rejected' | null;
   decidedScore: number | null;
   leakSuspected: boolean;
+  recommendedTotal: number | null; // final + succeeded only
 }
 
 export interface SessionAiInfo {
@@ -87,15 +88,46 @@ export interface ValidationFlags {
   leakedTechniqueIds: string[];
 }
 
-export interface AssessmentDetail extends AssessmentSummary {
-  // Live only in this phase; the final view (Phase 7) reads the same field.
-  result: { result: LiveResult; flags: ValidationFlags } | null;
+export type RubricKey = 'identification' | 'understanding' | 'connections' | 'clarity';
+
+export interface FinalResult {
+  investigationSummary: string;
+  overallAssessment: { level: 'excellent' | 'good' | 'fair' | 'limited' | 'insufficient'; text: string };
+  stages: { stage: string; judgement: Judgement; evidence: Evidence[]; interpretation: string; unsupported: boolean }[];
+  incorrectConclusions: { claim: string; evidence: Evidence[]; correction: string }[];
+  strengths: string[];
+  areasForImprovement: string[];
+  score: {
+    criteria: { key: RubricKey; maxPoints: number; awardedPoints: number; rationale: string }[];
+    recommendedTotal: number;
+    maxTotal: number;
+    explanation: string;
+  };
+  suggestedFinalFeedback: { instructorVersion: string; studentSafeVersion: string };
+  confidence: { level: 'low' | 'medium' | 'high'; reason: string };
+  warnings: string[];
+}
+
+interface DetailBase extends AssessmentSummary {
   warnings: { validation: string[]; agent: string[] } | null;
+  rubric: { key: RubricKey; maxPoints: number; label: string }[] | null;
   model: string | null;
   agentVersion: string | null;
   durationMs: number | null;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
   evidenceIndex: EvidenceIndex;
 }
+export interface LiveDetail extends DetailBase {
+  mode: 'live';
+  result: { result: LiveResult; flags: ValidationFlags } | null;
+}
+export interface FinalDetail extends DetailBase {
+  mode: 'final';
+  result: { result: FinalResult; flags: ValidationFlags } | null;
+}
+export type AssessmentDetail = LiveDetail | FinalDetail;
 
 const isRunning = (a: { status: AssessmentStatus }) => a.status === 'pending' || a.status === 'running';
 
@@ -145,22 +177,45 @@ export function useRequestAssessment() {
   });
 }
 
-// Starts a live review; "reused" (unchanged work) and refusals are explained in a toast.
-export function useRunLiveReview() {
+// Starts a review; "reused" (unchanged work) and refusals are explained in a toast.
+export function useRunAssessment(mode: AssessmentMode) {
   const request = useRequestAssessment();
   const push = useToastStore((s) => s.push);
   const run = (teamId: number, cyberRangeId: number, force: boolean, onStarted?: (a: AssessmentSummary) => void) =>
     request.mutate(
-      { teamId, cyberRangeId, mode: 'live', force },
+      { teamId, cyberRangeId, mode, force },
       {
         onSuccess: (res) => {
-          if (res.reused) push('No new activity since the last review, so the earlier result is shown. Use "Run a fresh review" to run it again.', 'info');
+          if (res.reused) {
+            push(
+              mode === 'live'
+                ? 'No new activity since the last review, so the earlier result is shown. Use "Run a fresh review" to run it again.'
+                : 'Nothing changed since the last final assessment, so it is shown again. Use "Generate again" for a fresh one.',
+              'info',
+            );
+          }
           onStarted?.(res.assessment);
         },
-        onError: (err) => push(err instanceof ApiError ? describeAiError(err.reason) : 'Could not start the review.'),
+        onError: (err) => push(err instanceof ApiError ? describeAiError(err.reason) : 'Could not start the AI assessment.'),
       },
     );
   return { run, isPending: request.isPending };
+}
+export const useRunLiveReview = () => useRunAssessment('live');
+
+export type DecisionBody = { decision: 'approved' | 'edited' | 'rejected'; score?: number; note?: string; override?: boolean };
+
+// Final-score decision: recorded on the assessment only — never an official score, never the leaderboard.
+export function useDecideAssessment(summary: AssessmentSummary) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DecisionBody) =>
+      apiFetch<{ assessment: AssessmentSummary }>(`/admin/ai-assessments/${summary.id}/decision`, { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: assessmentsKey(summary.teamId, summary.cyberRangeId, 'final') });
+      queryClient.invalidateQueries({ queryKey: ['ai-assessment', summary.id] });
+    },
+  });
 }
 
 // Server reason codes -> plain language. Unknown codes fall back to a generic line (never raw details).
@@ -205,6 +260,15 @@ export function describeAiError(code: string | null | undefined): string {
       return 'The AI assistant returned an answer in the wrong format twice, so no result was kept. Try again.';
     case 'contract_mismatch':
       return "The AI agent's answer format changed and no longer matches this app. Ask an admin to check the Foundry agent.";
+    case 'rubric_mismatch':
+      return "The AI scored against different criteria than this scenario's rubric, so no result was kept. Try again.";
+    case 'not_final':
+    case 'not_succeeded':
+      return 'Only a completed final assessment can take a score decision.';
+    case 'already_decided':
+      return 'Someone already recorded a decision on this assessment. Reload to see it.';
+    case 'note_required':
+      return 'Explain the edited score in a note.';
     case 'interrupted':
       return 'The server restarted while this review was running. Run it again.';
     default:

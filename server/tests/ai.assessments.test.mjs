@@ -345,6 +345,9 @@ test('final assessment: rubric sent; decisions recorded on the assessment only â
   assert.equal((await decide({ decision: 'rejected' })).body.reason, 'already_decided');
   const edited = await decide({ decision: 'edited', score: 64, note: 'Clarity was better than judged.', override: true });
   assert.deepEqual([edited.body.assessment.decision, edited.body.assessment.decidedScore], ['edited', 64]);
+  assert.equal(edited.body.assessment.recommendedTotal, 70, 'the AI recommendation stays visible next to the decision');
+  const listed = (await call('GET', `/api/admin/ai-assessments?teamId=${f.teamA}&cyberRangeId=${f.s1}`, tok.iA)).body.assessments;
+  assert.ok(listed.filter((a) => a.mode === 'live').every((a) => a.recommendedTotal === null), 'live reviews carry no total');
   assert.ok(db.prepare("SELECT 1 FROM audit_log WHERE action = 'ai_assessment.decided' AND metadata_json LIKE '%\"previousDecision\":\"approved\"%'").get());
   // Out-of-scope instructor can't read or decide it.
   const iB = await call('POST', `/api/admin/ai-assessments/${id}/decision`, tok.iAB, { decision: 'rejected', override: true });

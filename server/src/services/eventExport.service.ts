@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { db } from '../db/index.js';
 import { getActiveEventRunId } from '../db/seed.js';
 import { techniqueLabel } from './mitreCatalog.js';
+import { addAiAssessmentSheet } from './ai/aiAssessmentExport.js';
 
 // Everything an instructor may want to keep before an event reset wipes the RUN tables: teams and
 // their organization, members with their points, and for each scenario the timeline (with
@@ -507,6 +508,9 @@ export async function buildEventExportXlsx(teamId?: number): Promise<Buffer> {
       });
     }
   }
+
+  // Appended last so every existing sheet keeps its position (approved AI finals only; reference, not totals).
+  addAiAssessmentSheet(workbook, teamId);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
