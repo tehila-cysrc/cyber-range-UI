@@ -13,6 +13,7 @@ import { techniqueDisplayName, useMitreCatalog } from '../../lib/mitre';
 import { formatEntryTime } from '../documentation/InvestigationPage';
 import { ScenarioSideNav, useSelectedScenario } from './ScenarioSideNav';
 import { useCan } from '../../lib/permissions';
+import { AiScenarioConfigSection } from './AiScenarioConfigSection';
 
 interface CyberRange {
   id: number;
@@ -243,6 +244,7 @@ export function ScenarioConfigPage() {
       ) : error ? (
         <EmptyState message={error instanceof ApiError ? error.message : 'Could not load this scenario.'} />
       ) : (
+        <>
         <section
           style={{
             background: 'var(--surface-1)',
@@ -298,6 +300,8 @@ export function ScenarioConfigPage() {
             onAdded={invalidate}
           />
         </section>
+        <AiScenarioConfigSection key={cyberRangeId} cyberRangeId={cyberRangeId} />
+        </>
       )}
       </main>
     </div>

@@ -816,6 +816,13 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
 - **Tasks:** `AiScenarioConfigSection.tsx` mounted in `ScenarioConfigPage.tsx`; `client/src/lib/permissions.ts`.
 - **Acceptance:** a browser test with the seeded admin and a scoped instructor covers upload, processing → ready, replace warning, failed + retry, and the rubric sum check.
 
+- **Status: done 2026-10-15** (isolated QA database + mocked Foundry; no Azure resources):
+  - **Component:** `client/src/features/scenarios/AiScenarioConfigSection.tsx`, mounted under the ATT&CK section of `ScenarioConfigPage.tsx`.
+  - **States:** not configured; processing (polls every 3 s, paused while the tab is hidden — standard TanStack Query behaviour); ready · vN; newer version failed (plain-language reason + Retry; the current version stays in use); AI disabled on server.
+  - **Upload/replace:** checked on the client for type and size. Before replacing, the dialog re-reads the data so its pinned-session count is current (QA found it stale).
+  - **Other parts:** version history and the rubric editor (sum must be 100, reset to default). Students get 403.
+  - **Not built:** the admin cleanup screen (BACKLOG). A shared-Button disabled-style gap was logged in FOLLOWUPS (P3).
+
 **Phase 4 — Snapshot and validation.**
 - **Tasks:** `assessmentSnapshot.service.ts`, `assessmentValidation.ts`, unit tests.
 - **Acceptance:** all §K unit cases pass.
