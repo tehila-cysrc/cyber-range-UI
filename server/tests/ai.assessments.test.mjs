@@ -304,6 +304,12 @@ test('mode rules and readiness: live needs a running session; no pinned version 
   startCyberRangeForTeam(f.teamNoOrg, r3);
   assert.equal((await request(tok.admin, f.teamNoOrg, r3, 'live')).body.reason, 'ground_truth_not_ready');
   assert.equal((await request(tok.admin, f.teamNoOrg, f.s2, 'final')).body.reason, 'no_progress');
+  // The list carries the session's readiness for the review screen: pinned v1 while v2 is the latest; no Foundry ids.
+  const listed = (await call('GET', `/api/admin/ai-assessments?teamId=${f.teamA}&cyberRangeId=${f.s1}`, tok.iA)).body;
+  assert.deepEqual(listed.session, { sessionStatus: 'active', pinnedVersion: 1, pinnedAvailable: true, latestReadyVersion: 2 });
+  assert.ok(!JSON.stringify(listed).includes('vs_'), 'no vector store ids');
+  const none = (await call('GET', `/api/admin/ai-assessments?teamId=${f.teamNoOrg}&cyberRangeId=${r3}`, tok.admin)).body.session;
+  assert.deepEqual(none, { sessionStatus: 'active', pinnedVersion: null, pinnedAvailable: false, latestReadyVersion: null });
   db.prepare("UPDATE team_cyber_range_progress SET status = 'completed', completed_at = ? WHERE team_id = ? AND cyber_range_id = ?").run(new Date().toISOString(), f.teamB, f.s2);
   assert.equal((await request(tok.admin, f.teamB, f.s2, 'live')).body.reason, 'scenario_not_running');
   process.env.AI_ASSESSMENT_ENABLED = 'false';

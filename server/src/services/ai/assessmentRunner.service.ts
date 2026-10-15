@@ -131,6 +131,31 @@ export function listAssessments(teamId: number, cyberRangeId: number, mode: Asse
   return rows.map(toSummary);
 }
 
+// What the review screen needs before any run: the session's state and its PINNED ground-truth version
+// (plus the scenario's latest ready version, for the "latest is vN" note). No Foundry ids.
+export interface SessionAiInfo {
+  sessionStatus: string | null; // team_cyber_range_progress.status, null = never started
+  pinnedVersion: number | null;
+  pinnedAvailable: boolean; // the pinned version can be used for a request right now
+  latestReadyVersion: number | null;
+}
+
+export function sessionAiInfo(teamId: number, cyberRangeId: number): SessionAiInfo {
+  const progress = db.prepare('SELECT status FROM team_cyber_range_progress WHERE team_id = ? AND cyber_range_id = ?').get(teamId, cyberRangeId) as
+    | { status: string }
+    | undefined;
+  const pinned = resolveSessionVersion(teamId, cyberRangeId);
+  const latest = db
+    .prepare("SELECT version FROM scenario_ai_documents WHERE cyber_range_id = ? AND is_current = 1 AND status = 'ready'")
+    .get(cyberRangeId) as { version: number } | undefined;
+  return {
+    sessionStatus: progress?.status ?? null,
+    pinnedVersion: pinned?.version ?? null,
+    pinnedAvailable: !!pinned && !!pinned.vectorStoreId && !pinned.foundryDeleted && (pinned.status === 'ready' || pinned.status === 'superseded'),
+    latestReadyVersion: latest?.version ?? null,
+  };
+}
+
 export function loadAssessmentOwner(id: number): { teamId: number; cyberRangeId: number; organizationId: number | null } | null {
   return (
     (db.prepare('SELECT team_id AS teamId, cyber_range_id AS cyberRangeId, organization_id AS organizationId FROM ai_assessments WHERE id = ?').get(id) as

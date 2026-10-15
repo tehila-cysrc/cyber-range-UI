@@ -100,19 +100,28 @@ export function EntryFeedbackList({
 }
 
 // Instructor-only: "+ Feedback" opens an inline form — pick on/off track (text optional) or write a
-// plain comment.
+// plain comment. The AI review's "Post as feedback" opens it pre-filled (initialVerdict/initialBody,
+// startOpen); the text stays editable and nothing is sent until the instructor clicks Send.
 export function EntryFeedbackForm<TEntry>({
   cyberRangeId,
   entryId,
   onSaved,
+  initialVerdict = 'comment',
+  initialBody = '',
+  startOpen = false,
+  onCancel,
 }: {
   cyberRangeId: number;
   entryId: number;
   onSaved: (entry: TEntry) => void;
+  initialVerdict?: FeedbackVerdict;
+  initialBody?: string;
+  startOpen?: boolean;
+  onCancel?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [verdict, setVerdict] = useState<FeedbackVerdict>('comment');
-  const [body, setBody] = useState('');
+  const [open, setOpen] = useState(startOpen);
+  const [verdict, setVerdict] = useState<FeedbackVerdict>(initialVerdict);
+  const [body, setBody] = useState(initialBody.slice(0, MAX_FEEDBACK_LENGTH));
 
   const save = useMutation({
     mutationFn: () =>
@@ -172,7 +181,7 @@ export function EntryFeedbackForm<TEntry>({
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        rows={2}
+        rows={initialBody ? 5 : 2}
         maxLength={MAX_FEEDBACK_LENGTH}
         aria-label="Feedback text"
         placeholder={verdict === 'comment' ? 'Feedback for the team' : 'Optional — e.g. what to look at instead'}
@@ -196,7 +205,7 @@ export function EntryFeedbackForm<TEntry>({
         <Button type="button" onClick={() => save.mutate()} disabled={!canSend || save.isPending}>
           {save.isPending ? 'Sending…' : 'Send feedback'}
         </Button>
-        <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={save.isPending}>
+        <Button type="button" variant="ghost" onClick={() => (onCancel ? onCancel() : setOpen(false))} disabled={save.isPending}>
           Cancel
         </Button>
       </div>

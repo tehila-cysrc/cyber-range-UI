@@ -13,6 +13,7 @@ import {
   listAssessments,
   loadAssessmentOwner,
   requestAssessment,
+  sessionAiInfo,
   type RunnerResult,
 } from '../../services/ai/assessmentRunner.service.js';
 
@@ -70,7 +71,7 @@ router.get('/ai-assessments', requirePermission('ai_assessment.use'), (req, res)
     return;
   }
   if (!assertTeamPair(req, res, teamId, cyberRangeId)) return;
-  res.json({ assessments: listAssessments(teamId, cyberRangeId, mode as 'live' | 'final' | null) });
+  res.json({ assessments: listAssessments(teamId, cyberRangeId, mode as 'live' | 'final' | null), session: sessionAiInfo(teamId, cyberRangeId) });
 });
 
 // Scope is checked on the ROW's own team + scenario, never on anything the client sends.

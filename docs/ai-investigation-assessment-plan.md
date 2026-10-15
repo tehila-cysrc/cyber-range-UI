@@ -877,6 +877,14 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
   - in the browser, posted feedback appears on the right entry only after Send, and edits are kept;
   - the student account never sees AI text otherwise;
   - the leak warning gates the post button.
+- **Status: done 2026-10-15** (browser QA on isolated databases with a mocked Foundry; no real model calls, no Azure). All three acceptance items pass in the browser.
+- **Decided while implementing:**
+  - **History file merged:** `AssessmentHistoryList` lives inside `AiAssessmentPanel.tsx`, and the tab lists **live** reviews only. Final assessments get their own view in Phase 7.
+  - **Session readiness in the list:** `GET /admin/ai-assessments` also returns `session {sessionStatus, pinnedVersion, pinnedAvailable, latestReadyVersion}` (no Foundry ids). The UI uses it to show "Reference document vN (pinned…) · latest is vM" and to disable "Analyze progress" with a reason.
+  - **Hidden when off:** the tab and button appear only with `ai_assessment.use` **and** the server's kill switch on.
+  - **Leak gate covers Copy too:** with `leakSuspected`, "Post as feedback" and both Copy buttons stay disabled until "I've reviewed this feedback" is ticked.
+  - **Suggested entry points are read-only** ("use the Scoring tab"); the pre-filled "Award…" stays a Phase 7 P2 option.
+  - **Workspace scope:** the tab reviews the team's **active** scenario. A paused session can't be reviewed from the UI yet (BACKLOG).
 
 **Phase 7 — Final assessment UI.**
 - **Tasks:**
