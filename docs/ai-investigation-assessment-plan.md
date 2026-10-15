@@ -827,6 +827,18 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
 - **Tasks:** `assessmentSnapshot.service.ts`, `assessmentValidation.ts`, unit tests.
 - **Acceptance:** all §K unit cases pass.
 - **Risk:** snapshot size on long events. The cap and the error are explicit.
+- **Status: done 2026-10-15** (isolated test DBs; no routes, no model calls, no Azure). Decisions made during implementation:
+  - **Data minimisation:**
+    - Students appear as stable pseudonyms ("Student N") instead of names/usernames, and instructor names are omitted. The UI maps entry ids back to real authors from the database.
+    - The ATT&CK `credited` flag is omitted (answer-key data), and images are sent as `hasImage` only.
+  - **Content hash:** `snapshot_sha256` covers the investigation **content**. The volatile `generatedAt` / `minutesSinceFirstStart` are excluded, so Phase 5 reuse can trigger on unchanged work.
+  - **Elapsed time:** `minutesSinceFirstStart` is wall-clock time; pauses aren't tracked, and the label says so.
+  - **Evidence index:** rebuilt from the **stored** snapshot JSON (`evidenceIndexFromSnapshot`), so ids and quotes are checked against exactly what the agent saw.
+  - **Validation outcomes:**
+    - **Failures:** `ai_no_retrieval` (retryable), `invalid_response` (retryable), `contract_mismatch` (not retryable), `rubric_mismatch` (retryable when the agent's criteria differ; not retryable when no rubric was sent).
+    - **Flags (the result is kept):** dropped evidence / quotes / entry feedback / entry scores, `unsupported` items, truncations, score adjustments (clamp to the rubric max, total = sum, maxTotal = 100), and `leakSuspected` with the ids found.
+  - **Leak scan:** checks technique ids, including parent ids, from the active answer key that the team hasn't tagged. The ground-truth verbatim-overlap check is **not built**, because the app has no copy of the document text (it lives in Foundry). Open question for Phase 5/8.
+  - **Text limits:** student-safe per-entry feedback is capped at 1000 characters, the existing feedback limit, so "Post as feedback" always fits.
 
 **Phase 5 — Assessment runner and routes.**
 - **Tasks:**
