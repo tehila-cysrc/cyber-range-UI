@@ -178,7 +178,9 @@ Misses on the probes are semantic hints that use no reference word ("which accou
 6. UI labels "Reasonable hypothesis" and "Unsupported claim". The leak notice names the flagged terms.
 7. The calibration dataset, leak probes and offline evaluator.
 
-**B. Needs your approval (not done)**
+**B. Approval status.** B1 (v7), B2 (36 requests, Amber Falcon) and B3 (Cobalt Lynx: 1 file, 1 store, 15 requests) were approved and run on 2026-10-18; the v6 baseline was postponed. Results: `docs/ai-assessment-phase8-live-evaluation.md`. B4 (instructor sign-off) is still open; the ranges stay provisional.
+
+**B. As originally proposed**
 1. **Create agent v7.** v3 definition, plus `proposed/agent-instructions.v7.md`, plus the contract-3 schema, plus `temperature: 0` if accepted. Then switch the request `CONTRACT_VERSION` to "3" when the pin moves to v7. v6 and earlier stay untouched, and the pin moves only after evaluation.
 2. **Live evaluation, Amber Falcon only** (existing stores). 12 fixtures × 3 final runs = 36 requests on v7, ≈ $0.55–0.75. Optionally the same on v6 as a baseline: +36 requests, ≈ $0.55–0.75.
 3. **Second scenario, optional.** Upload `cobalt-lynx.txt`: 1 file + 1 vector store, plus 15 requests (≈ $0.25). This is the stronger overfitting check.

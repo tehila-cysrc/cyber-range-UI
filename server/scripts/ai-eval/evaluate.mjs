@@ -323,6 +323,7 @@ export function outputRows(dir) {
     const fx = fixtureById.get(fixtureId);
     if (!fx) { console.warn(`skipping ${name}: unknown fixture ${fixtureId}`); continue; }
     const o = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+    if (o.error) { rows.push({ fixture: fixtureId, label: o.agentVersion ? `v${o.agentVersion}` : label, run: Number(run), mode: o.mode ?? 'final', valid: false, errorCode: o.error }); continue; }
     rows.push(evaluateOutput({ fx, mode: o.mode ?? 'final', outputText: o.outputText, snapshot: snapshotFor(fx), label: o.agentVersion ? `v${o.agentVersion}` : label, run: Number(run), fileSearchCalls: o.fileSearchCalls ?? 1 }));
   }
   return rows;

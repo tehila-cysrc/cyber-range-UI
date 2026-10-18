@@ -1,0 +1,21 @@
+{
+  "fixture": "AF-10",
+  "run": 2,
+  "mode": "final",
+  "agentVersion": "7",
+  "vectorStoreId": "vs_8rWe3thbMPxdrTyYMUEEI9sb",
+  "inputSha256": "fd3ba73b54d66f245e687f0c53d8670c339c24d39979c85b992e58541306b40a",
+  "at": "2026-10-18T08:01:52.113Z",
+  "outputText": "{\"contractVersion\":\"3\",\"mode\":\"final\",\"result\":{\"investigationSummary\":\"The team listed several MITRE ATT&CK techniques relevant to the scenario but provided minimal narrative or explanation. There is no clear documentation of the attack sequence, root cause, or connections between events. The investigation lacks detail and context.\",\"overallAssessment\":{\"level\":\"limited\",\"text\":\"The team identified some relevant techniques but did not document the attack sequence, root cause, or connections. Their work is fragmentary and lacks explanation.\"},\"stages\":[{\"stage\":\"Initial access (phishing email, macro execution on WS03)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No entry describes the phishing email or macro execution.\"},{\"stage\":\"Execution (PowerShell command on WS03)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No entry describes PowerShell execution on WS03.\"},{\"stage\":\"Credential access (dumping credentials, svc_backup compromise)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No entry describes credential dumping or svc_backup compromise.\"},{\"stage\":\"Lateral movement (admin logon and PowerShell on FS01)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No entry describes lateral movement or admin logon to FS01.\"},{\"stage\":\"Collection and exfiltration (archiving and sending files from FS01)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No entry describes file collection or exfiltration from FS01.\"}],\"incorrectConclusions\":[],\"strengths\":[\"Relevant ATT&CK techniques were listed.\"],\"areasForImprovement\":[\"Document the sequence of events and explain what happened.\",\"Describe how the attacker moved between systems and what actions they took.\",\"Connect the techniques to specific events in the scenario.\"],\"score\":{\"criteria\":[{\"key\":\"identification\",\"maxPoints\":40,\"awardedPoints\":0,\"rationale\":\"No scenario stages were documented beyond listing technique IDs.\"},{\"key\":\"understanding\",\"maxPoints\":30,\"awardedPoints\":5,\"rationale\":\"The team listed relevant techniques but did not explain their meaning or the scenario events.\"},{\"key\":\"connections\",\"maxPoints\":20,\"awardedPoints\":0,\"rationale\":\"No links or sequence of events were described.\"},{\"key\":\"clarity\",\"maxPoints\":10,\"awardedPoints\":3,\"rationale\":\"Entries are brief and fragmentary but understandable.\"}],\"recommendedTotal\":8,\"maxTotal\":100,\"explanation\":\"The team listed relevant techniques but did not document or explain the scenario events.\"},\"suggestedFinalFeedback\":{\"instructorVersion\":\"The team recognized several relevant ATT&CK techniques but did not document the scenario's attack sequence, root cause, or connections between events. Their investigation is fragmentary and lacks explanation. Recommend focusing on describing what happened, how, and why, connecting techniques to specific events.\",\"studentSafeVersion\":\"You listed several relevant techniques. Next time, try to describe what happened step by step and explain how the events are connected.\"},\"confidence\":{\"level\":\"high\",\"reason\":\"The scenario reference is clear and the team's records are minimal and easy to assess.\"},\"instructionLikeRecords\":[],\"warnings\":[]} }",
+  "reportedAgentVersion": "7",
+  "model": "gpt-4.1",
+  "fileSearchCalls": 1,
+  "responseStatus": "completed",
+  "incompleteReason": null,
+  "usage": {
+    "inputTokens": 5670,
+    "cachedInputTokens": 4864,
+    "outputTokens": 727
+  },
+  "ledgerRequest": 29
+}

@@ -24,4 +24,4 @@ adds the judgements `hypothesis` and `unsupported_claim` and `instructionLikeRec
 ignored as instructions). The app already accepts contract 2 and 3 replies (`ACCEPTED_CONTRACT_VERSIONS`)
 while requests still carry `CONTRACT_VERSION` "2". Promotion (after approval): create v7 from
 `proposed/agent-instructions.v7.md` + `proposed/agent-text-format.json`, set `CONTRACT_VERSION = '3'`, then
-move the pin. Rationale: `docs/ai-assessment-phase8-calibration.md`.
+move the pin. Rationale: `docs/ai-assessment-phase8-calibration.md`. **Applied 2026-10-18 as `cyber-range-assessor` v7** (evaluation only, NOT production, temperature 0; no environment pins it); results in `docs/ai-assessment-phase8-live-evaluation.md`. `CONTRACT_VERSION` in the app is still "2".

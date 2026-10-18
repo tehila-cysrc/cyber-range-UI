@@ -1,0 +1,21 @@
+{
+  "fixture": "AF-07",
+  "run": 3,
+  "mode": "final",
+  "agentVersion": "7",
+  "vectorStoreId": "vs_8rWe3thbMPxdrTyYMUEEI9sb",
+  "inputSha256": "f9d30644c2f7bfc1efc8ecbf2646d01f630563b8dbabef4b32656be4117c3cba",
+  "at": "2026-10-18T08:00:36.517Z",
+  "outputText": "{\"contractVersion\":\"3\",\"mode\":\"final\",\"result\":{\"investigationSummary\":\"The team noted unusual activity on FS01 but did not document any further details or stages of the attack. No evidence of the root cause, attacker actions, or impact was recorded.\",\"overallAssessment\":{\"level\":\"insufficient\",\"text\":\"Only a vague mention of suspicious activity was documented, with no identification or explanation of attack stages or connections.\"},\"stages\":[{\"stage\":\"Initial access (phishing on WS03)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No mention of phishing, WS03, or initial access.\"},{\"stage\":\"Execution (macro and PowerShell on WS03)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No evidence of macro or PowerShell activity.\"},{\"stage\":\"Credential access (dumping credentials on WS03)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No mention of credential access or admin account compromise.\"},{\"stage\":\"Lateral movement (admin logon and PowerShell on FS01)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No mention of admin logon or attacker activity on FS01; only a vague reference to 'something weird'.\"},{\"stage\":\"Collection and exfiltration (archiving and sending files from FS01)\",\"judgement\":\"not_documented\",\"evidence\":[],\"interpretation\":\"No mention of file collection or exfiltration.\"}],\"incorrectConclusions\":[],\"strengths\":[\"The team identified that FS01 was involved in suspicious activity.\"],\"areasForImprovement\":[\"Document specific events and evidence observed.\",\"Describe what actions were taken and their impact.\",\"Connect events to possible attacker actions.\",\"Explain the meaning and significance of findings.\"],\"score\":{\"criteria\":[{\"key\":\"identification\",\"maxPoints\":40,\"awardedPoints\":0,\"rationale\":\"No attack stages were identified or described.\"},{\"key\":\"understanding\",\"maxPoints\":30,\"awardedPoints\":0,\"rationale\":\"No explanation or meaning of events was provided.\"},{\"key\":\"connections\",\"maxPoints\":20,\"awardedPoints\":0,\"rationale\":\"No links or sequence of events were documented.\"},{\"key\":\"clarity\",\"maxPoints\":10,\"awardedPoints\":3,\"rationale\":\"The entry was brief but understandable.\"}],\"recommendedTotal\":3,\"maxTotal\":100,\"explanation\":\"Only a vague reference to suspicious activity was documented; no attack stages or connections were described.\"},\"suggestedFinalFeedback\":{\"instructorVersion\":\"The team only noted vague suspicious activity on FS01 and did not document any attack stages or evidence. No explanation or connections were made. Recommend focusing on documenting specific events and their meaning in future investigations.\",\"studentSafeVersion\":\"You noted suspicious activity on FS01. For future investigations, try to document specific events, describe what you observed, and explain what they might mean.\"},\"confidence\":{\"level\":\"high\",\"reason\":\"The reference document clearly describes the attack stages, and the team's records contain only a vague mention with no details.\"},\"instructionLikeRecords\":[],\"warnings\":[\"Very little evidence was documented; assessment is based on a single vague entry.\"]}}",
+  "reportedAgentVersion": "7",
+  "model": "gpt-4.1",
+  "fileSearchCalls": 1,
+  "responseStatus": "completed",
+  "incompleteReason": null,
+  "usage": {
+    "inputTokens": 5457,
+    "cachedInputTokens": 4736,
+    "outputTokens": 697
+  },
+  "ledgerRequest": 21
+}
