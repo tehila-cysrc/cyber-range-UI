@@ -131,7 +131,7 @@ test('event reset wipes assessments and session pins, keeps scenario documents (
 
 // ---------------------------------------------------------------------------------------------
 
-const AI_ENV = ['AI_ASSESSMENT_ENABLED', 'FOUNDRY_PROJECT_ENDPOINT', 'FOUNDRY_AGENT_NAME', 'FOUNDRY_AGENT_VERSION', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AI_REQUEST_TIMEOUT_MS', 'AI_MAX_CONCURRENT'];
+const AI_ENV = ['AI_ASSESSMENT_ENABLED', 'FOUNDRY_PROJECT_ENDPOINT', 'FOUNDRY_AGENT_NAME', 'FOUNDRY_AGENT_VERSION', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET', 'AI_REQUEST_TIMEOUT_MS', 'AI_MAX_CONCURRENT', 'FOUNDRY_AGENT_CONTRACT_VERSION'];
 const SECRET = 'super-secret-value~do-not-leak-0123456789';
 function withEnv(values, fn) {
   const saved = Object.fromEntries(AI_ENV.map((k) => [k, process.env[k]]));
@@ -214,4 +214,22 @@ test('permission ai_assessment.use: admin and instructor, never student', () => 
   assert.equal(can('instructor', 'ai_assessment.use'), true);
   assert.equal(can('student', 'ai_assessment.use'), false);
   assert.ok(!permissionsFor('student').includes('ai_assessment.use'));
+});
+
+test('FOUNDRY_AGENT_CONTRACT_VERSION: optional, defaults to "2", must be an accepted contract (else AI stays disabled)', () => {
+  withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true' }, () => {
+    const c = getAiConfig();
+    assert.equal(c.requestContractVersion, '2');
+    assert.equal(c.enabled, true);
+  });
+  withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_CONTRACT_VERSION: '3' }, () => {
+    assert.equal(getAiConfig().requestContractVersion, '3');
+    assert.equal(getAiConfig().enabled, true);
+  });
+  for (const bad of ['4', 'latest', '1']) {
+    withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_CONTRACT_VERSION: bad }, () => {
+      assert.deepEqual(getAiConfig().missing, ['FOUNDRY_AGENT_CONTRACT_VERSION'], bad);
+      assert.equal(getAiConfig().enabled, false);
+    });
+  }
 });

@@ -21,6 +21,7 @@ interface AiConfigView {
   missing: string[];
   agentName: string | null;
   agentVersion: string | null;
+  requestContractVersion: string;
   requestTimeoutMs: number;
   maxConcurrent: number;
   acceptedContractVersions: string[];
@@ -109,8 +110,8 @@ function ConfigCard() {
             <TelemetryBadge tone={c.configured ? 'secondary' : 'alert'}>{c.configured ? 'Configured' : 'Not configured'}</TelemetryBadge>
           </div>
           <div style={muted}>
-            Agent <span style={mono}>{c.agentName ?? '—'}</span>, pinned version <span style={mono}>{c.agentVersion ?? 'none (AI stays off)'}</span> · accepted reply contracts{' '}
-            {c.acceptedContractVersions.join(', ')} · timeout {Math.round(c.requestTimeoutMs / 1000)} s · up to {c.maxConcurrent} jobs at a time
+            Agent <span style={mono}>{c.agentName ?? '—'}</span>, pinned version <span style={mono}>{c.agentVersion ?? 'none (AI stays off)'}</span> · request format{' '}
+            {c.requestContractVersion} · accepted reply formats {c.acceptedContractVersions.join(', ')} · timeout {Math.round(c.requestTimeoutMs / 1000)} s · up to {c.maxConcurrent} jobs at a time
           </div>
           {c.missing.length > 0 && <div style={{ fontSize: 13, color: 'var(--signal-alert)' }}>Missing or invalid settings: {c.missing.join(', ')}</div>}
           <div style={muted}>Settings come from the server environment; they are changed by redeploying, not here.</div>

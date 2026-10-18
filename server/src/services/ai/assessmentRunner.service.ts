@@ -14,7 +14,7 @@ import { db } from '../../db/index.js';
 import type { Principal } from '../../authz/principal.js';
 import { writeAudit } from '../audit.service.js';
 import { getAiConfig } from './aiConfig.js';
-import { CONTRACT_VERSION, type AssessmentMode } from './assessmentContract.js';
+import { type AssessmentMode } from './assessmentContract.js';
 import { FoundryError, getFoundryClient } from './foundryClient.js';
 import { SnapshotError, buildSnapshot, evidenceIndexFromSnapshot, leakScanContext, type InvestigationSnapshot } from './assessmentSnapshot.service.js';
 import { validateAssessment, type RubricCriterion } from './assessmentValidation.js';
@@ -49,7 +49,7 @@ export function buildAssessmentInput(
   rubric: RubricCriterion[] | null,
 ): string {
   return JSON.stringify({
-    contractVersion: CONTRACT_VERSION,
+    contractVersion: getAiConfig().requestContractVersion,
     mode,
     scenario: { ...snapshot.scenario, groundTruthVersion },
     // A final assessment judges the records, not the clock. Wall-clock minutes since the first start
@@ -330,7 +330,7 @@ export function requestAssessment(p: Principal, body: z.infer<typeof AssessmentR
            rubric_json, snapshot_json, snapshot_sha256, agent_name, contract_version, requested_by_user_id, requested_by_username, created_at)
          VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(teamId, cyberRangeId, progress.organizationId, mode, version.documentId, version.version, version.sha256, rubricJson, built.json, built.sha256, config.agentName, CONTRACT_VERSION, p.id, p.username, now()).lastInsertRowid,
+      .run(teamId, cyberRangeId, progress.organizationId, mode, version.documentId, version.version, version.sha256, rubricJson, built.json, built.sha256, config.agentName, config.requestContractVersion, p.id, p.username, now()).lastInsertRowid,
   );
   writeAudit(p.username, 'ai_assessment.requested', 'ai_assessment', id, { mode, teamId, documentVersion: version.version, forced: !!body.force, ...built.counts }, { organizationId: progress.organizationId, cyberRangeId });
   // Read before starting: the job flips the row to `running` synchronously.

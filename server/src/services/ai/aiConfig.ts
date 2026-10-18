@@ -3,6 +3,8 @@
 // The client secret is never returned from here — only whether it is present. It is read exclusively by
 // foundryClient.ts when building the credential.
 
+import { ACCEPTED_CONTRACT_VERSIONS, CONTRACT_VERSION } from './assessmentContract.js';
+
 export interface AiConfig {
   enabled: boolean; // AI_ASSESSMENT_ENABLED switch AND fully configured
   switchOn: boolean; // AI_ASSESSMENT_ENABLED alone
@@ -11,6 +13,7 @@ export interface AiConfig {
   projectEndpoint: string | null;
   agentName: string | null;
   agentVersion: string | null; // REQUIRED: the pinned agent version (never Foundry's unpinned "latest")
+  requestContractVersion: string; // FOUNDRY_AGENT_CONTRACT_VERSION: the reply format the pinned agent uses (default "2")
   tenantId: string | null;
   clientId: string | null;
   hasClientSecret: boolean;
@@ -43,6 +46,9 @@ export function getAiConfig(): AiConfig {
   const tenantId = (env.AZURE_TENANT_ID ?? '').trim() || null;
   const clientId = (env.AZURE_CLIENT_ID ?? '').trim() || null;
   const hasClientSecret = !!(env.AZURE_CLIENT_SECRET ?? '').trim();
+  // Optional (decision E, 2026-10-18): which response contract the pinned agent version speaks, so the
+  // request says the same. Unset = CONTRACT_VERSION ("2", agent v6). An unknown value = not configured.
+  const requestContractVersion = (env.FOUNDRY_AGENT_CONTRACT_VERSION ?? '').trim() || CONTRACT_VERSION;
 
   const missing: string[] = [];
   if (!endpoint || !ENDPOINT_RE.test(endpoint)) missing.push('FOUNDRY_PROJECT_ENDPOINT');
@@ -53,6 +59,7 @@ export function getAiConfig(): AiConfig {
   if (!tenantId || !GUID_RE.test(tenantId)) missing.push('AZURE_TENANT_ID');
   if (!clientId || !GUID_RE.test(clientId)) missing.push('AZURE_CLIENT_ID');
   if (!hasClientSecret) missing.push('AZURE_CLIENT_SECRET');
+  if (!(ACCEPTED_CONTRACT_VERSIONS as readonly string[]).includes(requestContractVersion)) missing.push('FOUNDRY_AGENT_CONTRACT_VERSION');
 
   const configured = missing.length === 0;
   const on = switchOn();
@@ -64,6 +71,7 @@ export function getAiConfig(): AiConfig {
     projectEndpoint: endpoint,
     agentName,
     agentVersion,
+    requestContractVersion,
     tenantId,
     clientId,
     hasClientSecret,

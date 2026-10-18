@@ -16,6 +16,7 @@ export interface AiConfigView {
   missing: string[]; // setting NAMES only
   agentName: string | null;
   agentVersion: string | null;
+  requestContractVersion: string;
   requestTimeoutMs: number;
   maxConcurrent: number;
   acceptedContractVersions: string[];
@@ -31,6 +32,7 @@ export function aiConfigView(): AiConfigView {
     missing: c.missing,
     agentName: c.agentName,
     agentVersion: c.agentVersion,
+    requestContractVersion: c.requestContractVersion,
     requestTimeoutMs: c.requestTimeoutMs,
     maxConcurrent: c.maxConcurrent,
     acceptedContractVersions: [...ACCEPTED_CONTRACT_VERSIONS],

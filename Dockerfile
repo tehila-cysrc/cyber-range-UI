@@ -35,6 +35,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/client/dist ./client/dist
+# Database backup / migration-check tools (docs/runbooks/production-deploy-backup-and-rollback.md).
+COPY --from=build /app/server/scripts/db ./server/scripts/db
 # Read at startup to fill an empty Script Library (server/src/db/importScriptLibrary.ts).
 COPY script-library ./script-library
 

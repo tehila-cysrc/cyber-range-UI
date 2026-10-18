@@ -1,6 +1,8 @@
 # Local dev database — backup and migration verification plan
 
-Status: **proposal, awaiting approval** (2026-10-15). Nothing below has been run against the real file.
+Status: **proposal, awaiting approval** (2026-10-15; tooling added 2026-10-18). Nothing below has been run against the real file.
+
+Tools (2026-10-18, tested on temporary databases only): `server/scripts/db/backup.mjs` (consistent read-only backup plus manifest) and `server/scripts/db/migration-check.mjs` (runs the real startup sequence on a copy and compares). Production: `docs/runbooks/production-deploy-backup-and-rollback.md`.
 
 Scope: `server/data/cyber-range.db` (plus `-wal` / `-shm`), the local development database. The
 production DB (Coolify `/data/cyber-range.db`) is out of scope; see `CLAUDE/deploy.md` and the RBAC
@@ -48,11 +50,12 @@ The inspection opened the file read-only. It changed nothing in `cyber-range.db`
    - The sha256 of the copied `cyber-range.db` equals the original's.
    - `PRAGMA integrity_check` on the copy returns `ok`.
    - The row counts and the score total on the copy match section 1.
+   - Alternatively (2026-10-18): `node scripts/db/backup.mjs --db data/cyber-range.db --out <backup folder>/cyber-range-backup.db` from `server/` writes a consistent copy (read-only `VACUUM INTO`) plus a `.manifest.json` with the integrity check, row counts and `scoresTotal` to compare with section 1.
 4. Keep the backup until production has been migrated and checked too.
 
 ## 4. Migration and verification (to run after approval)
 
-1. **Rehearse once more** on a fresh copy with the current commit, as in section 2.
+1. **Rehearse once more** on a fresh copy with the current commit, as in section 2: `node scripts/db/migration-check.mjs --db <backup>.db --work <empty folder>` (from `server/`, after `npm run build -w server`). It must print PASSED with no FAIL line. Read every WARN line; for this file none is expected, because the staff row becomes the admin account.
 2. **Run** `npm run migrate -w server` against the real file. This uses the default `DB_PATH=./data/cyber-range.db` with `cwd = server/`.
 3. **Verify:**
    - `PRAGMA integrity_check` = `ok` and `PRAGMA foreign_key_check` = empty.
