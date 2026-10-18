@@ -234,7 +234,7 @@ export function describeAiError(code: string | null | undefined): string {
     case 'ground_truth_not_ready':
       return 'No reference document was ready when this session started. Upload one on the Scenarios page.';
     case 'ground_truth_unavailable':
-      return "This session's reference document version is not available in Microsoft Foundry. Ask an admin.";
+      return "This session's reference document version is not available in Microsoft Foundry. Rebuild it from the version history on the Scenarios page (AI reference document), then try again.";
     case 'assessment_in_progress':
       return 'A review is already running for this team.';
     case 'ai_busy':

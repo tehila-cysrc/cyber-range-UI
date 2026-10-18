@@ -9,6 +9,8 @@ import {
   getRubric,
   listDocuments,
   listFoundryResources,
+  rebuildVersion,
+  documentContent,
   retryVersion,
   setRubric,
   uploadVersion,
@@ -66,6 +68,44 @@ router.post('/cyber-ranges/:cyberRangeId/ai-documents/:documentId/retry', requir
     return;
   }
   send(res, retryVersion(req.user!, rangeId, documentId), 202, (document) => ({ document }));
+});
+
+function documentIdParam(req: Request, res: Response): number | null {
+  const documentId = Number(req.params.documentId);
+  if (!Number.isInteger(documentId) || documentId <= 0) {
+    res.status(400).json({ error: 'invalid document id' });
+    return null;
+  }
+  return documentId;
+}
+
+// Re-upload a version whose Foundry copy is gone, from the stored bytes (sessions pinned to it can be
+// assessed again). Creates Foundry resources like an upload; never deletes anything.
+router.post('/cyber-ranges/:cyberRangeId/ai-documents/:documentId/rebuild', requirePermission('scenario.author'), (req, res) => {
+  const id = scenarioFromParam(req, res);
+  if (id === null) return;
+  const documentId = documentIdParam(req, res);
+  if (documentId === null) return;
+  send(res, rebuildVersion(req.user!, id, documentId), 202, (document) => ({ document }));
+});
+
+// The original file of a version (scenario authors only; audited). Never a student route.
+router.get('/cyber-ranges/:cyberRangeId/ai-documents/:documentId/content', requirePermission('scenario.author'), (req, res) => {
+  const id = scenarioFromParam(req, res);
+  if (id === null) return;
+  const documentId = documentIdParam(req, res);
+  if (documentId === null) return;
+  const r = documentContent(id, documentId, req.user!.username);
+  if (!r.ok) {
+    res.status(r.status).json({ error: r.error });
+    return;
+  }
+  const safeName = r.value.filename.replace(/[^\w.\- ]/g, '_').slice(0, 200) || 'reference-document';
+  res.setHeader('Content-Type', r.value.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(Buffer.from(r.value.bytes));
 });
 
 router.put('/cyber-ranges/:cyberRangeId/ai-rubric', requirePermission('scenario.author'), (req, res) => {

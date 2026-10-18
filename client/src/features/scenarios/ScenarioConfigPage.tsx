@@ -195,10 +195,24 @@ export function ScenarioConfigPage() {
             disabled={deleteScenario.isPending}
             onClick={async () => {
               setDeleteError(null);
+              // AI reference documents go with the scenario; their Foundry copies are never deleted
+              // automatically (they become cleanup candidates for an admin).
+              let aiNote = '';
+              try {
+                const d = await apiFetch<{ versions: { pinnedSessionCount: number }[] }>(`/admin/cyber-ranges/${cyberRangeId}/ai-documents`);
+                const pinned = d.versions.reduce((s, v) => s + v.pinnedSessionCount, 0);
+                if (d.versions.length) {
+                  aiNote = `
+
+It also removes ${d.versions.length} AI reference document version${d.versions.length === 1 ? '' : 's'}${pinned ? ` (used by ${pinned} team session${pinned === 1 ? '' : 's'})` : ''}. Their copies in Microsoft Foundry are not deleted automatically: they become cleanup candidates under System → AI Resources.`;
+                }
+              } catch {
+                /* no AI data visible — nothing to add */
+              }
               const ok = await confirmAction({
                 title: `Delete scenario "${selectedName ?? ''}"?`,
                 message:
-                  'Removes the scenario with its topology, pressure thresholds and expected techniques. Not possible while an environment backs it or a team has it assigned.',
+                  'Removes the scenario with its topology, pressure thresholds and expected techniques. Not possible while an environment backs it or a team has it assigned.' + aiNote,
                 confirmLabel: 'Delete scenario',
                 danger: true,
               });

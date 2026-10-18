@@ -395,3 +395,43 @@ test('Foundry inventory: read-only, matched to the registry; untracked items are
   }
   delete fake.listInventory;
 });
+
+test('version details, download (authors only, audited) and rebuild of a version whose Foundry copy is gone', async () => {
+  const s1v1 = docId(f.s1, 1); // superseded; its Foundry copy was deleted by the approved cleanup above
+  const list = (await getDocs(f.s1)).body.versions;
+  const v1 = list.find((v) => v.id === s1v1);
+  assert.equal(v1.foundryDeleted, true);
+  assert.equal(v1.rebuilding, false);
+  assert.equal(typeof v1.assessmentCount, 'number');
+  assert.ok(Array.isArray(v1.pinnedTeams));
+  assert.equal(v1.pinnedTeams.length, v1.pinnedSessionCount);
+  for (const v of list) assert.ok(!('foundryFileId' in v) && !('content' in v));
+
+  // Download: authors in scope get the exact bytes; students 403; another scenario 404.
+  const raw = await fetch(`${base}/api/admin/cyber-ranges/${f.s1}/ai-documents/${s1v1}/content`, { headers: { Authorization: `Bearer ${tok.iA}` } });
+  assert.equal(raw.status, 200);
+  assert.match(raw.headers.get('content-disposition'), /^attachment; filename="/);
+  assert.equal(raw.headers.get('cache-control'), 'no-store');
+  const stored = db.prepare('SELECT content FROM scenario_ai_documents WHERE id = ?').get(s1v1).content;
+  assert.deepEqual(Buffer.from(await raw.arrayBuffer()), Buffer.from(stored));
+  assert.equal((await call('GET', `/api/admin/cyber-ranges/${f.s1}/ai-documents/${s1v1}/content`, tok.studentA)).status, 403);
+  assert.equal((await call('GET', `/api/admin/cyber-ranges/${f.s2}/ai-documents/${s1v1}/content`, tok.admin)).status, 404);
+  assert.ok(db.prepare("SELECT 1 FROM audit_log WHERE action = 'ai_document.downloaded' AND entity_id = ?").get(s1v1));
+
+  // Rebuild: only a version that is actually missing; recreates file + store from the bytes, recorded.
+  const current = list.find((v) => v.isCurrent);
+  assert.equal((await call('POST', `/api/admin/cyber-ranges/${f.s1}/ai-documents/${current.id}/rebuild`, tok.admin)).body.reason, 'not_missing');
+  assert.equal((await call('POST', `/api/admin/cyber-ranges/${f.s1}/ai-documents/${s1v1}/rebuild`, tok.studentA)).status, 403);
+  const before = fake.calls.length;
+  const r = await call('POST', `/api/admin/cyber-ranges/${f.s1}/ai-documents/${s1v1}/rebuild`, tok.admin);
+  assert.equal(r.status, 202, r.text);
+  assert.equal(r.body.document.rebuilding, true);
+  await docs.waitForAiIndexingIdle();
+  assert.deepEqual(fake.calls.slice(before).map((c) => c.op), ['uploadFile', 'createVectorStore', 'waitForVectorStore']);
+  const row = db.prepare('SELECT status, foundry_deleted_at AS d, foundry_vector_store_id AS vs FROM scenario_ai_documents WHERE id = ?').get(s1v1);
+  assert.equal(row.status, 'superseded'); // status and pins unchanged
+  assert.equal(row.d, null);
+  assert.ok(db.prepare('SELECT 1 FROM ai_foundry_resources WHERE foundry_id = ? AND document_id = ?').get(row.vs, s1v1));
+  assert.ok(db.prepare("SELECT 1 FROM audit_log WHERE action = 'ai_document.rebuilt' AND entity_id = ?").get(s1v1));
+  assert.equal((await call('POST', `/api/admin/cyber-ranges/${f.s1}/ai-documents/${s1v1}/rebuild`, tok.admin)).body.reason, 'not_missing');
+});

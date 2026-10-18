@@ -91,6 +91,10 @@ export interface DocumentDTO {
   readyAt: string | null;
   supersededAt: string | null;
   pinnedSessionCount: number; // only sessions the caller may see (pair scope)
+  pinnedTeams: string[]; // names of those teams (platform P2, 2026-10-18)
+  assessmentCount: number; // AI assessments that used this version, in the caller's scope
+  foundryDeleted: boolean; // its Foundry copy is gone (bytes kept) — rebuildable if sessions need it
+  rebuilding: boolean;
 }
 
 const DOC_COLUMNS = `d.id, d.version, d.original_filename AS originalFilename, d.mime_type AS mimeType, d.size_bytes AS sizeBytes,
@@ -99,15 +103,22 @@ const DOC_COLUMNS = `d.id, d.version, d.original_filename AS originalFilename, d
 
 export function listDocuments(p: Principal, cyberRangeId: number): { current: DocumentDTO | null; versions: DocumentDTO[] } {
   const scope = scopeWhere(p, 't.organization_id', 'tcp.cyber_range_id');
+  const aScope = scopeWhere(p, 'a.organization_id', 'a.cyber_range_id');
   const rows = db
     .prepare(
-      `SELECT ${DOC_COLUMNS},
-         (SELECT COUNT(*) FROM team_cyber_range_progress tcp JOIN teams t ON t.id = tcp.team_id
-            WHERE tcp.ai_document_id = d.id AND ${scope.sql}) AS pinnedSessionCount
+      `SELECT ${DOC_COLUMNS}, d.foundry_deleted_at AS foundryDeletedAt,
+         (SELECT COUNT(*) FROM ai_assessments a WHERE a.document_id = d.id AND ${aScope.sql}) AS assessmentCount
        FROM scenario_ai_documents d WHERE d.cyber_range_id = ? ORDER BY d.version DESC`,
     )
-    .all(...scope.params, cyberRangeId) as (Omit<DocumentDTO, 'isCurrent'> & { isCurrent: number })[];
-  const versions = rows.map((r) => ({ ...r, isCurrent: r.isCurrent === 1 })) as DocumentDTO[];
+    .all(...aScope.params, cyberRangeId) as (Omit<DocumentDTO, 'isCurrent' | 'pinnedTeams' | 'pinnedSessionCount' | 'foundryDeleted' | 'rebuilding'> & { isCurrent: number; foundryDeletedAt: string | null })[];
+  const teamsFor = db.prepare(
+    `SELECT t.name FROM team_cyber_range_progress tcp JOIN teams t ON t.id = tcp.team_id
+     WHERE tcp.ai_document_id = ? AND ${scope.sql} ORDER BY t.sort_order, t.name`,
+  );
+  const versions = rows.map(({ foundryDeletedAt, ...r }) => {
+    const pinnedTeams = (teamsFor.all(r.id, ...scope.params) as { name: string }[]).map((t) => t.name);
+    return { ...r, isCurrent: r.isCurrent === 1, pinnedTeams, pinnedSessionCount: pinnedTeams.length, foundryDeleted: foundryDeletedAt !== null, rebuilding: rebuilding.has(r.id) };
+  }) as DocumentDTO[];
   return { current: versions.find((v) => v.isCurrent) ?? null, versions };
 }
 
@@ -180,6 +191,61 @@ export function retryVersion(p: Principal, cyberRangeId: number, documentId: num
   writeAudit(p.username, 'ai_document.retried', 'scenario_ai_document', documentId, null, { cyberRangeId });
   startIndexing(documentId, p.username);
   return { ok: true, value: documentDTO(p, documentId)! };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rebuild (platform P2): a ready/superseded version whose Foundry copy is gone (deleted after use, or
+// removed in Foundry) is re-uploaded from the stored bytes, so the sessions pinned to it can be assessed
+// again. Status, version and pins never change; the new file/store are recorded like any other.
+
+const rebuilding = new Set<number>();
+
+export function rebuildVersion(p: Principal, cyberRangeId: number, documentId: number): ServiceResult<DocumentDTO> {
+  if (!isAiEnabled()) return { ok: false, status: 503, error: 'AI assessment is disabled on this server', reason: 'ai_disabled' };
+  const doc = db
+    .prepare('SELECT cyber_range_id AS r, status, foundry_vector_store_id AS vs, foundry_deleted_at AS deletedAt FROM scenario_ai_documents WHERE id = ?')
+    .get(documentId) as { r: number; status: string; vs: string | null; deletedAt: string | null } | undefined;
+  if (!doc || doc.r !== cyberRangeId) return { ok: false, status: 404, error: 'document not found' };
+  if (doc.status !== 'ready' && doc.status !== 'superseded') return { ok: false, status: 409, error: 'only a ready or replaced version can be rebuilt', reason: 'not_rebuildable' };
+  if (!doc.deletedAt && doc.vs) return { ok: false, status: 409, error: 'this version is available in Microsoft Foundry', reason: 'not_missing' };
+  if (rebuilding.has(documentId)) return { ok: false, status: 409, error: 'this version is already being rebuilt', reason: 'already_processing' };
+  rebuilding.add(documentId);
+  writeAudit(p.username, 'ai_document.rebuild_requested', 'scenario_ai_document', documentId, null, { cyberRangeId });
+  const job = rebuildDocument(documentId, p.username).finally(() => {
+    rebuilding.delete(documentId);
+    inFlight.delete(documentId);
+  });
+  inFlight.set(documentId, job);
+  return { ok: true, value: documentDTO(p, documentId)! };
+}
+
+async function rebuildDocument(documentId: number, actorUsername: string): Promise<void> {
+  const doc = loadDocument(documentId);
+  if (!doc) return;
+  try {
+    const client = getFoundryClient();
+    const { fileId } = await client.uploadFile({ bytes: doc.content, filename: doc.filename, mimeType: doc.mimeType });
+    recordResource('file', fileId, doc);
+    const { vectorStoreId } = await client.createVectorStore({ name: `cr-${doc.cyberRangeId}-v${doc.version}-d${doc.id}-r`, fileIds: [fileId] });
+    recordResource('vector_store', vectorStoreId, doc);
+    const state = await client.waitForVectorStore(vectorStoreId);
+    if (!state.ok) {
+      writeAudit(actorUsername, 'ai_document.rebuild_failed', 'scenario_ai_document', documentId, { errorCode: safeCode(`indexing_failed${state.errorCode ? `:${state.errorCode}` : ''}`) }, { cyberRangeId: doc.cyberRangeId });
+      return;
+    }
+    db.prepare('UPDATE scenario_ai_documents SET foundry_deleted_at = NULL WHERE id = ?').run(documentId);
+    writeAudit(actorUsername, 'ai_document.rebuilt', 'scenario_ai_document', documentId, { version: doc.version }, { cyberRangeId: doc.cyberRangeId });
+  } catch (e) {
+    writeAudit(actorUsername, 'ai_document.rebuild_failed', 'scenario_ai_document', documentId, { errorCode: e instanceof FoundryError ? e.code : 'indexing_error' }, { cyberRangeId: doc.cyberRangeId });
+  }
+}
+
+// Original bytes for staff who author the scenario (decision F). Never served under a student route.
+export function documentContent(cyberRangeId: number, documentId: number, actorUsername: string): ServiceResult<{ filename: string; mimeType: string; bytes: Uint8Array }> {
+  const doc = loadDocument(documentId);
+  if (!doc || doc.cyberRangeId !== cyberRangeId) return { ok: false, status: 404, error: 'document not found' };
+  writeAudit(actorUsername, 'ai_document.downloaded', 'scenario_ai_document', documentId, { version: doc.version }, { cyberRangeId });
+  return { ok: true, value: { filename: doc.filename, mimeType: doc.mimeType, bytes: doc.content } };
 }
 
 // ---------------------------------------------------------------------------------------------

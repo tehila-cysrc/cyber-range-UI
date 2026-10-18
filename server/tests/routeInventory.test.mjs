@@ -159,6 +159,8 @@ const EXPECTED = {
   'POST /api/admin/cyber-ranges/:cyberRangeId/ai-documents': 'scenario.author',
   'POST /api/admin/cyber-ranges/:cyberRangeId/ai-documents/:documentId/retry': 'scenario.author',
   'PUT /api/admin/cyber-ranges/:cyberRangeId/ai-rubric': 'scenario.author',
+  'POST /api/admin/cyber-ranges/:cyberRangeId/ai-documents/:documentId/rebuild': 'scenario.author',
+  'GET /api/admin/cyber-ranges/:cyberRangeId/ai-documents/:documentId/content': 'scenario.author',
   'GET /api/admin/ai/foundry-resources': 'ai_resources.manage',
   'POST /api/admin/ai/foundry-resources/cleanup': 'ai_resources.manage',
   'GET /api/admin/ai/config': 'ai_resources.manage',

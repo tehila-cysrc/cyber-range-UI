@@ -1,6 +1,7 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch, ApiError } from '../../lib/apiClient';
+import { API_ORIGIN, apiFetch, ApiError } from '../../lib/apiClient';
+import { useAuthStore } from '../../stores/authStore';
 import { useCan } from '../../lib/permissions';
 import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
@@ -30,6 +31,10 @@ interface AiDocument {
   readyAt: string | null;
   supersededAt: string | null;
   pinnedSessionCount: number;
+  pinnedTeams: string[];
+  assessmentCount: number;
+  foundryDeleted: boolean; // Foundry copy gone (bytes kept) — "Rebuild in Foundry"
+  rebuilding: boolean;
 }
 
 type RubricKey = 'identification' | 'understanding' | 'connections' | 'clarity';
@@ -101,6 +106,23 @@ function statusBadge(d: AiDocument) {
   }
 }
 
+// The original file of a version (scenario authors; the server audits every download).
+async function downloadVersion(cyberRangeId: number, doc: AiDocument) {
+  const token = useAuthStore.getState().token;
+  const res = await fetch(`${API_ORIGIN}/api/admin/cyber-ranges/${cyberRangeId}/ai-documents/${doc.id}/content`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = doc.originalFilename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,7 +145,7 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
     queryKey,
     queryFn: () => apiFetch<AiDocumentsResponse>(`/admin/cyber-ranges/${cyberRangeId}/ai-documents`),
     // Poll only while a version is being processed in Foundry.
-    refetchInterval: (q) => (q.state.data?.versions.some((v) => v.status === 'processing') ? 3000 : false),
+    refetchInterval: (q) => (q.state.data?.versions.some((v) => v.status === 'processing' || v.rebuilding) ? 3000 : false),
   });
 
   // No reset effect needed: ScenarioConfigPage keys this section by scenario, so switching scenarios
@@ -154,6 +176,25 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
     },
     onError: (err) => setError(errorText(err, 'Could not retry processing.')),
   });
+
+  const rebuild = useMutation({
+    mutationFn: (documentId: number) =>
+      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/ai-documents/${documentId}/rebuild`, { method: 'POST' }),
+    onSuccess: () => {
+      setError(null);
+      push('Rebuilding this version in Microsoft Foundry from the stored file.', 'success');
+      invalidate();
+    },
+    onError: (err) => setError(errorText(err, 'Could not rebuild this version.')),
+  });
+
+  async function onDownload(doc: AiDocument) {
+    try {
+      await downloadVersion(cyberRangeId, doc);
+    } catch {
+      push('Could not download the document.', 'error');
+    }
+  }
 
   const processing = data?.versions.find((v) => v.status === 'processing') ?? null;
   const current = data?.current ?? null;
@@ -345,11 +386,32 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
                     {formatSize(v.sizeBytes)} · <bdi>{v.uploadedBy}</bdi> · {formatEntryTime(v.createdAt)}
                   </span>
                   {v.pinnedSessionCount > 0 && (
+                    <span style={{ color: 'var(--text-muted)' }} title={v.pinnedTeams.join(', ')}>
+                      · used by {v.pinnedSessionCount} team session{v.pinnedSessionCount === 1 ? '' : 's'} (<bdi>{v.pinnedTeams.join(', ')}</bdi>)
+                    </span>
+                  )}
+                  {v.assessmentCount > 0 && (
                     <span style={{ color: 'var(--text-muted)' }}>
-                      · used by {v.pinnedSessionCount} team session{v.pinnedSessionCount === 1 ? '' : 's'}
+                      · {v.assessmentCount} AI assessment{v.assessmentCount === 1 ? '' : 's'}
                     </span>
                   )}
                   {v.status === 'failed' && <span style={{ color: 'var(--text-muted)' }}>· {describeDocumentError(v.errorCode)}</span>}
+                  {v.rebuilding && <TelemetryBadge tone="secondary">Rebuilding…</TelemetryBadge>}
+                  {v.foundryDeleted && !v.rebuilding && (
+                    <span style={{ color: v.pinnedSessionCount > 0 ? 'var(--signal-alert)' : 'var(--text-muted)' }}>
+                      · Foundry copy deleted{v.pinnedSessionCount > 0 ? ' — the sessions above cannot be assessed until it is rebuilt' : ''}
+                    </span>
+                  )}
+                  {canAuthor && v.foundryDeleted && !v.rebuilding && (v.status === 'ready' || v.status === 'superseded') && (
+                    <Button type="button" variant="ghost" disabled={rebuild.isPending} onClick={() => rebuild.mutate(v.id)} style={{ padding: '2px 10px', fontSize: 13 }}>
+                      Rebuild in Foundry
+                    </Button>
+                  )}
+                  {canAuthor && (
+                    <Button type="button" variant="ghost" onClick={() => void onDownload(v)} style={{ padding: '2px 10px', fontSize: 13 }}>
+                      Download
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
