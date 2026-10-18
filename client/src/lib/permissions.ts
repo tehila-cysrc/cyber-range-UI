@@ -44,6 +44,7 @@ export type Permission =
   | 'audit.read'
   | 'event.reset'
   | 'event.export'
+  | 'results.export'
   | 'remote_access.revoke_all'
   | 'mitre.read'
   | 'profile.self'

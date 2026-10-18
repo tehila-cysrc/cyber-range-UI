@@ -44,6 +44,16 @@ function hasPair(scope: Scope, orgId: number | null, rangeId: number): boolean {
   return scope.pairs.some((pair) => pair.orgId === orgId && pair.rangeId === rangeId);
 }
 
+// For bulk readers that filter rows themselves (the scoped results export): may this scope see team work
+// of an organization on a scenario? Admin scope sees everything, including teams without an organization.
+export function scopeAllowsPair(scope: Scope, orgId: number | null, rangeId: number): boolean {
+  return scope.all || hasPair(scope, orgId, rangeId);
+}
+
+export function scopeAllowsTeam(scope: Scope, orgId: number | null): boolean {
+  return scope.all || (orgId !== null && scope.orgIds.has(orgId));
+}
+
 // The team's organization, or undefined when the team doesn't exist in the active run.
 export function teamOrganization(teamId: number): { orgId: number | null } | undefined {
   const row = db

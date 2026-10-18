@@ -98,6 +98,7 @@ const EXPECTED = {
   'GET /api/history/event-summary': 'history.read',
   'GET /api/history/:cyberRangeId': 'history.read',
   'GET /api/admin/event/export': 'event.export',
+  'GET /api/admin/results/export': 'results.export',
   'POST /api/admin/event/reset': 'event.reset',
   'POST /api/admin/remote-access/revoke-all': 'remote_access.revoke_all',
   'POST /api/admin/users': 'student.manage',

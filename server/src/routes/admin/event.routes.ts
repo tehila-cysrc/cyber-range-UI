@@ -9,6 +9,8 @@ import { endActiveSessions, revokeAllShareableLinks, setRemoteAccessFrozen, type
 import { writeAudit } from '../../services/audit.service.js';
 import { kickRevokedSockets } from '../../sockets/index.js';
 import { buildEventExport, buildEventExportCsv, buildEventExportXlsx } from '../../services/eventExport.service.js';
+import { assertTeamInScope } from '../../authz/resolve.js';
+import { loadScope } from '../../authz/scope.js';
 
 const router = Router();
 // Public (token-less) job-status route — mounted separately in app.ts at /api/event-reset-jobs, since
@@ -161,6 +163,42 @@ router.get('/event/export', requirePermission('event.export'), async (req, res, 
   }
   res.setHeader('Content-Disposition', `attachment; filename="${name}.json"`);
   res.json(buildEventExport({ teamId }));
+});
+
+// Scoped results export (user decision 2026-10-18): the same workbook / JSON as above, built only from
+// the caller's (organization, scenario) pairs — teams of assigned organizations, and per team only the
+// scenarios in a held pair (never the cross product). The global export above stays admin-only.
+// ?teamId= must be a team of an assigned organization (404 otherwise, audited). No CSV.
+router.get('/results/export', requirePermission('results.export'), async (req, res, next) => {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  let teamId: number | undefined;
+  if (req.query.teamId !== undefined) {
+    teamId = Number(req.query.teamId);
+    if (!Number.isInteger(teamId) || teamId <= 0) {
+      res.status(400).json({ error: 'invalid teamId' });
+      return;
+    }
+    if (!assertTeamInScope(req, res, teamId)) return;
+  }
+  const scope = loadScope(req.user!);
+  const name = `cyber-range-results${scope.all ? '' : '-assigned'}${teamId ? `-team-${teamId}` : ''}-${stamp}`;
+  if (req.query.format === 'xlsx') {
+    try {
+      const buffer = await buildEventExportXlsx(teamId, scope);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${name}.xlsx"`);
+      res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+    return;
+  }
+  if (req.query.format !== undefined && req.query.format !== 'json') {
+    res.status(400).json({ error: 'format must be xlsx or json' });
+    return;
+  }
+  res.setHeader('Content-Disposition', `attachment; filename="${name}.json"`);
+  res.json(buildEventExport({ teamId, scope }));
 });
 
 router.post('/event/reset', requirePermission('event.reset'), (req, res) => {

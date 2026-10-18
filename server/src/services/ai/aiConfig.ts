@@ -10,7 +10,7 @@ export interface AiConfig {
   missing: string[]; // names of missing/invalid settings — never their values
   projectEndpoint: string | null;
   agentName: string | null;
-  agentVersion: string | null; // null = Foundry's "latest" routing
+  agentVersion: string | null; // REQUIRED: the pinned agent version (never Foundry's unpinned "latest")
   tenantId: string | null;
   clientId: string | null;
   hasClientSecret: boolean;
@@ -47,7 +47,9 @@ export function getAiConfig(): AiConfig {
   const missing: string[] = [];
   if (!endpoint || !ENDPOINT_RE.test(endpoint)) missing.push('FOUNDRY_PROJECT_ENDPOINT');
   if (!agentName || !AGENT_NAME_RE.test(agentName)) missing.push('FOUNDRY_AGENT_NAME');
-  if (agentVersion && !/^\d{1,6}$/.test(agentVersion)) missing.push('FOUNDRY_AGENT_VERSION');
+  // Pinned on purpose (user decision 2026-10-18): an unset version would route to whatever version is
+  // "latest" in Foundry, so a new, unreviewed agent version could go live by accident. Unset = not configured.
+  if (!agentVersion || !/^\d{1,6}$/.test(agentVersion)) missing.push('FOUNDRY_AGENT_VERSION');
   if (!tenantId || !GUID_RE.test(tenantId)) missing.push('AZURE_TENANT_ID');
   if (!clientId || !GUID_RE.test(clientId)) missing.push('AZURE_CLIENT_ID');
   if (!hasClientSecret) missing.push('AZURE_CLIENT_SECRET');

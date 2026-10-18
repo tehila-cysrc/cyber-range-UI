@@ -77,3 +77,71 @@ Plus one no-cost check: re-running Alpha's live review with unchanged work retur
 3. Decide whether v5 stays the agent's latest version: any environment with `AI_ASSESSMENT_ENABLED=true` and an empty `FOUNDRY_AGENT_VERSION` now uses v5. Pin `FOUNDRY_AGENT_VERSION` per environment.
 4. Review the Prompt Shields configuration (F3).
 5. Cleanup decision for the 4 test resources above (not authorised yet).
+
+---
+
+# Stabilization run (2026-10-18, approved)
+
+Scope approved by the user: fix the broken JSON output (F1) with a new response schema and ONE new agent
+version (v6), tighten student-safe feedback (F2), up to 6 model requests / $1, existing test resources only,
+isolated database (a `VACUUM INTO` copy of the 2026-10-15 validation DB), no cleanup.
+
+## Changes
+
+- **Contract 2** (`assessmentContract.ts`, `docs/ai-agent/*.json`): the envelope is now
+  `{contractVersion: "2", mode, result: Live | Final}`. The mode's result is the LAST property, so nothing has
+  to follow the large object (contract 1 needed a trailing `"final": null`, where both runaways began). The
+  app parses `result` against the requested mode's schema only.
+- **Runaway handling** (`assessmentRunner.service.ts`): a reply cut off at the output cap is reported as
+  `ai_output_runaway` (retried once, then fails with no result). Output caps lowered: live 3,000 → 1,500,
+  final 5,000 → 3,000 tokens (valid replies use ≤ ~1,050).
+- **Pinned agent version required** (`aiConfig.ts`): an unset `FOUNDRY_AGENT_VERSION` now leaves AI
+  disabled ("not configured"), so no environment can follow Foundry's "latest" (now v6) by accident. A
+  contract-1 agent (v5) would also be refused (`contract_mismatch`).
+- **Instructions** (`docs/ai-agent/agent-instructions.md`): student-safe fields must not confirm or name
+  details the team has not established (e.g. "phishing"); guiding questions point back to the team's own
+  records; hedged observations earn `partial`; the reply must end right after the envelope.
+- **Agent `cyber-range-assessor` v6** = v3's definition (gpt-4.1, File Search, structured input) + the new
+  instructions (7,748 chars) + the contract-2 schema. Its description marks it "NOT production". v1–v5 unchanged.
+
+## Request ledger (limits: 6 requests, $1)
+
+| # | Test | HTTP | Latency | Input (cached) | Output | Est. $ | Outcome |
+|---|---|---|---|---|---|---|---|
+| 1 | Live, Team Bravo (pinned v2): the job that ran away twice on v5 | 200 | 7.8 s | 4,763 (0) | 640 | 0.0171 | ✅ first attempt |
+| 2 | Live, Team Alpha (pinned v1): "not sure if related" email | 200 | 25.1 s | 4,830 (0) | 803 | 0.0186 | ✅ first attempt |
+| 3 | Final, Team Alpha | 200 | 13.2 s | 4,880 (3,456) | 895 | 0.0142 | ✅ 43/100 |
+| 4 | Final, Team Bravo | 200 | 8.2 s | 4,802 (3,584) | 927 | 0.0141 | ✅ 27/100 |
+| 5 | Live, Team Bravo again | 200 | 13.1 s | 4,763 (3,584) | 631 | 0.0117 | ✅ first attempt |
+
+**5 of 6 requests, ≈ $0.076.** No files or vector stores were created (caps were 0); the existing stores
+`vs_oHsKp7ahHzbxqSGMZyLflvYk` (v1) and `vs_8rWe3thbMPxdrTyYMUEEI9sb` (v2) were reused. Nothing was deleted.
+
+## Results
+
+- **F1 fixed in this sample:** 5/5 replies valid on the first attempt, no runaway, max output 927 tokens
+  (v5: 2 runaways in 7). Small sample — keep monitoring `ai_output_runaway` in Phase 8.
+- **F2 improved:** Alpha's student-safe text now says "a possibly related email" (not "phishing") and asks
+  "What signs could help you confirm if activity on WS03 led directly to the events on FS01?" — it refers only
+  to hosts the team named itself. No answer-key terms (accounts, IP, file names, technique IDs, canaries) in
+  any student-safe field; leak scan clear.
+- **Calibration:** the hedged email is now `partial` (v5: `correct`). Final scores moved a lot with the
+  instruction change: Alpha 75 → 43, Bravo 23 → 27 (see `docs/ai-assessment-phase8-calibration.md`).
+- **Still correct:** pinned v1/v2 isolation (no canary crossover), Bravo's VPN root cause marked `incorrect`
+  with a verbatim quote, 0 fabricated ids / quotes / unsupported items, rubric sums exact.
+- **New minor finding:** Bravo's final carried a spurious agent warning ("Instruction-like text was ignored")
+  although that team wrote no such text — instruction tuning in Phase 8.
+
+## Resource state after both runs (nothing deleted; cleanup not authorised)
+
+| Kind | ID | Created |
+|---|---|---|
+| Agent version | `cyber-range-assessor` v5 (contract 1) | 2026-10-15 |
+| Agent version | `cyber-range-assessor` **v6** (contract 2); Foundry's "latest" since it was created | 2026-10-18 |
+| File | `assistant-14NjsAauiu5dKfCfEeEAW6` | 2026-10-15 |
+| File | `assistant-Qr59VGT8HyB4Az2M9YTBNF` | 2026-10-15 |
+| Vector store | `vs_oHsKp7ahHzbxqSGMZyLflvYk` | 2026-10-15 |
+| Vector store | `vs_8rWe3thbMPxdrTyYMUEEI9sb` | 2026-10-15 |
+
+Foundry routes unpinned callers to the newest version, so creating v6 made it "latest"; no setting was
+changed. The app no longer uses "latest" at all (pin required). No environment configuration was changed.

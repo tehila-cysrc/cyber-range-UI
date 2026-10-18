@@ -53,7 +53,8 @@ export const PERMISSIONS = [
   // System
   'audit.read',
   'event.reset',
-  'event.export',
+  'event.export', // admin: the GLOBAL results export (every team)
+  'results.export', // staff: results export limited to the caller's (organization, scenario) pairs
   'remote_access.revoke_all',
   'mitre.read',
   'profile.self',
@@ -92,6 +93,7 @@ const INSTRUCTOR: readonly Permission[] = [
   'mitre.read',
   'profile.self',
   'ai_assessment.use',
+  'results.export',
 ];
 
 const STUDENT: readonly Permission[] = [

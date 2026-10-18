@@ -9,7 +9,7 @@
         "contractVersion": {
           "type": "string",
           "enum": [
-            "1"
+            "2"
           ]
         },
         "mode": {
@@ -19,7 +19,7 @@
             "final"
           ]
         },
-        "live": {
+        "result": {
           "anyOf": [
             {
               "type": "object",
@@ -383,13 +383,6 @@
               "additionalProperties": false
             },
             {
-              "type": "null"
-            }
-          ]
-        },
-        "final": {
-          "anyOf": [
-            {
               "type": "object",
               "properties": {
                 "investigationSummary": {
@@ -662,9 +655,6 @@
                 "warnings"
               ],
               "additionalProperties": false
-            },
-            {
-              "type": "null"
             }
           ]
         }
@@ -672,8 +662,7 @@
       "required": [
         "contractVersion",
         "mode",
-        "live",
-        "final"
+        "result"
       ],
       "additionalProperties": false
     }

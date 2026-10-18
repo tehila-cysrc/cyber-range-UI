@@ -5,7 +5,9 @@
 // Usage (from server/, after `npm run build`):
 //   node scripts/ai-live-validation.mjs inspect       --state <dir>              read-only: agent versions + stores
 //   node scripts/ai-live-validation.mjs create-agent  --state <dir>              ONE new agent version (once)
-//   node scripts/ai-live-validation.mjs serve         --state <dir> --port <p>   app on an isolated DB in <dir>
+//   node scripts/ai-live-validation.mjs serve         --state <dir> --port <p> [--db <file>]   app on an isolated DB
+// Limits can be tightened per run: --max-requests N --budget USD --max-files N --max-stores N
+// (2026-10-18 stabilization run: 6 requests, $1, 0 files, 0 stores — reuses the existing test stores).
 //   node scripts/ai-live-validation.mjs ledger        --state <dir>
 //
 // Approved limits: 1 new agent version (existing versions preserved), 2 files, 2 vector stores, at most
@@ -31,7 +33,15 @@ if (!cmd || !stateDir) {
 }
 mkdirSync(stateDir, { recursive: true });
 
-export const LIMITS = { maxModelRequests: 12, budgetUsd: 2, maxFiles: 2, maxVectorStores: 2, maxAgentVersions: 1 };
+const num = (name, fallback) => (opt(name) !== undefined ? Number(opt(name)) : fallback);
+const LIMITS = {
+  maxModelRequests: num('--max-requests', 12),
+  budgetUsd: num('--budget', 2),
+  maxFiles: num('--max-files', 2),
+  maxVectorStores: num('--max-stores', 2),
+  maxAgentVersions: 1,
+};
+for (const [k, v] of Object.entries(LIMITS)) if (!Number.isFinite(v) || v < 0) throw new Error(`bad limit ${k}`);
 // gpt-4.1 Global retail ($2 in / $0.50 cached / $8 out per 1M) + an assumed $0.0025 per File Search call.
 const PRICE = { inPerM: 2.0, cachedInPerM: 0.5, outPerM: 8.0, fileSearchCall: 0.0025 };
 // Worst case of ONE more request (30k input + 5k output + 2 searches) — the stop rule reserves it.
@@ -129,7 +139,7 @@ async function createAgent() {
   // v3's definition (model, File Search with {{vector_store_id}}, structured input, any safety settings)
   // + the production instructions + the full envelope schema. Nothing else changes.
   const body = {
-    description: 'Production candidate: full assessment instructions + contract v1 envelope schema (live validation 2026-10-15)',
+    description: opt('--description') ?? 'Production candidate: full assessment instructions + contract envelope schema',
     definition: { ...base.definition, instructions, text },
   };
   const r = await call('POST', `/agents/${encodeURIComponent(agentName)}/versions?api-version=v1`, body);
@@ -151,7 +161,7 @@ async function serve() {
   const port = Number(opt('--port') ?? 4630);
   const agentVersion = ledger.agentVersionsCreated[0]?.version;
   if (!agentVersion) throw new Error('STOP: create the agent version first');
-  const dbPath = join(stateDir, 'live.db');
+  const dbPath = opt('--db') ? resolve(opt('--db')) : join(stateDir, 'live.db');
   // Set BEFORE the server's dotenv runs (dotenv never overrides): isolated DB, AI on, one job at a time,
   // pinned to the new agent version. Real credentials come from the root .env.
   Object.assign(process.env, {
@@ -173,6 +183,7 @@ async function serve() {
   if (!aiConfig.enabled || !aiConfig.configured) throw new Error('STOP: AI not configured from .env');
   console.log(`[live] isolated DB: ${dbPath}`);
   console.log(`[live] agent ${aiConfig.agentName} pinned to v${aiConfig.agentVersion}`);
+  console.log(`[live] limits: ${JSON.stringify(LIMITS)}`);
 
   // Counting fetch: EVERY model request (POST /responses) is capped and ledgered before it is sent.
   const countingFetch = async (url, init) => {

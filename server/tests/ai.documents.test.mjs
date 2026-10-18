@@ -13,6 +13,7 @@ Object.assign(process.env, {
   AI_ASSESSMENT_ENABLED: 'true',
   FOUNDRY_PROJECT_ENDPOINT: 'https://fake-res.services.ai.azure.com/api/projects/fake',
   FOUNDRY_AGENT_NAME: 'cyber-range-assessor',
+  FOUNDRY_AGENT_VERSION: '3',
   AZURE_TENANT_ID: '11111111-2222-3333-4444-555555555555',
   AZURE_CLIENT_ID: '66666666-7777-8888-9999-000000000000',
   AZURE_CLIENT_SECRET: 'fake-secret-value-for-tests-only',

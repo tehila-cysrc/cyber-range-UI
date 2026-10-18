@@ -64,7 +64,7 @@ function final(over = {}, scoreOver = {}) {
     ...over,
   };
 }
-const envelope = (mode, body) => JSON.stringify({ contractVersion: '1', mode, live: mode === 'live' ? body : null, final: mode === 'final' ? body : null });
+const envelope = (mode, body) => JSON.stringify({ contractVersion: '2', mode, result: body });
 const run = (mode, body, extra = {}) =>
   validateAssessment({ outputText: typeof body === 'string' ? body : envelope(mode, body), mode, fileSearchCalls: 1, evidenceIndex: INDEX, rubric: mode === 'final' ? RUBRIC : null, leak: LEAK, ...extra });
 
@@ -87,7 +87,7 @@ test('malformed / wrong-contract replies fail with the right code', () => {
   assert.equal(run('live', envelope('final', final())).errorCode, 'invalid_response', 'mode mismatch');
   assert.equal(run('live', live({ status: 'excellent' })).errorCode, 'invalid_response');
   const v2 = JSON.parse(envelope('live', live()));
-  v2.contractVersion = '2';
+  v2.contractVersion = '1'; // an agent still on the previous contract (e.g. v5)
   const r = run('live', JSON.stringify(v2));
   assert.deepEqual([r.errorCode, r.retryable], ['contract_mismatch', false]);
 });

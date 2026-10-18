@@ -2,8 +2,11 @@
 // (docs/ai-investigation-assessment-plan.md §I.4). Structure only — no assessment logic.
 //
 // Phase 0 decided the shape: a per-request `text.format` is rejected for named agents, so ONE strict
-// envelope schema is set on the agent definition in Foundry and covers both modes:
-//   { contractVersion, mode, live: Live | null, final: Final | null }
+// envelope schema is set on the agent definition in Foundry and covers both modes.
+// Contract 2 (2026-10-18, live validation finding F1): { contractVersion, mode, result: Live | Final }.
+// Contract 1 was { contractVersion, mode, live: Live | null, final: Final | null }; after a long `live`
+// object gpt-4.1 sometimes emitted thousands of newlines instead of the trailing `,"final":null}` until
+// the output cap. With `result` as the last property nothing has to follow the large object.
 // `buildEnvelopeJsonSchema()` generates that schema from the zod definitions below
 // (`npm run export-ai-schema -w server` writes docs/ai-agent/assessment-envelope.schema.json).
 //
@@ -12,7 +15,7 @@
 // or flags instead of rejecting a whole assessment for one overlong string.
 import { z } from 'zod/v4';
 
-export const CONTRACT_VERSION = '1';
+export const CONTRACT_VERSION = '2';
 
 // Soft caps the validation layer applies (truncate + warning). Not part of the agent schema.
 export const TEXT_LIMITS = {
@@ -98,8 +101,7 @@ export const FinalAssessment = z.strictObject({
 export const AssessmentEnvelope = z.strictObject({
   contractVersion: z.string(),
   mode: z.enum(['live', 'final']),
-  live: LiveAssessment.nullable(),
-  final: FinalAssessment.nullable(),
+  result: z.union([LiveAssessment, FinalAssessment]), // the variant must match `mode` (checked in parseEnvelope)
 });
 
 export type AssessmentMode = 'live' | 'final';
@@ -125,17 +127,18 @@ export function parseEnvelope(outputText: string, expectedMode: AssessmentMode):
   if (typeof version === 'string' && version !== CONTRACT_VERSION) {
     return { ok: false, errorCode: 'contract_mismatch', issues: [`contractVersion ${JSON.stringify(version)} != ${CONTRACT_VERSION}`] };
   }
-  const parsed = AssessmentEnvelope.safeParse(raw);
-  if (!parsed.success) {
-    return { ok: false, errorCode: 'invalid_response', issues: parsed.error.issues.slice(0, 20).map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`) };
+  const issuesOf = (e: z.ZodError) => e.issues.slice(0, 20).map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
+  // Envelope first (keys, mode), then the result against the REQUESTED mode's schema only, so a reply of
+  // the other kind is rejected instead of silently matching the other union branch.
+  const shell = z.strictObject({ contractVersion: z.string(), mode: z.enum(['live', 'final']), result: z.unknown() }).safeParse(raw);
+  if (!shell.success) return { ok: false, errorCode: 'invalid_response', issues: issuesOf(shell.error) };
+  if (shell.data.mode !== expectedMode) return { ok: false, errorCode: 'invalid_response', issues: [`mode ${shell.data.mode} != requested ${expectedMode}`] };
+  if (expectedMode === 'live') {
+    const r = LiveAssessment.safeParse(shell.data.result);
+    return r.success ? { ok: true, mode: 'live', result: r.data } : { ok: false, errorCode: 'invalid_response', issues: issuesOf(r.error).map((i) => `result.${i}`) };
   }
-  const env = parsed.data;
-  const issues: string[] = [];
-  if (env.mode !== expectedMode) issues.push(`mode ${env.mode} != requested ${expectedMode}`);
-  if (expectedMode === 'live' && (env.live === null || env.final !== null)) issues.push('live mode needs live set and final null');
-  if (expectedMode === 'final' && (env.final === null || env.live !== null)) issues.push('final mode needs final set and live null');
-  if (issues.length) return { ok: false, errorCode: 'invalid_response', issues };
-  return expectedMode === 'live' ? { ok: true, mode: 'live', result: env.live! } : { ok: true, mode: 'final', result: env.final! };
+  const r = FinalAssessment.safeParse(shell.data.result);
+  return r.success ? { ok: true, mode: 'final', result: r.data } : { ok: false, errorCode: 'invalid_response', issues: issuesOf(r.error).map((i) => `result.${i}`) };
 }
 
 // ---------------------------------------------------------------------------------------------

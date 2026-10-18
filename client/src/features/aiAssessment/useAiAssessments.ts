@@ -256,6 +256,8 @@ export function describeAiError(code: string | null | undefined): string {
       return "Microsoft's content safety filter blocked this review (often student text that looks like instructions to the AI). Review the timeline by hand.";
     case 'ai_no_retrieval':
       return 'The AI assistant did not consult the reference document, so no result was kept. Try again.';
+    case 'ai_output_runaway':
+      return 'The AI assistant’s answer ran past its length limit twice, so no result was kept. Try again.';
     case 'invalid_response':
       return 'The AI assistant returned an answer in the wrong format twice, so no result was kept. Try again.';
     case 'contract_mismatch':

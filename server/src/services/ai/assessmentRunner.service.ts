@@ -24,7 +24,8 @@ const now = () => new Date().toISOString();
 
 export const RATE_LIMIT_PER_HOUR = 30;
 const RAW_OUTPUT_EXCERPT_MAX = 20_000;
-const MAX_OUTPUT_TOKENS: Record<AssessmentMode, number> = { live: 3000, final: 5000 };
+// Valid replies used ≤ ~1,050 output tokens in the live validation; the caps bound the cost of a runaway reply.
+const MAX_OUTPUT_TOKENS: Record<AssessmentMode, number> = { live: 1500, final: 3000 };
 
 export const AssessmentRequestBody = z
   .object({
@@ -388,8 +389,11 @@ export async function executeAssessment(id: number, vectorStoreId: string, actor
       tokens.out += response.usage?.outputTokens ?? 0;
       const v = validateAssessment({ outputText: response.outputText, mode: row.mode, fileSearchCalls: response.fileSearchCalls, evidenceIndex, rubric, leak });
       if (!v.ok) {
-        if (v.retryable && attempt === 1) continue; // one retry with the same input
-        fail(id, v.errorCode, { rawOutput: response.outputText, issues: v.issues, tokens, started }, actor);
+        // A reply cut off at the output cap (e.g. the model looping on whitespace) is reported distinctly
+        // for monitoring; it is retried like any other malformed reply.
+        const runaway = response.incompleteReason === 'max_output_tokens' && v.errorCode === 'invalid_response';
+        if ((v.retryable || runaway) && attempt === 1) continue; // one retry with the same input
+        fail(id, runaway ? 'ai_output_runaway' : v.errorCode, { rawOutput: response.outputText, issues: v.issues, tokens, started }, actor);
         return;
       }
       db.prepare(

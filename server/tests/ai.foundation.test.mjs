@@ -147,6 +147,7 @@ function withEnv(values, fn) {
 const FULL = {
   FOUNDRY_PROJECT_ENDPOINT: 'https://example-res.services.ai.azure.com/api/projects/proj1',
   FOUNDRY_AGENT_NAME: 'cyber-range-assessor',
+  FOUNDRY_AGENT_VERSION: '3',
   AZURE_TENANT_ID: '11111111-2222-3333-4444-555555555555',
   AZURE_CLIENT_ID: '66666666-7777-8888-9999-000000000000',
   AZURE_CLIENT_SECRET: SECRET,
@@ -167,11 +168,24 @@ test('switched on but incomplete configuration stays disabled and names (only) w
     const c = getAiConfig();
     assert.equal(c.enabled, false);
     assert.equal(c.switchOn, true);
-    assert.deepEqual(c.missing, ['FOUNDRY_PROJECT_ENDPOINT', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET']);
+    assert.deepEqual(c.missing, ['FOUNDRY_PROJECT_ENDPOINT', 'FOUNDRY_AGENT_VERSION', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET']);
   });
   withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_VERSION: 'latest' }, () => {
     assert.deepEqual(getAiConfig().missing, ['FOUNDRY_AGENT_VERSION']);
   });
+});
+
+test('an unpinned agent version keeps AI disabled (never routes to Foundry’s "latest")', () => {
+  for (const v of [undefined, '', '  ']) {
+    const env = { ...FULL, AI_ASSESSMENT_ENABLED: 'true' };
+    if (v === undefined) delete env.FOUNDRY_AGENT_VERSION;
+    else env.FOUNDRY_AGENT_VERSION = v;
+    withEnv(env, () => {
+      const c = getAiConfig();
+      assert.equal(c.enabled, false, JSON.stringify(v));
+      assert.deepEqual(c.missing, ['FOUNDRY_AGENT_VERSION']);
+    });
+  }
 });
 
 test('the client secret never appears in config objects or the staff status summary', () => {

@@ -13,6 +13,7 @@ Object.assign(process.env, {
   AI_ASSESSMENT_ENABLED: 'true',
   FOUNDRY_PROJECT_ENDPOINT: 'https://fake-res.services.ai.azure.com/api/projects/fake',
   FOUNDRY_AGENT_NAME: 'cyber-range-assessor',
+  FOUNDRY_AGENT_VERSION: '5',
   AZURE_TENANT_ID: '11111111-2222-3333-4444-555555555555',
   AZURE_CLIENT_ID: '66666666-7777-8888-9999-000000000000',
   AZURE_CLIENT_SECRET: 'fake-secret-value-for-tests-only',
@@ -77,8 +78,8 @@ let f, tok, server, base, E = {};
 const ev = (id, quote = null) => ({ type: 'timeline_entry', id, quote });
 function liveBody(over = {}) {
   return {
-    contractVersion: '1', mode: 'live', final: null,
-    live: {
+    contractVersion: '2', mode: 'live',
+    result: {
       status: 'partially_on_track',
       summary: 'Spotted the admin logon.',
       correctlyIdentified: [{ concept: 'Privileged logon', judgement: 'correct', evidence: [ev(E.e1, 'admin acount')], interpretation: 'ok' }],
@@ -96,8 +97,8 @@ function liveBody(over = {}) {
 }
 function finalBody(total = 70) {
   return {
-    contractVersion: '1', mode: 'final', live: null,
-    final: {
+    contractVersion: '2', mode: 'final',
+    result: {
       investigationSummary: 's', overallAssessment: { level: 'good', text: 't' },
       stages: [{ stage: 'Logon', judgement: 'correct', evidence: [ev(E.e1)], interpretation: 'i' }],
       incorrectConclusions: [], strengths: ['a'], areasForImprovement: ['b'],
@@ -272,7 +273,7 @@ test('no retrieval, contract change and Prompt Shields blocks fail safely (no re
   assert.equal((await detail(a.body.assessment.id)).body.assessment.errorCode, 'ai_no_retrieval');
 
   const before = invokes().length;
-  fake.script.push(reply({ ...liveBody(), contractVersion: '2' }));
+  fake.script.push(reply({ ...liveBody(), contractVersion: '1' }) /* the previous contract, e.g. agent v5 */);
   const b = await request(tok.admin, f.teamA, f.s1, 'live', { force: true });
   await settle();
   assert.equal(invokes().length, before + 1, 'contract_mismatch is not retried');
@@ -285,6 +286,18 @@ test('no retrieval, contract change and Prompt Shields blocks fail safely (no re
   assert.deepEqual([dc.status, dc.errorCode, dc.result], ['failed', 'ai_content_filtered', null]);
   const audit = db.prepare("SELECT metadata_json AS m FROM audit_log WHERE action = 'ai_assessment.failed' AND entity_id = ?").get(c.body.assessment.id);
   assert.deepEqual(JSON.parse(audit.m).filterCategories, ['jailbreak']);
+});
+
+test('a reply cut off at the output cap (whitespace runaway) is retried once, then fails as ai_output_runaway with no result', async () => {
+  const runaway = () => ({ ...reply(null, { raw: JSON.stringify(liveBody()).slice(0, -1) + '\n'.repeat(500) }), incompleteReason: 'max_output_tokens' });
+  const before = invokes().length;
+  fake.script.push(runaway(), runaway());
+  const r = await request(tok.admin, f.teamA, f.s1, 'live', { force: true });
+  await settle();
+  assert.equal(invokes().length, before + 2, 'one retry');
+  assert.equal(invokes().at(-1).maxOutputTokens, 1500, 'live output cap');
+  const d = (await detail(r.body.assessment.id)).body.assessment;
+  assert.deepEqual([d.status, d.errorCode, d.result], ['failed', 'ai_output_runaway', null]);
 });
 
 test('suspected answer leak is stored and surfaced (never published by the server)', async () => {

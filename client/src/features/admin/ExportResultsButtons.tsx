@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { API_ORIGIN } from '../../lib/apiClient';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
+import { useCan } from '../../lib/permissions';
 import { Button } from '../../components/Button';
 
 // Instructor-only results download (UX audit UX-05): Reset wipes every timeline, score and debrief,
 // and there was no way to keep them. Fetched with the bearer token, then saved as a file.
 // With teamId only that team is exported (Event Summary page); without it, the whole event (Reset page).
-async function download(format: 'json' | 'xlsx', teamId?: number) {
+// Admins (event.export) use the global export; instructors use the scoped one, which the server limits
+// to their assigned (organization, scenario) pairs.
+async function download(format: 'json' | 'xlsx', teamId: number | undefined, scoped: boolean) {
   const token = useAuthStore.getState().token;
   const params = new URLSearchParams();
   if (format === 'xlsx') params.set('format', 'xlsx');
   if (teamId != null) params.set('teamId', String(teamId));
   const qs = params.toString();
-  const res = await fetch(`${API_ORIGIN}/api/admin/event/export${qs ? `?${qs}` : ''}`, {
+  const res = await fetch(`${API_ORIGIN}/api/admin/${scoped ? 'results' : 'event'}/export${qs ? `?${qs}` : ''}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error(`Export failed (${res.status})`);
@@ -32,11 +35,12 @@ async function download(format: 'json' | 'xlsx', teamId?: number) {
 export function ExportResultsButtons({ teamId }: { teamId?: number } = {}) {
   const [busy, setBusy] = useState<'json' | 'xlsx' | null>(null);
   const push = useToastStore((s) => s.push);
+  const scoped = !useCan('event.export');
 
   async function run(format: 'json' | 'xlsx') {
     setBusy(format);
     try {
-      await download(format, teamId);
+      await download(format, teamId, scoped);
     } catch (err) {
       push(err instanceof Error ? err.message : 'Export failed');
     } finally {

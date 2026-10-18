@@ -173,7 +173,7 @@ flowchart LR
 | `AI_ASSESSMENT_ENABLED` | `true` (kill switch, default `false`) | no |
 | `FOUNDRY_PROJECT_ENDPOINT` | `https://<resource>.services.ai.azure.com/api/projects/<project>` | no |
 | `FOUNDRY_AGENT_NAME` | `cyber-range-assessor` | no |
-| `FOUNDRY_AGENT_VERSION` | *(empty = latest)* | no |
+| `FOUNDRY_AGENT_VERSION` | `6` (**required** since 2026-10-18; unset = AI disabled, never "latest") | no |
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` (as already in `.env`; used only by the AI feature — environment SPs stay in the DB) | GUIDs | no |
 | `AZURE_CLIENT_SECRET` | SP secret **value** (not the secret ID) | **yes**: never logged, never returned |
 | `AI_REQUEST_TIMEOUT_MS` | `120000` | no |
@@ -904,6 +904,11 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
   - **Student-safe final feedback:** copy-only, gated by the same leak tick. The instructor version is shown separately and is never exported.
   - **Excel:** the sheet is built by `services/ai/aiAssessmentExport.ts` (read-only). A note row sits above the header (frozen at row 2). "Most recent approved" means the newest approved/edited final, even when a later final was rejected. The JSON archive is untouched (no team ids added).
   - **Not done (P2, optional):** the pre-filled "Award…" from a suggested entry score (BACKLOG).
+
+**Stabilization (2026-10-18, approved between Phase 7 and Phase 8).**
+- Contract 2 envelope `{contractVersion: "2", mode, result}` (fixes live-validation F1), `ai_output_runaway`, lower output caps; pinned `FOUNDRY_AGENT_VERSION` required; stricter student-safe instructions; agent v6 (NOT production). Validated live: 5 requests, ≈ $0.076 (`docs/ai-assessment-live-validation.md`).
+- Scoped results export for instructors: `GET /api/admin/results/export` (`results.export`), pair-filtered; the global export stays admin-only.
+- Calibration recommendations for Phase 8: `docs/ai-assessment-phase8-calibration.md`.
 
 **Phase 8 — Evaluation and hardening.**
 - **Tasks:**

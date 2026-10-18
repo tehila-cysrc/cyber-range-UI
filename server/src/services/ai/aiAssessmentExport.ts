@@ -6,6 +6,7 @@
 import type ExcelJS from 'exceljs';
 import { db } from '../../db/index.js';
 import { getActiveEventRunId } from '../../db/seed.js';
+import { scopeAllowsPair, type Scope } from '../../authz/scope.js';
 
 export const AI_SHEET_NAME = 'AI Assessment';
 export const AI_SHEET_NOTE = 'AI-assisted assessment scores are recorded for reference only and are not included in team or leaderboard totals.';
@@ -39,6 +40,7 @@ interface SessionRow {
   teamId: number;
   team: string;
   org: string | null;
+  orgId: number | null;
   cyberRangeId: number;
   scenario: string;
 }
@@ -65,7 +67,8 @@ interface FinalResult {
   suggestedFinalFeedback?: { studentSafeVersion?: string };
 }
 
-export function addAiAssessmentSheet(workbook: ExcelJS.Workbook, teamId?: number) {
+// scope: the scoped results export — only sessions in the caller's (organization, scenario) pairs.
+export function addAiAssessmentSheet(workbook: ExcelJS.Workbook, teamId?: number, scope?: Scope) {
   const sheet = workbook.addWorksheet(AI_SHEET_NAME, { views: [{ state: 'frozen', ySplit: 2 }] });
   // No `header` on the columns: row 1 is the note, row 2 the header.
   sheet.columns = COLUMNS.map((c) => ({ key: c.key, width: c.width, style: { alignment: { vertical: 'top', wrapText: !!c.wrap } } }));
@@ -81,7 +84,7 @@ export function addAiAssessmentSheet(workbook: ExcelJS.Workbook, teamId?: number
   // Same scope and order as the rest of the workbook: the active run's teams (or one), sessions by start.
   const sessions = db
     .prepare(
-      `SELECT t.id AS teamId, t.name AS team, o.name AS org, p.cyber_range_id AS cyberRangeId, cr.name AS scenario
+      `SELECT t.id AS teamId, t.name AS team, o.name AS org, t.organization_id AS orgId, p.cyber_range_id AS cyberRangeId, cr.name AS scenario
        FROM teams t
        LEFT JOIN organizations o ON o.id = t.organization_id
        JOIN team_cyber_range_progress p ON p.team_id = t.id
@@ -89,7 +92,8 @@ export function addAiAssessmentSheet(workbook: ExcelJS.Workbook, teamId?: number
        WHERE t.event_run_id = ? AND (? IS NULL OR t.id = ?)
        ORDER BY t.sort_order, t.name, p.started_at`,
     )
-    .all(getActiveEventRunId(), teamId ?? null, teamId ?? null) as unknown as SessionRow[];
+    .all(getActiveEventRunId(), teamId ?? null, teamId ?? null)
+    .filter((s) => !scope || scopeAllowsPair(scope, (s as unknown as SessionRow).orgId, (s as unknown as SessionRow).cyberRangeId)) as unknown as SessionRow[];
 
   const approvedStmt = db.prepare(
     `SELECT id, decision, decided_score AS decidedScore, document_version AS documentVersion, result_json AS resultJson,

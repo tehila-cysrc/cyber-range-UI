@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { getActiveEventRunId } from '../db/seed.js';
 import { techniqueLabel } from './mitreCatalog.js';
 import { addAiAssessmentSheet } from './ai/aiAssessmentExport.js';
+import { scopeAllowsPair, scopeAllowsTeam, type Scope } from '../authz/scope.js';
 
 // Everything an instructor may want to keep before an event reset wipes the RUN tables: teams and
 // their organization, members with their points, and for each scenario the timeline (with
@@ -13,6 +14,7 @@ interface TeamRow {
   id: number;
   name: string;
   organization: string | null;
+  orgId: number | null;
 }
 
 interface ProgressRow {
@@ -79,7 +81,11 @@ interface DetectionRow {
 }
 
 // teamId limits the export to one team of the active run (Event Summary page); omitted = every team.
-export function buildEventExport({ includeImages = true, teamId }: { includeImages?: boolean; teamId?: number } = {}) {
+// scope (the scoped results export): only teams of the caller's organizations, and per team only the
+// scenarios in a held (organization, scenario) pair; scores not tied to a scenario are left out, and team
+// totals and student points count in-scope scenarios only. Omitted = the global (admin) export, unchanged.
+export function buildEventExport({ includeImages = true, teamId, scope }: { includeImages?: boolean; teamId?: number; scope?: Scope } = {}) {
+  const scoped = scope !== undefined && !scope.all;
   const eventRunId = getActiveEventRunId();
   const eventRun = db.prepare('SELECT id, started_at AS startedAt FROM event_runs WHERE id = ?').get(eventRunId) as
     | { id: number; startedAt: string }
@@ -87,11 +93,12 @@ export function buildEventExport({ includeImages = true, teamId }: { includeImag
 
   const teams = db
     .prepare(
-      `SELECT t.id, t.name, o.name AS organization
+      `SELECT t.id, t.name, o.name AS organization, t.organization_id AS orgId
        FROM teams t LEFT JOIN organizations o ON o.id = t.organization_id
        WHERE t.event_run_id = ? AND (? IS NULL OR t.id = ?) ORDER BY t.sort_order, t.name`,
     )
-    .all(eventRunId, teamId ?? null, teamId ?? null) as unknown as TeamRow[];
+    .all(eventRunId, teamId ?? null, teamId ?? null)
+    .filter((t) => !scoped || scopeAllowsTeam(scope, (t as unknown as TeamRow).orgId)) as unknown as TeamRow[];
 
   const membersStmt = db.prepare(
     `SELECT u.username, u.display_name AS displayName,
@@ -156,11 +163,25 @@ export function buildEventExport({ includeImages = true, teamId }: { includeImag
      WHERE d.team_id = ? AND d.cyber_range_id = ? ORDER BY d.detected_at`,
   );
 
+  // Scoped: a student's points count only scores on the scenarios this export includes for the team.
+  const scopedMemberPoints = (userTeamId: number, rangeIds: number[]) => {
+    const placeholders = rangeIds.map(() => '?').join(', ');
+    return db
+      .prepare(
+        `SELECT u.username, u.display_name AS displayName,
+                ${rangeIds.length ? `(SELECT COALESCE(SUM(s.points), 0) FROM scores s WHERE s.student_user_id = u.id AND s.cyber_range_id IN (${placeholders}))` : '0'} AS points
+         FROM users u WHERE u.team_id = ? AND u.role = 'student' ORDER BY u.display_name`,
+      )
+      .all(...rangeIds, userTeamId) as unknown as { username: string; displayName: string; points: number }[];
+  };
+
   return {
     exportedAt: new Date().toISOString(),
+    ...(scoped ? { scope: 'assigned' as const } : {}),
     eventRun: eventRun ?? null,
     teams: teams.map((team) => {
-      const scenarios = (progressStmt.all(team.id) as unknown as ProgressRow[]).map((p) => {
+      const progress = (progressStmt.all(team.id) as unknown as ProgressRow[]).filter((p) => !scoped || scopeAllowsPair(scope, team.orgId, p.cyberRangeId));
+      const scenarios = progress.map((p) => {
         const cyberRangeId = p.cyberRangeId;
         const entries = (entriesStmt.all(team.id, cyberRangeId) as unknown as EntryRow[]).map((e) => ({
           createdAt: e.createdAt,
@@ -196,13 +217,15 @@ export function buildEventExport({ includeImages = true, teamId }: { includeImag
           attackDetections: detections,
         };
       });
-      const unscopedScores = scoresStmt.all(team.id, null) as unknown as ScoreRow[];
+      const unscopedScores = scoped ? [] : (scoresStmt.all(team.id, null) as unknown as ScoreRow[]);
       const totalPoints =
         scenarios.reduce((sum, s) => sum + s.points, 0) + unscopedScores.reduce((sum, s) => sum + s.points, 0);
       return {
         name: team.name,
         organization: team.organization,
-        members: membersStmt.all(team.id) as unknown as { username: string; displayName: string; points: number }[],
+        members: scoped
+          ? scopedMemberPoints(team.id, progress.map((p) => p.cyberRangeId))
+          : (membersStmt.all(team.id) as unknown as { username: string; displayName: string; points: number }[]),
         totalPoints,
         scenarios,
         otherScores: unscopedScores,
@@ -299,8 +322,8 @@ function addSheet(workbook: ExcelJS.Workbook, name: string, columns: { header: s
 
 // Full results workbook: a Summary sheet plus one sheet per kind of record, every record in full —
 // screenshots are embedded next to their timeline entry.
-export async function buildEventExportXlsx(teamId?: number): Promise<Buffer> {
-  const data: EventExport = buildEventExport({ includeImages: true, teamId });
+export async function buildEventExportXlsx(teamId?: number, scope?: Scope): Promise<Buffer> {
+  const data: EventExport = buildEventExport({ includeImages: true, teamId, scope });
   const workbook = new ExcelJS.Workbook();
   workbook.created = new Date(data.exportedAt);
 
@@ -510,7 +533,7 @@ export async function buildEventExportXlsx(teamId?: number): Promise<Buffer> {
   }
 
   // Appended last so every existing sheet keeps its position (approved AI finals only; reference, not totals).
-  addAiAssessmentSheet(workbook, teamId);
+  addAiAssessmentSheet(workbook, teamId, scope);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

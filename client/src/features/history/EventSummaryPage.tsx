@@ -17,7 +17,10 @@ interface DaySummary {
 
 export function EventSummaryPage() {
   const { query, ready, picker, links, teamId } = useDebriefTeam();
-  const canExport = useCan('event.export');
+  // Admin: global export; instructor: scoped export (only their assigned organizations and scenarios).
+  const canGlobalExport = useCan('event.export');
+  const canScopedExport = useCan('results.export');
+  const canExport = canGlobalExport || canScopedExport;
   const { data, isError } = useQuery({
     queryKey: ['event-summary', query],
     queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
