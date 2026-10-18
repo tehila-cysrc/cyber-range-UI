@@ -16,7 +16,7 @@ import { HistoryPage } from '../history/HistoryPage';
 import { CyberRangeSummaryPage } from '../history/CyberRangeSummaryPage';
 import { EventSummaryPage } from '../history/EventSummaryPage';
 import { AiAssessmentPanel } from '../aiAssessment/AiAssessmentPanel';
-import { describeAiError, useAiStatus, useAssessmentList, useRunLiveReview } from '../aiAssessment/useAiAssessments';
+import { useAiStatus } from '../aiAssessment/useAiAssessments';
 
 interface TeamStatus {
   teamId: number;
@@ -60,12 +60,13 @@ interface CatalogCyberRange {
 }
 
 type WorkspaceTab = 'investigation' | 'scoring' | 'debrief' | 'ai';
-// 'ai' (AI Review) only when the user may use AI assessment and the server has it switched on.
-const TABS: { key: WorkspaceTab; label: string; ai?: true }[] = [
+// 'ai' (full AI review) has no tab of its own since the simplified instructor UX (2026-10-18): it opens
+// from "View details" on an entry's AI check (?tab=ai), only when the user may use AI and it is on.
+const TABS: { key: WorkspaceTab; label: string; hidden?: true }[] = [
   { key: 'investigation', label: 'Timeline & Canvas' },
   { key: 'scoring', label: 'Scoring' },
   { key: 'debrief', label: 'Debrief' },
-  { key: 'ai', label: 'AI Review', ai: true },
+  { key: 'ai', label: 'AI details', hidden: true },
 ];
 
 const selectStyle: CSSProperties = {
@@ -103,8 +104,9 @@ export function InstructorTeamWorkspacePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { available: aiAvailable } = useAiStatus();
-  const tabs = TABS.filter((t) => !t.ai || aiAvailable);
-  const tab: WorkspaceTab = (tabs.find((t) => t.key === params.get('tab'))?.key ?? 'investigation') as WorkspaceTab;
+  const tabs = TABS.filter((t) => !t.hidden);
+  const tab: WorkspaceTab =
+    params.get('tab') === 'ai' && aiAvailable ? 'ai' : ((tabs.find((t) => t.key === params.get('tab'))?.key ?? 'investigation') as WorkspaceTab);
   const debriefRange = params.get('range');
 
   const { data: dashboardData, dataUpdatedAt } = useQuery({
@@ -144,7 +146,6 @@ export function InstructorTeamWorkspacePage() {
     mutationFn: (cyberRangeId: number) => apiFetch(`/admin/teams/${teamId}/cyber-ranges/${cyberRangeId}/complete`, { method: 'POST' }),
     onSuccess: invalidateTeam,
   });
-  const liveReview = useRunLiveReview();
   const resolveHelp = useMutation({
     mutationFn: (id: number) => apiFetch(`/admin/help-requests/${id}/resolve`, { method: 'POST' }),
     onSuccess: invalidateTeam,
@@ -154,9 +155,6 @@ export function InstructorTeamWorkspacePage() {
   const team = teams.find((t) => t.teamId === teamId);
   const members = rosterData?.teams.find((t) => t.id === teamId)?.members ?? [];
   const openHelp = (helpData?.helpRequests ?? []).filter((hr) => hr.teamId === teamId);
-
-  // Readiness for "Analyze progress" (shares the AI Review tab's query cache).
-  const { data: aiList } = useAssessmentList(teamId, team?.active?.cyberRangeId ?? null, 'live', aiAvailable);
 
   if (dashboardData && !team) {
     return (
@@ -170,17 +168,6 @@ export function InstructorTeamWorkspacePage() {
   }
 
   const active = team?.active ?? null;
-  const aiSession = aiList?.session;
-  const aiBusy = !!aiList?.assessments.some((a) => a.status === 'pending' || a.status === 'running');
-  const aiBlockedReason = !aiSession
-    ? null
-    : aiSession.pinnedVersion === null
-      ? describeAiError('ground_truth_not_ready')
-      : !aiSession.pinnedAvailable
-        ? describeAiError('ground_truth_unavailable')
-        : aiBusy
-          ? describeAiError('assessment_in_progress')
-          : null;
   const remaining =
     active?.remainingSeconds == null ? null : Math.max(0, active.remainingSeconds - Math.floor((now - dataUpdatedAt) / 1000));
 
@@ -374,17 +361,6 @@ export function InstructorTeamWorkspacePage() {
               <Button variant="ghost" onClick={handleRestart} disabled={startScenario.isPending} style={{ color: 'var(--text-muted)' }}>
                 Restart clock
               </Button>
-              {aiAvailable && teamId && (
-                <Button
-                  variant="ghost"
-                  title={aiBlockedReason ?? "Compare this team's investigation with the scenario's reference document (AI, staff only)"}
-                  disabled={!aiSession || !!aiBlockedReason || liveReview.isPending}
-                  style={{ opacity: !aiSession || aiBlockedReason || liveReview.isPending ? 0.5 : 1 }}
-                  onClick={() => liveReview.run(teamId, active.cyberRangeId, false, () => setTab('ai'))}
-                >
-                  Analyze progress
-                </Button>
-              )}
             </>
           )}
           {team && team.openHelpCount > 0 && openHelp.length === 0 && <TelemetryBadge tone="alert">help requested</TelemetryBadge>}
@@ -423,7 +399,14 @@ export function InstructorTeamWorkspacePage() {
           <div key={teamId} role="tabpanel" className="team-workspace-embed">
             {tab === 'investigation' && <InvestigationPage />}
             {tab === 'scoring' && <InstructorScoringPanel />}
-            {tab === 'ai' && <AiAssessmentPanel teamId={teamId} cyberRangeId={active?.cyberRangeId ?? null} scenarioName={active?.name ?? null} />}
+            {tab === 'ai' && (
+              <>
+                <button type="button" onClick={() => setTab('investigation')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 14, color: 'var(--signal-secondary)', marginBottom: 'var(--space-md)' }}>
+                  ← Back to Timeline &amp; Canvas
+                </button>
+                <AiAssessmentPanel teamId={teamId} cyberRangeId={active?.cyberRangeId ?? null} scenarioName={active?.name ?? null} />
+              </>
+            )}
             {tab === 'debrief' &&
               (debriefRange === 'event' ? (
                 <EventSummaryPage />

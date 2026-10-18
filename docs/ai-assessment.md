@@ -30,7 +30,10 @@ The app never sends anything to students on its own. Microsoft Foundry receives 
 
 Out-of-scope requests answer 404, and missing permissions answer 403. Both are audited. Students have no AI access.
 
-## Reference documents (Scenarios page → "AI assessment reference")
+## Reference documents (Scenarios page → "Reference document for AI")
+
+Instructors see one Upload / Replace button, a plain status (Ready, Preparing…, Failed + Retry) and the file name. Everything below except upload and retry (version numbers, version history, Rebuild, Download, file details, rubric weights) is under **Advanced settings (admin)**, shown only with `ai_resources.manage`. The server rules are unchanged.
+
 
 - **Upload:** PDF, DOCX or TXT, up to 5 MB. Each upload is a new **version**. It is processed in Foundry (a file and a vector store) and becomes current when ready.
 - **Pinning:**
@@ -41,9 +44,12 @@ Out-of-scope requests answer 404, and missing permissions answer 403. Both are a
 - **"Foundry copy deleted"** means the version's copy in Foundry is gone. The file is still stored. If sessions still use it, **Rebuild in Foundry** re-uploads it, and the pins don't change.
 - **Download** gives authors the original file. Every download is audited.
 - **Deleting a scenario** removes its versions. Their Foundry copies are never deleted automatically: they appear as cleanup candidates under AI Resources.
-- **Rubric:** the weights for the final score (default 40/30/20/10; they must add up to 100).
+- **Rubric:** the weights for the final score (default 40/30/20/10; they must add up to 100). Admin-only in the UI; instructors always get the saved (or default) weights.
 
-## Running reviews (team workspace → AI Review)
+## Running reviews
+
+- **Check with AI (each timeline entry):** in the staff timeline, while the session is active or paused. It runs the team's live review of the whole investigation, or reuses the last one when nothing changed, and shows only what concerns that entry: suggested feedback with its verdict, related judgements, gaps, suggested points (not awarded). All entries share one review, so checking several entries costs one model call. **Edit & send** opens the existing feedback form, pre-filled; nothing is sent until **Send**. The leak gate and the instruction-like-entry warning apply here too. When the AI said nothing about the entry, the card says so.
+- **View details** opens the full review (`/instructor/teams/<id>?tab=ai`). There is no AI tab in the workspace tab bar any more, and no "Analyze progress" button in the team header.
 
 - **Session:** the active one by default. Paused and completed sessions can be picked, and the choice is kept in the URL (`?tab=ai&view=final&session=…`).
   - Progress reviews need an active or paused session.

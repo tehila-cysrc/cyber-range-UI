@@ -13,6 +13,9 @@ import { formatEntryTime } from '../documentation/InvestigationPage';
 // reference document for the AI assessment, uploaded once and reused by every team, plus the rubric
 // weights. Answer-key data like the ATT&CK list above it — staff only, served under /admin. The server
 // never returns the document bytes or Foundry ids; this screen only shows metadata and status.
+// Simplified instructor UX (2026-10-18): instructors see one upload/replace control and a plain status;
+// version history, rebuild, download, file details and rubric weights sit under "Advanced settings",
+// shown to admins (ai_resources.manage) only. Pinning and every server rule are unchanged.
 
 type DocStatus = 'processing' | 'ready' | 'failed' | 'superseded';
 
@@ -136,9 +139,10 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
   const queryClient = useQueryClient();
   const push = useToastStore((s) => s.push);
   const canAuthor = useCan('scenario.author');
+  const isAdmin = useCan('ai_resources.manage');
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const queryKey = ['ai-documents', cyberRangeId];
 
   const { data, error: loadError } = useQuery({
@@ -161,7 +165,7 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
       }),
     onSuccess: (res) => {
       setError(null);
-      push(`Version ${res.document.version} uploaded — processing in Microsoft Foundry.`, 'success');
+      push(isAdmin ? `Version ${res.document.version} uploaded — processing in Microsoft Foundry.` : 'Document uploaded. It is being prepared — usually under a minute.', 'success');
       invalidate();
     },
     onError: (err) => setError(errorText(err, 'Could not upload the document.')),
@@ -230,29 +234,39 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
     const liveCurrent = fresh.current;
     if (liveCurrent) {
       const pinned = liveCurrent.pinnedSessionCount;
-      const ok = await confirmAction({
-        title: `Replace the reference document (v${liveCurrent.version})?`,
-        message:
-          (pinned > 0
-            ? `${pinned} team session${pinned === 1 ? ' is' : 's are'} using v${liveCurrent.version} and will keep using it. `
-            : '') +
-          'Only team sessions started after the new version is ready will use it. Assessments already made keep the version they used. The current version stays in use until the new one is processed successfully.',
-        confirmLabel: 'Upload new version',
-      });
+      const ok = await confirmAction(
+        isAdmin
+          ? {
+              title: `Replace the reference document (v${liveCurrent.version})?`,
+              message:
+                (pinned > 0
+                  ? `${pinned} team session${pinned === 1 ? ' is' : 's are'} using v${liveCurrent.version} and will keep using it. `
+                  : '') +
+                'Only team sessions started after the new version is ready will use it. Assessments already made keep the version they used. The current version stays in use until the new one is processed successfully.',
+              confirmLabel: 'Upload new version',
+            }
+          : {
+              title: 'Replace the reference document?',
+              message: 'Teams that already started keep the current document. Teams that start later use the new one.',
+              confirmLabel: 'Replace',
+            },
+      );
       if (!ok) return;
     }
     upload.mutate(file);
   }
 
   const readiness = !data ? null : processing ? (
-    <TelemetryBadge tone="secondary">Processing v{processing.version}…</TelemetryBadge>
+    <TelemetryBadge tone="secondary">{isAdmin ? `Processing v${processing.version}…` : 'Preparing…'}</TelemetryBadge>
   ) : current ? (
-    <TelemetryBadge tone="primary">Ready · v{current.version}</TelemetryBadge>
+    <TelemetryBadge tone="primary">{isAdmin ? `Ready · v${current.version}` : 'Ready'}</TelemetryBadge>
   ) : pendingFailure ? (
     <TelemetryBadge tone="alert">Failed</TelemetryBadge>
   ) : (
-    <TelemetryBadge>Not configured</TelemetryBadge>
+    <TelemetryBadge>No document yet</TelemetryBadge>
   );
+  // A version that running sessions still use has lost its Foundry copy: only an admin can rebuild it.
+  const needsRebuild = !!data?.versions.some((v) => v.foundryDeleted && !v.rebuilding && v.pinnedSessionCount > 0);
 
   const uploadDisabled = !data?.aiEnabled || !!processing || upload.isPending;
 
@@ -272,7 +286,7 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h2 id="ai-config-heading" style={{ ...monoLabel, margin: 0 }}>
-          AI assessment reference
+          Reference document for AI
         </h2>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {readiness}
@@ -280,9 +294,8 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
         </span>
       </div>
       <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>
-        The scenario's ground truth for the AI investigation assessment — storyline, expected findings, attack steps. Upload it once;
-        every team on this scenario is assessed against it. Students never see it. A team session keeps the version it started with,
-        so replacing the document only affects sessions started afterwards. PDF, DOCX or TXT, up to 5 MB.
+        The scenario's answer key — storyline, expected findings, attack steps. The AI compares each team's investigation with it.
+        Students never see it. PDF, DOCX or TXT, up to 5 MB.
       </p>
 
       {loadError && (
@@ -297,7 +310,13 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
         </p>
       )}
 
-      {current && (
+      {current && !isAdmin && (
+        <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+          <bdi>{current.originalFilename}</bdi>
+        </div>
+      )}
+
+      {current && isAdmin && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'baseline', fontSize: 14 }}>
           <span style={{ color: 'var(--text-primary)' }}>
             <bdi>{current.originalFilename}</bdi>
@@ -314,16 +333,26 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
 
       {processing && (
         <div role="status" style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Processing <bdi>{processing.originalFilename}</bdi> (v{processing.version}) in Microsoft Foundry — this usually takes under a
-          minute.{current ? ` v${current.version} stays in use until it is ready.` : ''}
+          {isAdmin ? (
+            <>
+              Processing <bdi>{processing.originalFilename}</bdi> (v{processing.version}) in Microsoft Foundry — this usually takes under a
+              minute.{current ? ` v${current.version} stays in use until it is ready.` : ''}
+            </>
+          ) : (
+            <>
+              Preparing <bdi>{processing.originalFilename}</bdi> — usually under a minute.{current ? ' The current document stays in use until then.' : ''}
+            </>
+          )}
         </div>
       )}
 
       {pendingFailure && (
         <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center', fontSize: 14 }}>
           <span style={{ color: 'var(--signal-alert)' }}>
-            v{pendingFailure.version} (<bdi>{pendingFailure.originalFilename}</bdi>): {describeDocumentError(pendingFailure.errorCode)}
-            {current ? ` v${current.version} is still in use.` : ''}
+            {isAdmin ? `v${pendingFailure.version} (` : ''}
+            <bdi>{pendingFailure.originalFilename}</bdi>
+            {isAdmin ? ')' : ''}: {describeDocumentError(pendingFailure.errorCode)}
+            {current ? (isAdmin ? ` v${current.version} is still in use.` : ' The previous document is still in use.') : ''}
           </span>
           {canAuthor && data?.aiEnabled && !processing && (
             <Button
@@ -336,6 +365,12 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
               Retry
             </Button>
           )}
+        </div>
+      )}
+
+      {needsRebuild && !isAdmin && (
+        <div role="alert" style={{ fontSize: 14, color: 'var(--signal-alert)' }}>
+          Some teams' copy of the reference document is no longer available, so they can't be checked with AI. Ask an admin to rebuild it.
         </div>
       )}
 
@@ -361,17 +396,21 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
         </div>
       )}
 
-      {data && data.versions.length > 0 && (
+      {isAdmin && data && (
+        <button
+          type="button"
+          aria-expanded={showAdvanced}
+          onClick={() => setShowAdvanced((v) => !v)}
+          style={{ ...monoLabel, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start' }}
+        >
+          {showAdvanced ? '▾' : '▸'} Advanced settings (admin){needsRebuild ? ' — needs attention' : ''}
+        </button>
+      )}
+
+      {isAdmin && showAdvanced && data && data.versions.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <button
-            type="button"
-            aria-expanded={showHistory}
-            onClick={() => setShowHistory((v) => !v)}
-            style={{ ...monoLabel, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start' }}
-          >
-            {showHistory ? '▾' : '▸'} Version history ({data.versions.length})
-          </button>
-          {showHistory && (
+          <span style={monoLabel}>Version history ({data.versions.length})</span>
+          {(
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {data.versions.map((v) => (
                 <li key={v.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'baseline', fontSize: 14 }}>
@@ -419,7 +458,7 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
         </div>
       )}
 
-      {data && (
+      {isAdmin && showAdvanced && data && (
         // Keyed by the saved weights: a refetch with different weights (another instructor's save)
         // remounts the editor so its draft starts from the server copy.
         <RubricEditor

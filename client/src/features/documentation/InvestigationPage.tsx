@@ -17,6 +17,7 @@ import { TechniquePicker, TtpChip } from '../../components/TechniquePicker';
 import { TeamSelect, type TeamOption } from '../../components/TeamSelect';
 import { useMitreCatalog, type EntryTtp, type IndexedCatalog, type TtpBudget } from '../../lib/mitre';
 import { EntryFeedbackForm, EntryFeedbackList, type EntryFeedbackItem } from './EntryFeedback';
+import { EntryAiCheck } from '../aiAssessment/EntryAiCheck';
 
 // React Flow (Canvas) is a large chunk — code-split it exactly like Topology (see routes.tsx) so a
 // Timeline-only visit to /investigation never pays its bundle cost; it only loads the first time
@@ -403,7 +404,11 @@ export function InvestigationPage() {
               <Timeline
                 entries={entriesData?.entries}
                 catalog={catalog}
-                feedbackEditing={{ cyberRangeId: viewed.cyberRangeId, queryKey: documentationKey }}
+                feedbackEditing={{
+                  cyberRangeId: viewed.cyberRangeId,
+                  queryKey: documentationKey,
+                  ai: { teamId: Number(selectedTeamId), sessionStatus: viewed.status },
+                }}
               />
             ) : (
               <Suspense fallback={<CanvasFallback />}>
@@ -654,6 +659,8 @@ interface TtpEditing {
 interface FeedbackEditing {
   cyberRangeId: number;
   queryKey: unknown[];
+  // Staff view of one team: enables "Check with AI" on each entry (hidden when AI is off or not allowed).
+  ai?: { teamId: number; sessionStatus: string };
 }
 
 // The team's own technique budget (anti-guessing cap). null = the scenario scores no techniques.
@@ -930,6 +937,15 @@ function TimelineEntry({
       />
       {feedbackEditing && (
         <EntryFeedbackForm<DocEntry> cyberRangeId={feedbackEditing.cyberRangeId} entryId={entry.id} onSaved={replaceEntry} />
+      )}
+      {feedbackEditing?.ai && (
+        <EntryAiCheck
+          teamId={feedbackEditing.ai.teamId}
+          cyberRangeId={feedbackEditing.cyberRangeId}
+          sessionStatus={feedbackEditing.ai.sessionStatus}
+          entryId={entry.id}
+          onFeedbackSaved={(updated) => replaceEntry(updated as DocEntry)}
+        />
       )}
     </div>
   );
