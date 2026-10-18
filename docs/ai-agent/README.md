@@ -18,3 +18,10 @@ live-validation finding F1. Contract 1 (`{live, final}`) is v5 (2026-10-15). Bot
 The app requires a pinned `FOUNDRY_AGENT_VERSION` and refuses replies with another contract version. Results and the open schema issue (F1): `docs/ai-assessment-live-validation.md`.
 Changing this schema is a contract change: bump `CONTRACT_VERSION` in the app at the same time, or jobs
 fail with `contract_mismatch`.
+
+**`proposed/` — contract 3 and v7 instructions (Phase 8, 2026-10-18; NOT applied in Foundry).** Contract 3
+adds the judgements `hypothesis` and `unsupported_claim` and `instructionLikeRecords` (records the agent
+ignored as instructions). The app already accepts contract 2 and 3 replies (`ACCEPTED_CONTRACT_VERSIONS`)
+while requests still carry `CONTRACT_VERSION` "2". Promotion (after approval): create v7 from
+`proposed/agent-instructions.v7.md` + `proposed/agent-text-format.json`, set `CONTRACT_VERSION = '3'`, then
+move the pin. Rationale: `docs/ai-assessment-phase8-calibration.md`.

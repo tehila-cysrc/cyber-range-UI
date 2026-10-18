@@ -910,7 +910,7 @@ Each phase is a separate local commit with a `PROGRESS.txt` entry and doc sync. 
 - Scoped results export for instructors: `GET /api/admin/results/export` (`results.export`), pair-filtered; the global export stays admin-only.
 - Calibration recommendations for Phase 8: `docs/ai-assessment-phase8-calibration.md`.
 
-**Phase 8 — Evaluation and hardening.**
+**Phase 8 — Evaluation and hardening.** Offline part done 2026-10-18 (`docs/ai-assessment-phase8-calibration.md`): anchored rubric and contract 3 proposed (`docs/ai-agent/proposed/`), app-side leak / instruction-like / rubric-drift checks, calibration dataset and offline evaluator (`server/scripts/ai-eval/`). Agent v7 and the live evaluation await approval.
 - **Tasks:**
   - the eval harness and fixtures, with three runs per fixture;
   - tune agent instructions *in Foundry* (no redeploy);

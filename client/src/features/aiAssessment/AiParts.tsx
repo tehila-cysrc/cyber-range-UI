@@ -28,11 +28,12 @@ export function JudgementBadges({ judgement, unsupported }: { judgement: Judgeme
 // A suspected answer leak gates every path toward students (post, copy) until the instructor ticks it.
 export function LeakGate({ flags, reviewed, onReviewed }: { flags: ValidationFlags; reviewed: boolean; onReviewed: (v: boolean) => void }) {
   if (!flags.leakSuspected) return null;
+  const leaked = [...flags.leakedTechniqueIds, ...(flags.leakedTerms ?? [])];
   return (
     <div role="alert" style={{ border: '1px solid var(--signal-alert)', borderRadius: 'var(--radius-control)', padding: 'var(--space-sm) var(--space-md)', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ fontSize: 14, color: 'var(--signal-alert)' }}>
         This feedback may reveal part of the answer
-        {flags.leakedTechniqueIds.length > 0 ? ` (it mentions ${flags.leakedTechniqueIds.join(', ')}, which the team has not found yet)` : ''}. Read it carefully before
+        {leaked.length > 0 ? ` (it mentions ${leaked.join(', ')}, which the team has not written themselves)` : ''}. Read it carefully before
         using any of it.
       </span>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-primary)', cursor: 'pointer' }}>

@@ -7,7 +7,11 @@
 //   - every evidence reference names a record that exists in THIS snapshot; quotes are verbatim;
 //   - correct/partial claims left without any valid evidence are FLAGGED (never re-judged);
 //   - final-score arithmetic: criteria = the rubric sent, points within 0..max, total = sum;
-//   - student-safe text is scanned for answer-key technique ids the team has not found itself;
+//   - student-safe text is scanned for answer-key technique ids the team has not found itself, and for
+//     reference terms the team never wrote (assessmentSafetyChecks.ts, Phase 8);
+//   - instruction-like records are detected independently of the agent, and an agent warning about
+//     ignored instructions that no record backs is marked as a likely false positive (Phase 8);
+//   - contract 3 only: identification points are compared with the anchored rubric rule;
 //   - over-long strings are truncated (with a warning) rather than failing a whole assessment.
 // Failures carry a code; `retryable` tells the Phase 5 runner whether one retry is worthwhile.
 import {
@@ -19,6 +23,15 @@ import {
   type LiveAssessmentT,
 } from './assessmentContract.js';
 import type { EvidenceIndex, LeakScanContext } from './assessmentSnapshot.service.js';
+import {
+  anchoredIdentificationPoints,
+  findInstructionLikeRecords,
+  findLeakedReferenceTerms,
+  identificationTolerance,
+  teamCorpusFromIndex,
+  warnsAboutInstructions,
+  type RecordRef,
+} from './assessmentSafetyChecks.js';
 
 export interface RubricCriterion {
   key: string;
@@ -46,6 +59,11 @@ export interface ValidationFlags {
   scoreAdjusted: boolean;
   leakSuspected: boolean;
   leakedTechniqueIds: string[];
+  // Phase 8 (absent on results stored before 2026-10-18):
+  leakedTerms: string[]; // reference terms in student-safe text that the team never wrote
+  instructionLikeRecords: RecordRef[]; // detected by the app or listed by the agent (contract 3)
+  injectionWarningUnverified: boolean; // the agent warned about ignored instructions, but no record backs it
+  rubricInconsistency: { criterion: 'identification'; awarded: number; anchored: number } | null; // contract 3
 }
 
 // Validated results carry an `unsupported` flag on judged items: true = claimed correct/partial but no
@@ -123,6 +141,10 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
     scoreAdjusted: false,
     leakSuspected: false,
     leakedTechniqueIds: [],
+    leakedTerms: [],
+    instructionLikeRecords: [],
+    injectionWarningUnverified: false,
+    rubricInconsistency: null,
   };
   const idx = input.evidenceIndex;
 
@@ -163,7 +185,7 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
 
   const flagSupport = <T extends { judgement: string; evidence: EvidenceT[] }>(item: T, where: string): Flagged<T> => {
     const evidence = checkEvidence(item.evidence, where);
-    const unsupported = (item.judgement === 'correct' || item.judgement === 'partial') && evidence.length === 0;
+    const unsupported = (item.judgement === 'correct' || item.judgement === 'partial' || item.judgement === 'hypothesis') && evidence.length === 0;
     if (unsupported) {
       flags.unsupportedItems++;
       warn(`${where}: marked "${item.judgement}" but no valid evidence reference remains`);
@@ -172,6 +194,33 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
   };
 
   const strings = (list: string[], where: string) => list.map((s, i) => capText(s, TEXT_LIMITS.medium, `${where}[${i}]`));
+
+  // Instruction-like records: the app's own scan plus (contract 3) the agent's validated list.
+  const instructionChecks = (agentListed: EvidenceT[], agentWarnings: string[]) => {
+    const refs = new Map<string, RecordRef>();
+    for (const r of findInstructionLikeRecords(idx)) refs.set(`${r.type}:${r.id}`, r);
+    const appKeys = new Set(refs.keys());
+    for (const r of agentListed) refs.set(`${r.type}:${r.id}`, { type: r.type, id: r.id });
+    flags.instructionLikeRecords = [...refs.values()];
+    for (const key of appKeys) {
+      const [type, id] = key.split(':');
+      warn(`${type.replace('_', ' ')} #${id} contains instruction-like text (detected by Cyber Range). Check that it did not influence the assessment; if it is quoted attack data, no action is needed.`);
+    }
+    if (warnsAboutInstructions(agentWarnings) && refs.size === 0) {
+      flags.injectionWarningUnverified = true;
+      warn('The AI reported ignored instruction-like text, but no record contains any; this warning is probably a false positive.');
+    }
+  };
+  const leakChecks = (studentSafe: (string | null)[], referenceTexts: string[]) => {
+    const ids = findLeakedTechniqueIds(studentSafe, input.leak);
+    const teamCorpus = `${teamCorpusFromIndex(idx)}\n${input.leak.studentVisibleText ?? ''}`;
+    const leakedTerms = findLeakedReferenceTerms({ referenceTexts, studentSafeTexts: studentSafe, teamCorpus });
+    if (ids.length) warn(`student-safe feedback mentions answer-key technique(s) the team has not found: ${ids.join(', ')}`);
+    if (leakedTerms.length) warn(`student-safe feedback uses term(s) the team has not written themselves: ${leakedTerms.join(', ')}`);
+    flags.leakedTechniqueIds = ids;
+    flags.leakedTerms = leakedTerms;
+    flags.leakSuspected = ids.length > 0 || leakedTerms.length > 0;
+  };
 
   if (parsed.mode === 'live') {
     const r = parsed.result;
@@ -204,17 +253,14 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
       },
       suggestedEntryScores: suggestedEntryScores.map((s, i) => ({ ...s, rationale: capText(s.rationale, TEXT_LIMITS.medium, `suggestedEntryScores[${i}].rationale`) })),
       confidence: { ...r.confidence, reason: capText(r.confidence.reason, TEXT_LIMITS.medium, 'confidence.reason') },
+      instructionLikeRecords: checkEvidence(r.instructionLikeRecords, 'instructionLikeRecords'),
       warnings: strings(r.warnings, 'warnings'),
     };
-    const leaked = findLeakedTechniqueIds(
+    leakChecks(
       [result.studentSafeFeedback.teamLevel, result.studentSafeFeedback.guidingQuestion, ...result.studentSafeFeedback.entryFeedback.map((f) => f.text)],
-      input.leak,
+      [result.summary, result.instructorOnlyNotes, result.direction.explanation, ...[...result.correctlyIdentified, ...result.partiallyUnderstood].map((it) => it.concept), ...result.missingOrUnclear.flatMap((g) => [g.topic, g.whyItMatters])],
     );
-    if (leaked.length) {
-      flags.leakSuspected = true;
-      flags.leakedTechniqueIds = leaked;
-      warn(`student-safe feedback mentions answer-key technique(s) the team has not found: ${leaked.join(', ')}`);
-    }
+    instructionChecks(result.instructionLikeRecords, result.warnings);
     return { ok: true, mode: 'live', result, warnings, agentWarnings: result.warnings, flags };
   }
 
@@ -269,13 +315,23 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
       studentSafeVersion: capText(r.suggestedFinalFeedback.studentSafeVersion, TEXT_LIMITS.long, 'suggestedFinalFeedback.studentSafeVersion'),
     },
     confidence: { ...r.confidence, reason: capText(r.confidence.reason, TEXT_LIMITS.medium, 'confidence.reason') },
+    instructionLikeRecords: checkEvidence(r.instructionLikeRecords, 'instructionLikeRecords'),
     warnings: strings(r.warnings, 'warnings'),
   };
-  const leaked = findLeakedTechniqueIds([result.suggestedFinalFeedback.studentSafeVersion], input.leak);
-  if (leaked.length) {
-    flags.leakSuspected = true;
-    flags.leakedTechniqueIds = leaked;
-    warn(`student-safe feedback mentions answer-key technique(s) the team has not found: ${leaked.join(', ')}`);
+  leakChecks(
+    [result.suggestedFinalFeedback.studentSafeVersion],
+    [result.investigationSummary, result.suggestedFinalFeedback.instructorVersion, result.overallAssessment.text, ...result.stages.map((st) => st.stage), ...result.incorrectConclusions.map((c) => c.correction)],
+  );
+  instructionChecks(result.instructionLikeRecords, result.warnings);
+  // Contract 3 agents are instructed to follow the anchored identification rule; report a drift (the
+  // agent's points stay as they are — the instructor decides).
+  const ident = criteria.find((c) => c.key === 'identification');
+  if (parsed.contractVersion === '3' && ident) {
+    const anchored = anchoredIdentificationPoints(result.stages, ident.maxPoints);
+    if (anchored !== null && Math.abs(ident.awardedPoints - anchored) > identificationTolerance(ident.maxPoints)) {
+      flags.rubricInconsistency = { criterion: 'identification', awarded: ident.awardedPoints, anchored };
+      warn(`score: identification ${ident.awardedPoints}/${ident.maxPoints} does not match the stage judgements (the rubric rule gives about ${anchored})`);
+    }
   }
   return { ok: true, mode: 'final', result, warnings, agentWarnings: result.warnings, flags };
 }

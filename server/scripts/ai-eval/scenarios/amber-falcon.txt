@@ -1,0 +1,13 @@
+Scenario reference - Operation Amber Falcon (SYNTHETIC TRAINING DOCUMENT)
+Audience: instructors only.
+
+Storyline (all times on exercise day, local):
+1. Initial access (about 08:40): user j.cohen on workstation WS03 receives a phishing email with the attachment Invoice_Q3.docm and opens it. A macro runs.
+2. Execution (about 08:45): the macro starts an encoded PowerShell command on WS03 that downloads a second-stage tool from 203.0.113.50.
+3. Credential access (about 09:00): the attacker dumps credentials from WS03 memory and obtains the password of the admin account svc_backup.
+4. Lateral movement (about 09:12): the attacker logs in to file server FS01 as svc_backup and runs encoded PowerShell there.
+5. Collection and exfiltration (about 09:40): files are archived to C:\ProgramData\stage.zip on FS01 and sent out over HTTPS.
+
+Key facts for assessment:
+- The root cause is the phishing email on WS03; the admin logon on FS01 is a consequence of stolen credentials.
+- There was NO brute-force attack and NO VPN involvement.

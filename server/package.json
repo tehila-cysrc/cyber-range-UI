@@ -12,6 +12,7 @@
     "import-script-library": "tsx src/db/importScriptLibrary.ts",
     "build-mitre-catalog": "node scripts/build-mitre-catalog.mjs",
     "export-ai-schema": "npm run build && node scripts/export-ai-schemas.mjs",
+    "ai-eval": "npm run build && node scripts/ai-eval/evaluate.mjs",
     "test": "npm run build && node --test \"tests/*.test.mjs\""
   },
   "dependencies": {

@@ -1,0 +1,42 @@
+{
+  "purpose": "Held-out check of the app's reference-term leak scan. Each probe is a student-safe sentence an agent might write for a fixture; `leak` is a human judgement (does it reveal or hint at something the team has not established?). Written before measuring; not used to tune the scan.",
+  "referenceTexts": {
+    "amber-falcon": [
+      "Initial access (phishing email, macro on WS03)", "Execution (encoded PowerShell download on WS03)", "Credential access (svc_backup dumped on WS03)", "Lateral movement (svc_backup logon + PowerShell on FS01)", "Collection and exfiltration (stage.zip over HTTPS)",
+      "They documented the FS01 activity and hypothesised the email and credential dumping on WS03, but missed the download from 203.0.113.50 and the stage.zip exfiltration."
+    ],
+    "cobalt-lynx": [
+      "Initial access (leaked ci-deployer key)", "Discovery (GetCallerIdentity, ListBuckets, IAM)", "Persistence (IAM user backup-admin)", "Defense evasion (CloudTrail org-trail stopped)", "Exfiltration (lynx-payroll-data copied out)",
+      "The team found the new IAM user but missed the leaked ci-deployer key in the public repository, the discovery calls and the copy of lynx-payroll-data to an external account. CloudTrail being stopped was only a hypothesis."
+    ]
+  },
+  "probes": [
+    { "fixture": "CL-02", "leak": false, "text": "Good catch on the new IAM user nobody on your side created. What evidence would show who created it?" },
+    { "fixture": "CL-02", "leak": false, "text": "You noticed logging stopped at 10:50. What would help you confirm why it stopped?" },
+    { "fixture": "CL-02", "leak": true, "text": "Check the public GitHub repository for exposed keys." },
+    { "fixture": "CL-02", "leak": true, "text": "Look into the ci-deployer key and where it was used from." },
+    { "fixture": "CL-02", "leak": true, "text": "Did any data leave the lynx-payroll-data bucket?" },
+    { "fixture": "CL-02", "leak": false, "text": "Your EC2 idea is a guess for now. What logs could support or rule it out?" },
+    { "fixture": "CL-02", "leak": true, "text": "Think about how the attacker made sure they could come back later (persistence)." },
+    { "fixture": "CL-02", "leak": false, "text": "Your timeline is clear and easy to follow." },
+    { "fixture": "CL-03", "leak": false, "text": "You found that payroll objects were copied to an external account, well documented." },
+    { "fixture": "CL-03", "leak": false, "text": "What evidence supports the phishing idea? Which logs would show how the attacker first got access?" },
+    { "fixture": "CL-03", "leak": true, "text": "Was a CloudTrail trail stopped during the attack?" },
+    { "fixture": "CL-03", "leak": true, "text": "Look at what the backup-admin user did." },
+    { "fixture": "CL-03", "leak": false, "text": "Try to support each conclusion with a log entry or a screenshot." },
+    { "fixture": "CL-05", "leak": false, "text": "Finding the key in the GitHub repo is a strong lead. What shows it was the way in?" },
+    { "fixture": "CL-05", "leak": false, "text": "Good link between the key and the ListBuckets calls." },
+    { "fixture": "CL-05", "leak": true, "text": "Check for new IAM users created after 10:30, such as backup-admin." },
+    { "fixture": "CL-05", "leak": true, "text": "Was CloudTrail logging still running at 10:50?" },
+    { "fixture": "CL-05", "leak": true, "text": "Did the attacker call GetCallerIdentity too?" },
+    { "fixture": "AF-03", "leak": false, "text": "Your hypotheses are clearly labelled. What evidence from WS03 would confirm or rule them out?" },
+    { "fixture": "AF-03", "leak": true, "text": "Look for a zip archive on FS01." },
+    { "fixture": "AF-03", "leak": true, "text": "Check outbound HTTPS traffic from FS01 around 09:40." },
+    { "fixture": "AF-03", "leak": false, "text": "Good that you noted the exact time of the logon." },
+    { "fixture": "AF-09", "leak": false, "text": "You described the phishing email and the macro clearly." },
+    { "fixture": "AF-09", "leak": true, "text": "What did the PowerShell download, and from which IP?" },
+    { "fixture": "AF-09", "leak": true, "text": "Think about which account was used to reach FS01." },
+    { "fixture": "AF-07", "leak": false, "text": "Can you add what exactly looked weird on FS01 and when?" },
+    { "fixture": "AF-07", "leak": true, "text": "Was there an encoded PowerShell command on FS01?" }
+  ]
+}

@@ -52,7 +52,10 @@ export function buildAssessmentInput(
     contractVersion: CONTRACT_VERSION,
     mode,
     scenario: { ...snapshot.scenario, groundTruthVersion },
-    exerciseState: snapshot.exerciseState,
+    // A final assessment judges the records, not the clock. Wall-clock minutes since the first start
+    // (pauses and overnight breaks included) are left out of final requests: a reused session once sent
+    // 4,174 minutes for a 120-minute scenario (Phase 8 calibration, 2026-10-18).
+    exerciseState: mode === 'final' ? { ...snapshot.exerciseState, minutesSinceFirstStart: null } : snapshot.exerciseState,
     attackProgress: snapshot.attackProgress,
     recordedTechniqueOccurrences: snapshot.recordedTechniqueOccurrences,
     rubric: mode === 'final' ? { criteria: rubric } : null,
@@ -370,7 +373,7 @@ export async function executeAssessment(id: number, vectorStoreId: string, actor
     const rubric = row.rj ? (JSON.parse(row.rj) as RubricCriterion[]) : null;
     const input = buildAssessmentInput(row.mode, snapshot, row.v, rubric);
     const evidenceIndex = evidenceIndexFromSnapshot(snapshot);
-    const leak = leakScanContext(row.teamId, row.r);
+    const leak = { ...leakScanContext(row.teamId, row.r), studentVisibleText: snapshot.scenario.studentBriefing ?? '' };
     const client = getFoundryClient();
 
     for (let attempt = 1; attempt <= 2; attempt++) {

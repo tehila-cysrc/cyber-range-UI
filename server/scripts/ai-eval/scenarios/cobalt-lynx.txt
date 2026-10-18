@@ -1,0 +1,13 @@
+Scenario reference - Operation Cobalt Lynx (SYNTHETIC TRAINING DOCUMENT, cloud / AWS day)
+Audience: instructors only.
+
+Storyline (all times on exercise day, local):
+1. Initial access (about 10:05): an access key of the IAM user ci-deployer was committed to a public Git repository. The attacker uses the key from 198.51.100.23.
+2. Discovery (about 10:20): with that key the attacker calls GetCallerIdentity and ListBuckets and lists IAM users to learn what the key can reach.
+3. Persistence (about 10:35): the attacker creates a new IAM user backup-admin, attaches AdministratorAccess and creates an access key for it.
+4. Defense evasion (about 10:50): the attacker stops the CloudTrail trail org-trail (StopLogging) to hide further activity.
+5. Exfiltration (about 11:05): objects from the S3 bucket lynx-payroll-data are copied to a bucket in an external AWS account.
+
+Key facts for assessment:
+- The root cause is the leaked ci-deployer access key in the public repository.
+- There was NO phishing, NO EC2 instance compromise and NO zero-day exploit.

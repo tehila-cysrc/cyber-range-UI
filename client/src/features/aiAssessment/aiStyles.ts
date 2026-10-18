@@ -25,6 +25,8 @@ export type Tone = 'primary' | 'secondary' | 'tertiary' | 'alert' | 'muted';
 export const JUDGEMENT: Record<Judgement, { label: string; tone: Tone }> = {
   correct: { label: 'Correct', tone: 'primary' },
   partial: { label: 'Partial', tone: 'secondary' },
+  hypothesis: { label: 'Reasonable hypothesis', tone: 'secondary' },
+  unsupported_claim: { label: 'Unsupported claim', tone: 'tertiary' },
   incorrect: { label: 'Incorrect', tone: 'alert' },
   not_documented: { label: 'Not documented', tone: 'muted' },
   insufficient_information: { label: 'Not enough info', tone: 'muted' },

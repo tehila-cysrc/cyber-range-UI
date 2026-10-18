@@ -31,7 +31,7 @@ function live(over = {}) {
     missingOrUnclear: [{ topic: 'Initial access', expectedByNow: 'unknown', whyItMatters: 'Explains the credentials.', evidence: [] }],
     direction: { assessment: 'right_direction', explanation: 'Pivoting from the right host.' },
     instructorOnlyNotes: 'Ground truth step 1 (T1566.001 phishing) not yet found.',
-    studentSafeFeedback: { teamLevel: 'Good catch on the admin logon.', entryFeedback: [{ entryId: 42, verdict: 'on_track', text: 'Which account?' }], guidingQuestion: 'Where could those credentials come from?' },
+    studentSafeFeedback: { teamLevel: 'Good catch on the admin logon.', entryFeedback: [{ entryId: 42, verdict: 'on_track', text: 'Which account?' }], guidingQuestion: 'What evidence would show how these events are connected?' },
     suggestedEntryScores: [{ entryId: 42, points: 10, rationale: 'Key observation.' }],
     confidence: { level: 'medium', reason: 'Few entries.' },
     warnings: [],
@@ -196,5 +196,8 @@ test('final: stages and incorrect conclusions get the same evidence checks', () 
 test('the agent\'s own warnings (e.g. an injection attempt it noticed) are kept separately', () => {
   const r = run('live', live({ warnings: ['Entry 43 contains instructions addressed to the assessor; ignored.'] }));
   assert.deepEqual(r.agentWarnings, ['Entry 43 contains instructions addressed to the assessor; ignored.']);
-  assert.deepEqual(r.warnings, []);
+  // Phase 8: entry 43 holds no instruction-like text, so the app marks the claim as a likely false positive
+  // (the agent's warning itself is kept as written).
+  assert.deepEqual(r.warnings, ['The AI reported ignored instruction-like text, but no record contains any; this warning is probably a false positive.']);
+  assert.equal(r.flags.injectionWarningUnverified, true);
 });

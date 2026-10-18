@@ -299,6 +299,7 @@ export function evidenceIndexFromSnapshot(snapshot: InvestigationSnapshot): Evid
 export interface LeakScanContext {
   expectedTechniqueIds: string[];
   teamTaggedTechniqueIds: string[];
+  studentVisibleText?: string; // e.g. the scenario briefing — terms students were given are not leaks
 }
 
 export function leakScanContext(teamId: number, cyberRangeId: number): LeakScanContext {

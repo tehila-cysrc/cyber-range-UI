@@ -48,7 +48,8 @@ export interface EvidenceRef {
 }
 export type EvidenceIndex = Record<EvidenceType, Record<string, EvidenceRef>>;
 
-export type Judgement = 'correct' | 'partial' | 'incorrect' | 'not_documented' | 'insufficient_information';
+// 'hypothesis' and 'unsupported_claim' come from contract-3 agents only (Phase 8 proposal).
+export type Judgement = 'correct' | 'partial' | 'hypothesis' | 'unsupported_claim' | 'incorrect' | 'not_documented' | 'insufficient_information';
 
 export interface JudgedItem {
   concept: string;
@@ -86,6 +87,7 @@ export interface ValidationFlags {
   scoreAdjusted: boolean;
   leakSuspected: boolean;
   leakedTechniqueIds: string[];
+  leakedTerms?: string[]; // Phase 8; absent on results stored earlier
 }
 
 export type RubricKey = 'identification' | 'understanding' | 'connections' | 'clarity';
