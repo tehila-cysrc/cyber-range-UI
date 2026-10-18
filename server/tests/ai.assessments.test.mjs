@@ -392,3 +392,41 @@ test('restart recovery marks interrupted jobs failed; nothing ever deleted in Fo
   assert.equal(studentView.status, 200);
   assert.ok(!/studentSafeFeedback|instructorOnlyNotes|ai_assessment|leakSuspected/i.test(studentView.text));
 });
+
+test('"Posted" is based on saved feedback linked by the existing feedback route; reply contract + agent version recorded', async () => {
+  const body = liveBody();
+  body.contractVersion = '3';
+  body.result = { ...body.result, instructionLikeRecords: [] };
+  fake.script.push(reply(body));
+  const r = await request(tok.admin, f.teamA, f.s1, 'live', { force: true });
+  assert.equal(r.status, 202, r.text);
+  await settle();
+  const id = r.body.assessment.id;
+  let d = (await detail(id)).body.assessment;
+  assert.equal(d.status, 'succeeded');
+  assert.equal(d.contractVersion, '3'); // the reply's contract, not the request's "2"
+  assert.equal(d.agentVersion, '5');
+  assert.deepEqual(d.postedEntryIds, []);
+  const list = (await call('GET', `/api/admin/ai-assessments?teamId=${f.teamA}&cyberRangeId=${f.s1}&mode=live`, tok.admin)).body.assessments;
+  assert.equal(list.find((a) => a.id === id).contractVersion, '3');
+
+  // Linking to an assessment of ANOTHER team/scenario, or a non-existent one, is refused.
+  const other = db.prepare("SELECT id FROM ai_assessments WHERE team_id != ? AND status = 'succeeded' LIMIT 1").get(f.teamA);
+  for (const bad of [999999, '1', ...(other ? [other.id] : [])]) {
+    const res = await call('POST', `/api/cyber-ranges/${f.s1}/documentation/${E.e1}/feedback`, tok.iA, { verdict: 'on_track', body: 'x', sourceAiAssessmentId: bad });
+    assert.equal(res.status, 400, `source ${bad}`);
+  }
+  // The instructor posts (edited) text through the existing route with the link.
+  const posted = await call('POST', `/api/cyber-ranges/${f.s1}/documentation/${E.e1}/feedback`, tok.iA, { verdict: 'on_track', body: 'Nice — which account?', sourceAiAssessmentId: id });
+  assert.equal(posted.status, 201, posted.text);
+  d = (await detail(id)).body.assessment;
+  assert.deepEqual(d.postedEntryIds, [E.e1]);
+  // Students never see the link.
+  const student = await call('GET', `/api/cyber-ranges/${f.s1}/documentation`, tok.studentA);
+  assert.equal(student.status, 200);
+  assert.ok(!/source_?ai|sourceAi/i.test(student.text));
+  // Deleting that feedback removes the "Posted" status (it reflects feedback that exists).
+  const fb = posted.body.entry.feedback.find((x) => x.body === 'Nice — which account?');
+  assert.equal((await call('DELETE', `/api/cyber-ranges/${f.s1}/documentation/${E.e1}/feedback/${fb.id}`, tok.iA)).status, 200);
+  assert.deepEqual((await detail(id)).body.assessment.postedEntryIds, []);
+});

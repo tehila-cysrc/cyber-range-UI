@@ -47,7 +47,7 @@ export function addFeedback(
   entryId: number,
   cyberRangeId: number,
   authorUserId: number,
-  input: { verdict?: unknown; body?: unknown },
+  input: { verdict?: unknown; body?: unknown; sourceAiAssessmentId?: unknown },
 ): Result & { feedbackId?: number } {
   const verdict = input.verdict ?? 'comment';
   if (typeof verdict !== 'string' || !(FEEDBACK_VERDICTS as readonly string[]).includes(verdict)) {
@@ -63,12 +63,26 @@ export function addFeedback(
   const scope = entryScope(entryId, cyberRangeId);
   if (!scope) return { ok: false, status: 404, error: 'entry not found' };
 
+  // Optional link to the AI assessment whose suggestion the instructor posted (the "Posted" marker).
+  // It must be a completed assessment of the SAME team and scenario; the instructor wrote the text.
+  let source: number | null = null;
+  if (input.sourceAiAssessmentId != null) {
+    const id = Number.isInteger(input.sourceAiAssessmentId) ? (input.sourceAiAssessmentId as number) : null;
+    const a = id !== null
+      ? (db.prepare('SELECT team_id AS teamId, cyber_range_id AS r, status FROM ai_assessments WHERE id = ?').get(id) as { teamId: number; r: number; status: string } | undefined)
+      : undefined;
+    if (!a || a.teamId !== scope.teamId || a.r !== cyberRangeId || a.status !== 'succeeded') {
+      return { ok: false, status: 400, error: 'sourceAiAssessmentId must be a completed AI assessment of this team and scenario' };
+    }
+    source = id;
+  }
+
   const result = db
     .prepare(
-      `INSERT INTO documentation_feedback (documentation_entry_id, team_id, author_user_id, verdict, body, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO documentation_feedback (documentation_entry_id, team_id, author_user_id, verdict, body, created_at, source_ai_assessment_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(entryId, scope.teamId, authorUserId, verdict, body || null, new Date().toISOString());
+    .run(entryId, scope.teamId, authorUserId, verdict, body || null, new Date().toISOString(), source);
   return { ok: true, teamId: scope.teamId, cyberRangeId, feedbackId: Number(result.lastInsertRowid) };
 }
 

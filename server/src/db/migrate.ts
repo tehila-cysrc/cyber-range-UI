@@ -306,6 +306,14 @@ export function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_team_cyber_range_progress_ai_document
        ON team_cyber_range_progress (ai_document_id) WHERE ai_document_id IS NOT NULL`,
   );
+  // "Posted" status of an AI feedback suggestion (decision I, 2026-10-18): set ONLY by the existing
+  // feedback route when an instructor submits it via "Post as feedback". RUN -> RUN; never in a student
+  // DTO (feedbackByEntry selects explicit columns). Deleting the feedback removes the status with it.
+  addColumnIfMissing('documentation_feedback', 'source_ai_assessment_id', 'INTEGER REFERENCES ai_assessments(id) ON DELETE SET NULL');
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_documentation_feedback_ai_source
+       ON documentation_feedback (source_ai_assessment_id) WHERE source_ai_assessment_id IS NOT NULL`,
+  );
 
   // Topology publishing (UX-38) arrived after ranges already had student-visible topology. Publish
   // each such range's current student view exactly once, when the table is first created, so nothing

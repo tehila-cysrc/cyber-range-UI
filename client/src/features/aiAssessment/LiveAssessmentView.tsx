@@ -4,7 +4,7 @@ import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useCan } from '../../lib/permissions';
 import { EvidenceRefs } from './EvidenceRefs';
 import { PostFeedbackDialog } from './PostFeedbackDialog';
-import { CopyButton, JudgementBadges, LeakGate, ResultWarnings, Section } from './AiParts';
+import { CopyButton, JudgementBadges, LeakGate, ResultWarnings, ReviewFlags, Section } from './AiParts';
 import { block, monoLabel, type Tone } from './aiStyles';
 import type { JudgedItem, LiveDetail, LiveResult } from './useAiAssessments';
 
@@ -55,7 +55,9 @@ export function LiveAssessmentView({ detail }: { detail: LiveDetail }) {
   const canFeedback = useCan('documentation.feedback');
   const [reviewed, setReviewed] = useState(false);
   const [posting, setPosting] = useState<LiveResult['studentSafeFeedback']['entryFeedback'][number] | null>(null);
-  const [posted, setPosted] = useState<Set<number>>(new Set());
+  // "Posted" = saved instructor feedback that came from this assessment (server-side, survives reloads;
+  // disappears if that feedback is deleted).
+  const posted = new Set(detail.postedEntryIds ?? []);
   if (!detail.result) return null;
   const r = detail.result.result;
   const flags = detail.result.flags;
@@ -185,20 +187,19 @@ export function LiveAssessmentView({ detail }: { detail: LiveDetail }) {
         </Section>
       )}
 
+      <ReviewFlags flags={flags} evidence={detail.evidenceIndex} />
       <ResultWarnings warnings={detail.warnings} />
 
       {posting && (
         <PostFeedbackDialog
+          assessmentId={detail.id}
           cyberRangeId={detail.cyberRangeId}
           entryId={posting.entryId}
           entry={detail.evidenceIndex.timeline_entry[String(posting.entryId)]}
           verdict={posting.verdict}
           text={posting.text}
           onClose={() => setPosting(null)}
-          onPosted={() => {
-            setPosted((prev) => new Set(prev).add(posting.entryId));
-            setPosting(null);
-          }}
+          onPosted={() => setPosting(null)}
         />
       )}
     </div>

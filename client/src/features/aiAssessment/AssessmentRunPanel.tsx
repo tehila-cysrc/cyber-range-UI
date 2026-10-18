@@ -200,8 +200,10 @@ function AssessmentHistoryList({
               <TelemetryBadge tone={STATUS_BADGE[a.status].tone}>{STATUS_BADGE[a.status].label}</TelemetryBadge>
               {a.leakSuspected && <TelemetryBadge tone="alert">Check before use</TelemetryBadge>}
               {extra?.(a)}
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                v{a.documentVersion} · {a.requestedBy}
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }} title="Reference document version · requested by · agent version / reply format">
+                doc v{a.documentVersion} · {a.requestedBy}
+                {a.agentVersion ? ` · agent v${a.agentVersion}` : ''}
+                {a.status === 'succeeded' ? ` · format ${a.contractVersion}` : ''}
               </span>
             </button>
           </li>

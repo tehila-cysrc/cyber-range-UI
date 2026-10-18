@@ -9,6 +9,7 @@ import type { EvidenceRef } from './useAiAssessments';
 // AI referenced, pre-filled with its suggestion. The instructor edits and sends it through the existing
 // POST /cyber-ranges/:id/documentation/:entryId/feedback — nothing is sent until they click Send.
 export function PostFeedbackDialog({
+  assessmentId,
   cyberRangeId,
   entryId,
   entry,
@@ -17,6 +18,7 @@ export function PostFeedbackDialog({
   onClose,
   onPosted,
 }: {
+  assessmentId: number;
   cyberRangeId: number;
   entryId: number;
   entry: EvidenceRef | undefined;
@@ -82,9 +84,11 @@ export function PostFeedbackDialog({
           initialVerdict={verdict}
           initialBody={text}
           startOpen
+          sourceAiAssessmentId={assessmentId}
           onCancel={onClose}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ['documentation'] });
+            queryClient.invalidateQueries({ queryKey: ['ai-assessment', assessmentId] }); // refresh "Posted"
             push('Feedback sent to the team.', 'success');
             onPosted();
           }}

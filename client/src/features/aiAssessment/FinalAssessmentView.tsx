@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { EvidenceRefs } from './EvidenceRefs';
-import { CopyButton, JudgementBadges, LeakGate, ResultWarnings, Section } from './AiParts';
+import { CopyButton, JudgementBadges, LeakGate, ResultWarnings, ReviewFlags, Section } from './AiParts';
 import { ScoreDecisionForm } from './ScoreDecisionForm';
 import { block, monoLabel, type Tone } from './aiStyles';
 import type { FinalDetail, FinalResult } from './useAiAssessments';
@@ -44,7 +44,7 @@ export function FinalAssessmentView({ detail, previousTotal }: { detail: FinalDe
           {r.overallAssessment.text && <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>{r.overallAssessment.text}</p>}
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={monoLabel}>AI recommended score</div>
+          <div style={monoLabel}>AI recommended score · advisory</div>
           <div className="tabular" style={{ fontSize: 32, fontWeight: 600, color: 'var(--signal-primary)' }}>
             {r.score.recommendedTotal}
             <span style={{ fontSize: 16, color: 'var(--text-muted)' }}>/{r.score.maxTotal}</span>
@@ -56,6 +56,13 @@ export function FinalAssessmentView({ detail, previousTotal }: { detail: FinalDe
           )}
         </div>
       </section>
+
+      <div role="note" style={{ border: '1px solid var(--signal-tertiary, var(--surface-border-strong))', borderRadius: 'var(--radius-control)', padding: '8px 12px', fontSize: 14, color: 'var(--text-primary)' }}>
+        <strong>Advisory only.</strong> AI scores are not calibrated yet and can differ between runs on the same work. An instructor reviews and decides; the
+        recommendation never changes team points or the leaderboard.
+      </div>
+
+      <ReviewFlags flags={flags} evidence={detail.evidenceIndex} />
 
       <Section title="Score breakdown (recommendation)">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

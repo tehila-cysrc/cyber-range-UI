@@ -26,6 +26,8 @@ export interface AssessmentSummary {
   decidedScore: number | null;
   leakSuspected: boolean;
   recommendedTotal: number | null; // final + succeeded only
+  agentVersion: string | null;
+  contractVersion: string;
 }
 
 export interface SessionAiInfo {
@@ -88,6 +90,9 @@ export interface ValidationFlags {
   leakSuspected: boolean;
   leakedTechniqueIds: string[];
   leakedTerms?: string[]; // Phase 8; absent on results stored earlier
+  instructionLikeRecords?: { type: EvidenceType; id: number }[];
+  injectionWarningUnverified?: boolean;
+  rubricInconsistency?: { criterion: 'identification'; awarded: number; anchored: number } | null;
 }
 
 export type RubricKey = 'identification' | 'understanding' | 'connections' | 'clarity';
@@ -114,11 +119,11 @@ interface DetailBase extends AssessmentSummary {
   warnings: { validation: string[]; agent: string[] } | null;
   rubric: { key: RubricKey; maxPoints: number; label: string }[] | null;
   model: string | null;
-  agentVersion: string | null;
   durationMs: number | null;
   decisionNote: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
+  postedEntryIds: number[]; // entries with saved feedback posted from this assessment
   evidenceIndex: EvidenceIndex;
 }
 export interface LiveDetail extends DetailBase {

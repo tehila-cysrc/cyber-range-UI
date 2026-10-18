@@ -76,8 +76,8 @@ export type ValidatedLive = Omit<LiveAssessmentT, 'correctlyIdentified' | 'parti
 export type ValidatedFinal = Omit<FinalAssessmentT, 'stages'> & { stages: Flagged<FinalAssessmentT['stages'][number]>[] };
 
 export type ValidationResult =
-  | { ok: true; mode: 'live'; result: ValidatedLive; warnings: string[]; agentWarnings: string[]; flags: ValidationFlags }
-  | { ok: true; mode: 'final'; result: ValidatedFinal; warnings: string[]; agentWarnings: string[]; flags: ValidationFlags }
+  | { ok: true; mode: 'live'; contractVersion: string; result: ValidatedLive; warnings: string[]; agentWarnings: string[]; flags: ValidationFlags }
+  | { ok: true; mode: 'final'; contractVersion: string; result: ValidatedFinal; warnings: string[]; agentWarnings: string[]; flags: ValidationFlags }
   | { ok: false; errorCode: ValidationErrorCode; retryable: boolean; issues: string[] };
 
 const MAX_WARNINGS = 50;
@@ -261,7 +261,7 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
       [result.summary, result.instructorOnlyNotes, result.direction.explanation, ...[...result.correctlyIdentified, ...result.partiallyUnderstood].map((it) => it.concept), ...result.missingOrUnclear.flatMap((g) => [g.topic, g.whyItMatters])],
     );
     instructionChecks(result.instructionLikeRecords, result.warnings);
-    return { ok: true, mode: 'live', result, warnings, agentWarnings: result.warnings, flags };
+    return { ok: true, mode: 'live', contractVersion: parsed.contractVersion, result, warnings, agentWarnings: result.warnings, flags };
   }
 
   // Final mode
@@ -333,5 +333,5 @@ export function validateAssessment(input: ValidationInput): ValidationResult {
       warn(`score: identification ${ident.awardedPoints}/${ident.maxPoints} does not match the stage judgements (the rubric rule gives about ${anchored})`);
     }
   }
-  return { ok: true, mode: 'final', result, warnings, agentWarnings: result.warnings, flags };
+  return { ok: true, mode: 'final', contractVersion: parsed.contractVersion, result, warnings, agentWarnings: result.warnings, flags };
 }

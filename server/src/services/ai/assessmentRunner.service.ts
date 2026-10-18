@@ -100,11 +100,13 @@ export interface AssessmentSummary {
   decidedScore: number | null;
   leakSuspected: boolean;
   recommendedTotal: number | null; // final + succeeded only: the validated AI total (0..100)
+  agentVersion: string | null; // reported by Foundry for this run
+  contractVersion: string; // the reply's contract once succeeded
 }
 
 const SUMMARY_COLUMNS = `a.id, a.team_id AS teamId, a.cyber_range_id AS cyberRangeId, a.mode, a.status, a.document_version AS documentVersion,
   a.requested_by_username AS requestedBy, a.created_at AS createdAt, a.completed_at AS completedAt, a.error_code AS errorCode,
-  a.decision, a.decided_score AS decidedScore, a.result_json AS resultJson`;
+  a.decision, a.decided_score AS decidedScore, a.result_json AS resultJson, a.agent_version AS agentVersion, a.contract_version AS contractVersion`;
 
 type SummaryRow = Omit<AssessmentSummary, 'leakSuspected' | 'recommendedTotal'> & { resultJson: string | null };
 function toSummary(r: SummaryRow): AssessmentSummary {
@@ -190,6 +192,8 @@ export interface AssessmentDetail extends AssessmentSummary {
   decisionNote: string | null;
   decidedBy: string | null;
   decidedAt: string | null;
+  contractVersion: string; // the reply's contract (the request's until it succeeds)
+  postedEntryIds: number[]; // entries with SAVED instructor feedback posted from this assessment (decision I)
   evidenceIndex: { timeline_entry: Record<number, EvidenceRef>; canvas_node: Record<number, EvidenceRef>; canvas_edge: Record<number, EvidenceRef> };
 }
 
@@ -199,12 +203,12 @@ export function getAssessmentDetail(id: number): AssessmentDetail | null {
   const row = db
     .prepare(
       `SELECT ${SUMMARY_COLUMNS}, a.warnings_json AS warningsJson, a.rubric_json AS rubricJson, a.snapshot_json AS snapshotJson,
-              a.model, a.agent_version AS agentVersion, a.duration_ms AS durationMs, a.input_tokens AS inputTokens, a.output_tokens AS outputTokens,
+              a.model, a.duration_ms AS durationMs, a.input_tokens AS inputTokens, a.output_tokens AS outputTokens,
               a.decision_note AS decisionNote, a.decided_by_username AS decidedBy, a.decided_at AS decidedAt
        FROM ai_assessments a WHERE a.id = ?`,
     )
     .get(id) as
-    | (SummaryRow & { warningsJson: string | null; rubricJson: string | null; snapshotJson: string; model: string | null; agentVersion: string | null; durationMs: number | null; inputTokens: number | null; outputTokens: number | null; decisionNote: string | null; decidedBy: string | null; decidedAt: string | null })
+    | (SummaryRow & { warningsJson: string | null; rubricJson: string | null; snapshotJson: string; model: string | null; agentVersion: string | null; durationMs: number | null; inputTokens: number | null; outputTokens: number | null; decisionNote: string | null; decidedBy: string | null; decidedAt: string | null; contractVersion: string })
     | undefined;
   if (!row) return null;
   const snapshot = JSON.parse(row.snapshotJson) as InvestigationSnapshot;
@@ -247,6 +251,11 @@ export function getAssessmentDetail(id: number): AssessmentDetail | null {
     decisionNote: rest.decisionNote,
     decidedBy: rest.decidedBy,
     decidedAt: rest.decidedAt,
+    contractVersion: rest.contractVersion,
+    // Read-only: feedback rows still present that the instructor posted from this assessment.
+    postedEntryIds: (
+      db.prepare('SELECT DISTINCT documentation_entry_id AS id FROM documentation_feedback WHERE source_ai_assessment_id = ? ORDER BY id').all(id) as { id: number }[]
+    ).map((r) => r.id),
     evidenceIndex: {
       timeline_entry: Object.fromEntries([...idx.timeline_entry].map(([k, v]) => [k, { excerpt: excerpt(v), createdAt: entryTimes.get(k) ?? null, author: authors.get(k) ?? null }])),
       canvas_node: Object.fromEntries([...idx.canvas_node].map(([k, v]) => [k, { excerpt: excerpt(v), createdAt: nodeTimes.get(k) ?? null, author: nodeAuthors.get(k) ?? null }])),
@@ -401,7 +410,8 @@ export async function executeAssessment(id: number, vectorStoreId: string, actor
       }
       db.prepare(
         `UPDATE ai_assessments SET status = 'succeeded', error_code = NULL, result_json = ?, warnings_json = ?, agent_version = ?, model = ?,
-           foundry_response_id = ?, input_tokens = ?, output_tokens = ?, duration_ms = ?, completed_at = ?, raw_output_excerpt = NULL
+           foundry_response_id = ?, input_tokens = ?, output_tokens = ?, duration_ms = ?, completed_at = ?, raw_output_excerpt = NULL,
+           contract_version = ?
          WHERE id = ?`,
       ).run(
         JSON.stringify({ result: v.result, flags: v.flags }),
@@ -413,6 +423,7 @@ export async function executeAssessment(id: number, vectorStoreId: string, actor
         tokens.out,
         Date.now() - started,
         now(),
+        v.contractVersion,
         id,
       );
       writeAudit(actor, 'ai_assessment.completed', 'ai_assessment', id, {

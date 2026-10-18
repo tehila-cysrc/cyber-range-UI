@@ -3,7 +3,7 @@ import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useToastStore } from '../../stores/toastStore';
 import { JUDGEMENT, block, monoLabel } from './aiStyles';
-import type { Judgement, ValidationFlags } from './useAiAssessments';
+import type { EvidenceIndex, Judgement, ValidationFlags } from './useAiAssessments';
 
 // Small building blocks shared by the live and final AI views.
 
@@ -58,6 +58,34 @@ export function CopyButton({ text, disabled }: { text: string; disabled?: boolea
     <Button variant="ghost" onClick={copy} disabled={disabled} style={{ padding: '4px 12px', fontSize: 14, opacity: disabled ? 0.5 : 1 }}>
       Copy
     </Button>
+  );
+}
+
+// Instructor-only notices from the deterministic checks (Phase 8 flags). Shown above the warnings list
+// so they are not missed; none of them changes the AI's judgements or points.
+export function ReviewFlags({ flags, evidence }: { flags: ValidationFlags; evidence: EvidenceIndex }) {
+  const records = flags.instructionLikeRecords ?? [];
+  const items: { tone: 'alert' | 'secondary'; text: string }[] = [];
+  for (const r of records) {
+    const ex = evidence[r.type]?.[String(r.id)]?.excerpt;
+    items.push({ tone: 'alert', text: `${r.type === 'timeline_entry' ? 'Timeline entry' : r.type === 'canvas_node' ? 'Canvas node' : 'Canvas link'} #${r.id} contains text addressed to the AI${ex ? `: "${ex.slice(0, 80)}${ex.length > 80 ? '…' : ''}"` : ''}. Check that it did not influence the result.` });
+  }
+  if (flags.injectionWarningUnverified) items.push({ tone: 'secondary', text: 'The AI says it ignored instructions, but no record contains any — that warning is probably a false positive.' });
+  if (flags.rubricInconsistency) {
+    const c = flags.rubricInconsistency;
+    items.push({ tone: 'secondary', text: `Identification points (${c.awarded}) do not match the AI's own stage judgements (the rubric rule gives about ${c.anchored}). Check the score breakdown.` });
+  }
+  if (items.length === 0) return null;
+  return (
+    <section style={{ ...block, gap: 6 }} aria-label="Checks on this result">
+      <h3 style={{ ...monoLabel, margin: 0 }}>Checks on this result</h3>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 14, color: 'var(--text-primary)' }}>
+          <TelemetryBadge tone={it.tone}>{it.tone === 'alert' ? 'Check' : 'Note'}</TelemetryBadge>
+          <span>{it.text}</span>
+        </div>
+      ))}
+    </section>
   );
 }
 

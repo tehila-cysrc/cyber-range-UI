@@ -110,6 +110,7 @@ export function EntryFeedbackForm<TEntry>({
   initialBody = '',
   startOpen = false,
   onCancel,
+  sourceAiAssessmentId,
 }: {
   cyberRangeId: number;
   entryId: number;
@@ -118,6 +119,9 @@ export function EntryFeedbackForm<TEntry>({
   initialBody?: string;
   startOpen?: boolean;
   onCancel?: () => void;
+  // Set by the AI review's "Post as feedback": links the saved feedback to that assessment so the
+  // "Posted" marker is based on feedback that really exists (decision I). Never shown to students.
+  sourceAiAssessmentId?: number;
 }) {
   const [open, setOpen] = useState(startOpen);
   const [verdict, setVerdict] = useState<FeedbackVerdict>(initialVerdict);
@@ -127,7 +131,7 @@ export function EntryFeedbackForm<TEntry>({
     mutationFn: () =>
       apiFetch<{ entry: TEntry }>(`/cyber-ranges/${cyberRangeId}/documentation/${entryId}/feedback`, {
         method: 'POST',
-        body: JSON.stringify({ verdict, body: body.trim() || undefined }),
+        body: JSON.stringify({ verdict, body: body.trim() || undefined, ...(sourceAiAssessmentId ? { sourceAiAssessmentId } : {}) }),
       }),
     onSuccess: ({ entry }) => {
       onSaved(entry);
