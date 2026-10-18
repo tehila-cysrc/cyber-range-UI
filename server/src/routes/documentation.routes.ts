@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { isStudent } from '../authz/roles.js';
-import { requirePermission } from '../authz/requirePermission.js';
+import { auditDenied, requirePermission } from '../authz/requirePermission.js';
+import { can } from '../authz/permissions.js';
 import { assertPairInScope, resolveTeamForPrincipal } from '../authz/resolve.js';
 import { emitDocumentationFeedback, emitDocumentationNew, emitDocumentationUpdated } from '../sockets/emitters.js';
 import { OTHER_CATEGORY_SORT_ORDER } from '../db/seed.js';
@@ -278,6 +279,12 @@ function entryInScope(req: import('express').Request, res: import('express').Res
 router.post('/cyber-ranges/:cyberRangeId/documentation/:entryId/feedback', requirePermission('documentation.feedback'), (req, res) => {
   const entryId = Number(req.params.entryId);
   if (!entryInScope(req, res, entryId)) return;
+  // The optional AI link ("Posted" marker) is AI data: it needs the AI permission too.
+  if (req.body?.sourceAiAssessmentId != null && !can(req.user!.role, 'ai_assessment.use')) {
+    auditDenied(req, 'missing_permission:ai_assessment.use');
+    res.status(403).json({ error: 'forbidden' });
+    return;
+  }
   const result = addFeedback(entryId, Number(req.params.cyberRangeId), req.user!.id, req.body ?? {});
   if (!result.ok) {
     res.status(result.status).json({ error: result.error });

@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { REAL_DEV_DB, dbStats, sha256File } from './dbStats.mjs';
+import { dbStats, isRealDevDb, sha256File } from './dbStats.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..', '..');
@@ -40,7 +40,7 @@ export function migrationCheck(input, workDir, { initialAdminPasswordSet = false
   const src = resolve(input);
   const work = resolve(workDir);
   if (!existsSync(src)) throw new Error(`input not found: ${src}`);
-  if (src === REAL_DEV_DB(repo)) throw new Error('refusing the real development database — back it up first and check the backup');
+  if (isRealDevDb(src, repo)) throw new Error('refusing the real development database — back it up first and check the backup');
   mkdirSync(work, { recursive: true });
   if (readdirSync(work).length) throw new Error(`--work must be an empty directory: ${work}`);
   const copy = join(work, 'check.db');

@@ -16,6 +16,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isRealDevDb } from '../db/dbStats.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..', '..');
@@ -25,7 +26,7 @@ const dbPath = opt('--db') && resolve(opt('--db'));
 const port = Number(opt('--port', '4620'));
 const contract = opt('--contract', '3');
 if (!dbPath) throw new Error('--db <new isolated file> is required');
-if (dbPath === resolve(repo, 'server', 'data', 'cyber-range.db')) throw new Error('refusing the real development database');
+if (isRealDevDb(dbPath, repo)) throw new Error('refusing the real development database');
 if (existsSync(dbPath)) throw new Error(`${dbPath} exists — use a new throwaway file`);
 if (!['2', '3'].includes(contract)) throw new Error('--contract must be 2 or 3');
 

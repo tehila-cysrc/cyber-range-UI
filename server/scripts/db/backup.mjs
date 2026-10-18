@@ -11,7 +11,7 @@
 // Procedure and approvals: docs/runbooks/production-deploy-backup-and-rollback.md. Run against a real
 // database only as part of an approved runbook step.
 import { DatabaseSync } from 'node:sqlite';
-import { existsSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { dbStats, sha256File } from './dbStats.mjs';
@@ -27,9 +27,15 @@ export function backupDatabase(source, out) {
   } finally {
     db.close();
   }
+  // Same sensitivity as the live database (staff passwords, encrypted cloud credentials): owner-only.
+  try {
+    chmodSync(dst, 0o600);
+  } catch {
+    /* best effort (e.g. Windows ACLs) */
+  }
   const stats = dbStats(dst);
   const manifest = { kind: 'cyber-range-db-backup', createdAt: new Date().toISOString(), source: src, backup: dst, sha256: sha256File(dst), ...stats };
-  writeFileSync(`${dst}.manifest.json`, JSON.stringify(manifest, null, 2));
+  writeFileSync(`${dst}.manifest.json`, JSON.stringify(manifest, null, 2), { mode: 0o600 });
   if (stats.integrity !== 'ok') throw new Error(`backup written but integrity_check reported: ${stats.integrity}`);
   return manifest;
 }

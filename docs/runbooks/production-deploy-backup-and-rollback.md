@@ -40,6 +40,8 @@ node /app/server/scripts/db/backup.mjs --db /data/cyber-range.db --out /data/bac
 
 **Copy the backup off the server** (to your machine) with Coolify's file download or `docker cp`. The `/data` volume is not a backup of itself.
 
+**Protect backups like the live database:** they contain staff passwords and the encrypted cloud credentials. Keep them owner-only (`backup.mjs` sets mode 600), never in the repository, and never next to `CREDENTIAL_MASTER_KEY`. Delete old copies once a newer verified backup exists.
+
 **If the running image predates the tool** (no `server/scripts/db/` inside), make the same snapshot inline:
 
 ```sh

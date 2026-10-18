@@ -2,10 +2,25 @@
 // Opens the file READ-ONLY; never writes.
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export const REAL_DEV_DB = (repo) => resolve(repo, 'server', 'data', 'cyber-range.db');
+
+// True when `path` is the real development database — compared after resolving links/junctions, and
+// case-insensitively on Windows, so another spelling of the same file is refused too.
+export function isRealDevDb(path, repo) {
+  const norm = (p) => {
+    let r = resolve(p);
+    try {
+      if (existsSync(r)) r = realpathSync.native(r);
+    } catch {
+      /* keep the resolved path */
+    }
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  return norm(path) === norm(REAL_DEV_DB(repo));
+}
 
 export function sha256File(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');

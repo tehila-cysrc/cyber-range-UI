@@ -75,6 +75,13 @@ export function EventResetPage() {
   const [refused, setRefused] = useState<ResetJob | null>(null);
   const [phase, setPhase] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // AI assessments the reset will delete (decision G: warn, never block). Declared before any early
+  // return (rules of hooks); not fetched again after a reset (the session is gone by then).
+  const { data: preview } = useQuery({
+    queryKey: ['event-reset-preview'],
+    queryFn: () => apiFetch<{ aiAssessments: { total: number; approvedFinals: number } }>('/admin/event/reset-preview'),
+    enabled: !result,
+  });
 
   // The reset runs as a server-side job: revoking remote access has to wait for Azure Bastion to finish
   // earlier operations, which can take many minutes — far longer than one request may stay open. The
@@ -149,11 +156,6 @@ export function EventResetPage() {
     );
   }
 
-  // AI assessments the reset will delete (decision G: warn, never block).
-  const { data: preview } = useQuery({
-    queryKey: ['event-reset-preview'],
-    queryFn: () => apiFetch<{ aiAssessments: { total: number; approvedFinals: number } }>('/admin/event/reset-preview'),
-  });
   const phraseOk = confirmText === CONFIRMATION_PHRASE;
 
   return (

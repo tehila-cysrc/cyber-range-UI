@@ -64,3 +64,13 @@ test('migration check refuses a non-empty work dir and never accepts the real de
   assert.throws(() => migrationCheck(real, join(dir, 'work-real')), /refusing the real development database|input not found/);
   assert.equal(dbStats(join(dir, 'backup-1.db')).integrity, 'ok');
 });
+
+test('the real-dev-DB guard also catches another spelling of the same path', async () => {
+  const { isRealDevDb } = await import('../scripts/db/dbStats.mjs');
+  const repo = join(process.cwd(), '..');
+  const real = join(repo, 'server', 'data', 'cyber-range.db');
+  assert.equal(isRealDevDb(real, repo), true);
+  assert.equal(isRealDevDb(join(repo, 'server', 'data', '..', 'data', 'cyber-range.db'), repo), true);
+  if (process.platform === 'win32') assert.equal(isRealDevDb(real.toUpperCase(), repo), true);
+  assert.equal(isRealDevDb(join(dir, 'backup-1.db'), repo), false);
+});
