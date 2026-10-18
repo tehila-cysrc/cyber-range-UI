@@ -164,6 +164,7 @@ const EXPECTED = {
   'GET /api/admin/ai/foundry-resources': 'ai_resources.manage',
   'POST /api/admin/ai/foundry-resources/cleanup': 'ai_resources.manage',
   'GET /api/admin/ai/config': 'ai_resources.manage',
+  'GET /api/admin/event/reset-preview': 'event.reset',
   'GET /api/admin/ai/foundry-inventory': 'ai_resources.manage',
   'GET /api/admin/ai/status': 'ai_assessment.use',
   'POST /api/admin/ai-assessments': 'ai_assessment.use',

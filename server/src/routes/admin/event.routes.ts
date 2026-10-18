@@ -201,6 +201,21 @@ router.get('/results/export', requirePermission('results.export'), async (req, r
   res.json(buildEventExport({ teamId, scope }));
 });
 
+// What a reset would delete that exists nowhere else afterwards (decision G, 2026-10-18): AI
+// assessments are RUN data; approved finals survive only in the Excel export's "AI Assessment" sheet.
+// Counts only — the reset page warns and points at the export buttons; it never blocks the reset.
+router.get('/event/reset-preview', requirePermission('event.reset'), (_req, res) => {
+  const runId = getActiveEventRunId();
+  const ai = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN a.mode = 'final' AND a.decision IN ('approved', 'edited') THEN 1 ELSE 0 END), 0) AS approvedFinals
+       FROM ai_assessments a JOIN teams t ON t.id = a.team_id WHERE t.event_run_id = ?`,
+    )
+    .get(runId) as { total: number; approvedFinals: number };
+  res.json({ aiAssessments: { total: Number(ai.total), approvedFinals: Number(ai.approvedFinals) } });
+});
+
 router.post('/event/reset', requirePermission('event.reset'), (req, res) => {
   const { confirm, allowUnverifiedRemoteAccess } = req.body ?? {};
   if (confirm !== CONFIRMATION_PHRASE) {

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ExportResultsButtons } from './ExportResultsButtons';
 import { confirmAction } from '../../components/ConfirmDialog';
-import { useMutation } from '@tanstack/react-query';
-import { API_ORIGIN, ApiError } from '../../lib/apiClient';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { API_ORIGIN, ApiError, apiFetch } from '../../lib/apiClient';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from '../../components/Button';
 
@@ -149,6 +149,11 @@ export function EventResetPage() {
     );
   }
 
+  // AI assessments the reset will delete (decision G: warn, never block).
+  const { data: preview } = useQuery({
+    queryKey: ['event-reset-preview'],
+    queryFn: () => apiFetch<{ aiAssessments: { total: number; approvedFinals: number } }>('/admin/event/reset-preview'),
+  });
   const phraseOk = confirmText === CONFIRMATION_PHRASE;
 
   return (
@@ -179,6 +184,12 @@ export function EventResetPage() {
         <div style={{ color: 'var(--text-primary)', fontSize: 15, marginBottom: 'var(--space-sm)' }}>
           First, keep the results — nothing can be recovered after the reset.
         </div>
+        {preview && preview.aiAssessments.approvedFinals > 0 && (
+          <div role="alert" style={{ color: 'var(--signal-tertiary)', fontSize: 14, marginBottom: 'var(--space-sm)' }}>
+            {preview.aiAssessments.approvedFinals} approved AI final assessment{preview.aiAssessments.approvedFinals === 1 ? '' : 's'} will be deleted with the
+            event. They are kept only in the Excel download (its "AI Assessment" sheet) — download it before resetting.
+          </div>
+        )}
         <ExportResultsButtons />
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 15 }}>
