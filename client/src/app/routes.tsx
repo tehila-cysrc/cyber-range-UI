@@ -17,6 +17,7 @@ import { EventResetPage } from '../features/admin/EventResetPage';
 import { TeamsAdminPage } from '../features/admin/TeamsAdminPage';
 import { EnvironmentsAdminPage } from '../features/environments/EnvironmentsAdminPage';
 import { AuditLogPage } from '../features/admin/AuditLogPage';
+import { AiResourcesPage } from '../features/admin/AiResourcesPage';
 import { ScriptLibraryPage } from '../features/scripts/ScriptLibraryPage';
 
 // React Flow (topology) is the single largest dependency in the bundle — code-split it into its
@@ -109,6 +110,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute permission="environment.manage">
             <EnvironmentsAdminPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/admin/ai-resources',
+        element: (
+          <ProtectedRoute permission="ai_resources.manage">
+            <AiResourcesPage />
           </ProtectedRoute>
         ),
       },

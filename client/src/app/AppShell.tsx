@@ -69,6 +69,7 @@ const INSTRUCTOR_SYSTEM: NavGroup = {
   label: 'System',
   items: [
     { to: '/admin/audit-log', label: 'Activity Log', permission: 'audit.read' },
+    { to: '/admin/ai-resources', label: 'AI Resources', permission: 'ai_resources.manage' },
     { to: '/admin/event-reset', label: 'Reset Event…', alert: true, permission: 'event.reset' },
   ],
 };

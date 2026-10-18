@@ -78,6 +78,15 @@ export interface VectorStoreState {
   usageBytes: number | null;
 }
 
+// Read-only listing for the admin "AI resources" screen (decision A, 2026-10-18). Names and ids only —
+// never file contents. One page each (100 items); `truncated` says when more exist.
+export interface FoundryInventory {
+  vectorStores: { id: string; name: string | null; status: string | null; createdAt: string | null; usageBytes: number | null; fileCount: number | null }[];
+  files: { id: string; filename: string | null; bytes: number | null; purpose: string | null; createdAt: string | null }[];
+  agentVersions: { version: string; description: string | null; createdAt: string | null }[];
+  truncated: { vectorStores: boolean; files: boolean; agentVersions: boolean };
+}
+
 export interface FoundryClient {
   uploadFile(input: { bytes: Uint8Array; filename: string; mimeType: string }): Promise<{ fileId: string }>;
   createVectorStore(input: { name: string; fileIds: string[] }): Promise<{ vectorStoreId: string }>;
@@ -85,6 +94,7 @@ export interface FoundryClient {
   deleteVectorStore(vectorStoreId: string): Promise<void>; // 404 = already gone = success
   deleteFile(fileId: string): Promise<void>; // 404 = already gone = success
   invokeAssessment(input: InvokeAssessmentInput): Promise<InvokeAssessmentResult>;
+  listInventory(): Promise<FoundryInventory>; // GET only — lists, never changes anything
 }
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -290,6 +300,44 @@ export function createRestFoundryClient(deps: RestFoundryClientDeps): FoundryCli
     async deleteFile(fileId) {
       if (!FILE_ID_RE.test(fileId)) throw new FoundryError('ai_bad_request');
       await ignoreNotFound(send('DELETE', `/openai/v1/files/${fileId}`, { retryServerErrors: true }));
+    },
+
+    async listInventory() {
+      const str = (v: unknown) => (typeof v === 'string' ? v : null);
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const iso = (v: unknown) => (typeof v === 'number' ? new Date(v * 1000).toISOString() : str(v));
+      type Page = { data?: Record<string, unknown>[]; has_more?: boolean } | null;
+      const [vs, files, agents] = await Promise.all([
+        send('GET', '/openai/v1/vector_stores?limit=100', { retryServerErrors: true }),
+        send('GET', '/openai/v1/files?limit=100', { retryServerErrors: true }),
+        send('GET', `/agents/${encodeURIComponent(agentName)}/versions?api-version=v1`, { retryServerErrors: true }),
+      ]);
+      const v = vs.body as Page;
+      const f = files.body as Page;
+      const a = agents.body as Page;
+      return {
+        vectorStores: (v?.data ?? []).filter((x) => typeof x.id === 'string').map((x) => ({
+          id: x.id as string,
+          name: str(x.name),
+          status: str(x.status),
+          createdAt: iso(x.created_at),
+          usageBytes: num(x.usage_bytes),
+          fileCount: num((x.file_counts as { total?: unknown } | undefined)?.total),
+        })),
+        files: (f?.data ?? []).filter((x) => typeof x.id === 'string').map((x) => ({
+          id: x.id as string,
+          filename: str(x.filename),
+          bytes: num(x.bytes),
+          purpose: str(x.purpose),
+          createdAt: iso(x.created_at),
+        })),
+        agentVersions: (a?.data ?? []).filter((x) => x.version !== undefined).map((x) => ({
+          version: String(x.version),
+          description: str(x.description),
+          createdAt: iso(x.created_at),
+        })),
+        truncated: { vectorStores: !!v?.has_more, files: !!f?.has_more, agentVersions: !!a?.has_more },
+      };
     },
 
     async invokeAssessment({ vectorStoreId, input, maxOutputTokens = 4000, signal }) {

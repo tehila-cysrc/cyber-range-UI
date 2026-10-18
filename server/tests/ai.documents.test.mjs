@@ -341,3 +341,57 @@ test('official scoring untouched and the model never invoked in Phase 2', () => 
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM scores').get().n, 0);
   assert.ok(!fake.calls.some((c) => c.op === 'invokeAssessment'));
 });
+
+test('admin AI config summary: names only, no endpoint/ids/secret; admin only', async () => {
+  assert.equal((await call('GET', '/api/admin/ai/config', tok.iA)).status, 403);
+  const r = await call('GET', '/api/admin/ai/config', tok.admin);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.config.agentVersion, '3');
+  assert.deepEqual(r.body.config.acceptedContractVersions, ['2', '3']);
+  const text = JSON.stringify(r.body);
+  for (const secret of ['fake-secret-value', 'fake-res.services', '11111111-2222', '66666666-7777']) assert.ok(!text.includes(secret), secret);
+});
+
+test('Foundry inventory: read-only, matched to the registry; untracked items are never cleanup candidates', async () => {
+  const registry = (await call('GET', '/api/admin/ai/foundry-resources?state=all', tok.admin)).body.resources;
+  const live = registry.find((x) => x.deletedAt === null && x.kind === 'vector_store');
+  const before = fake.calls.length;
+  fake.listInventory = async () => {
+    fake.calls.push({ op: 'listInventory' });
+    return {
+      vectorStores: [
+        { id: live.foundryId, name: 'cr-x', status: 'completed', createdAt: null, usageBytes: 10, fileCount: 1 },
+        { id: 'vs_UntrackedTestStore1', name: 'someone else', status: 'completed', createdAt: null, usageBytes: 5, fileCount: 1 },
+      ],
+      files: [{ id: 'assistant-UntrackedFile1', filename: 'x.txt', bytes: 3, purpose: 'assistants', createdAt: null }],
+      agentVersions: [{ version: '3', description: 'pinned', createdAt: null }, { version: '7', description: 'NOT production', createdAt: null }],
+      truncated: { vectorStores: false, files: false, agentVersions: false },
+    };
+  };
+  assert.equal((await call('GET', '/api/admin/ai/foundry-inventory', tok.iAB)).status, 403);
+  const r = await call('GET', '/api/admin/ai/foundry-inventory', tok.admin);
+  assert.equal(r.status, 200, r.text);
+  const inv = r.body.inventory;
+  assert.equal(inv.vectorStores.find((v) => v.id === live.foundryId).tracked.id, live.id);
+  assert.equal(inv.vectorStores.find((v) => v.id === 'vs_UntrackedTestStore1').tracked, null);
+  assert.equal(inv.files[0].tracked, null);
+  assert.deepEqual(inv.agentVersions.map((a) => [a.version, a.pinned]), [['3', true], ['7', false]]);
+  assert.ok(inv.missingFromFoundry.length > 0); // registry rows the fake did not list
+  // Only listing happened.
+  assert.deepEqual(fake.calls.slice(before).map((c) => c.op), ['listInventory']);
+  // An untracked Foundry id cannot be submitted for cleanup (the route takes registry ids only).
+  assert.equal((await call('POST', '/api/admin/ai/foundry-resources/cleanup', tok.admin, { resourceIds: ['vs_UntrackedTestStore1'] })).status, 400);
+  // Foundry failure -> 502 with a safe code; not configured -> 503.
+  fake.listInventory = async () => { throw new FoundryError('ai_auth_failed'); };
+  const bad = await call('GET', '/api/admin/ai/foundry-inventory', tok.admin);
+  assert.equal(bad.status, 502);
+  assert.equal(bad.body.reason, 'ai_auth_failed');
+  const saved = process.env.FOUNDRY_AGENT_VERSION;
+  delete process.env.FOUNDRY_AGENT_VERSION;
+  try {
+    assert.equal((await call('GET', '/api/admin/ai/foundry-inventory', tok.admin)).status, 503);
+  } finally {
+    process.env.FOUNDRY_AGENT_VERSION = saved;
+  }
+  delete fake.listInventory;
+});

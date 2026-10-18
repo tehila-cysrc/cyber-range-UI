@@ -161,6 +161,8 @@ const EXPECTED = {
   'PUT /api/admin/cyber-ranges/:cyberRangeId/ai-rubric': 'scenario.author',
   'GET /api/admin/ai/foundry-resources': 'ai_resources.manage',
   'POST /api/admin/ai/foundry-resources/cleanup': 'ai_resources.manage',
+  'GET /api/admin/ai/config': 'ai_resources.manage',
+  'GET /api/admin/ai/foundry-inventory': 'ai_resources.manage',
   'GET /api/admin/ai/status': 'ai_assessment.use',
   'POST /api/admin/ai-assessments': 'ai_assessment.use',
   'GET /api/admin/ai-assessments': 'ai_assessment.use',

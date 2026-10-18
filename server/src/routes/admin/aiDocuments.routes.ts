@@ -14,6 +14,7 @@ import {
   uploadVersion,
   type ServiceResult,
 } from '../../services/ai/scenarioAiDocuments.service.js';
+import { aiConfigView, foundryInventory } from '../../services/ai/aiResources.service.js';
 
 // AI Investigation Assessment — scenario ground-truth documents (plan §H rows 2–5) and the admin's
 // explicit Foundry cleanup. Scenario content follows the existing scenario rules: read with
@@ -83,6 +84,23 @@ router.put('/cyber-ranges/:cyberRangeId/ai-rubric', requirePermission('scenario.
 router.get('/ai/foundry-resources', requirePermission('ai_resources.manage'), (req, res) => {
   const state = req.query.state === 'all' ? 'all' : 'candidates';
   res.json({ state, resources: listFoundryResources(state) });
+});
+
+// Admin only. Configuration summary for the AI resources screen (setting names, never values/secrets).
+router.get('/ai/config', requirePermission('ai_resources.manage'), (_req, res) => {
+  res.json({ config: aiConfigView() });
+});
+
+// Admin only. READ-ONLY listing of the Foundry project (vector stores, files, agent versions), matched to
+// the app's registry. Called only when the admin asks for it (never polled); changes nothing in Foundry.
+router.get('/ai/foundry-inventory', requirePermission('ai_resources.manage'), async (_req, res, next) => {
+  try {
+    const r = await foundryInventory();
+    if (r.ok) res.json({ inventory: r.value });
+    else res.status(r.status).json({ error: r.error, reason: r.reason });
+  } catch (e) {
+    next(e);
+  }
 });
 
 // Admin only. The ONLY path that deletes anything in Foundry: exactly the submitted ids, each re-checked

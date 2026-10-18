@@ -17,6 +17,16 @@ interface AuditLogEntry {
 // Plain-language labels — the raw codes ("TTP.EXPECTED_UPDATED") read like a developer log.
 const ACTION_LABELS: Record<string, string> = {
   'access_session.credential_revealed': 'Revealed a VM login',
+  'ai_assessment.completed': 'AI assessment finished',
+  'ai_assessment.decided': 'Recorded a decision on an AI final score',
+  'ai_assessment.failed': 'AI assessment failed',
+  'ai_assessment.requested': 'Requested an AI assessment',
+  'ai_document.failed': 'Reference document processing failed',
+  'ai_document.indexed': 'Reference document ready',
+  'ai_document.retried': 'Retried a reference document',
+  'ai_document.uploaded': 'Uploaded a reference document',
+  'ai_resources.cleanup': 'Deleted Foundry resources (approved cleanup)',
+  'ai_rubric.updated': 'Changed the AI scoring rubric',
   'access_session.denied': 'Remote access denied',
   'access_session.ended': 'Remote session ended',
   'access_session.requested': 'Remote session started',
@@ -148,6 +158,9 @@ export function AuditLogPage() {
           <option value="cloud_environment">Cloud environments</option>
           <option value="topology_node">Topology nodes / access targets</option>
           <option value="access_session">Access sessions</option>
+          <option value="ai_assessment">AI assessments</option>
+          <option value="scenario_ai_document">AI reference documents</option>
+          <option value="ai_foundry_resource">AI Foundry resources</option>
           <option value="cyber_range_environment">Environment ↔ range links</option>
           <option value="cyber_range">Cyber ranges (topology layout)</option>
           <option value="script">Scripts / Run Script</option>
