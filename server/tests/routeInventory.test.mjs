@@ -240,7 +240,7 @@ test('each role is refused (403) on every route whose permission it lacks', asyn
 test('refusals are audited as authz.denied with role and IP — once a minute per actor and route', async () => {
   const rows = () =>
     db
-      .prepare("SELECT outcome, client_ip AS ip, actor_role AS role FROM audit_log WHERE action = 'authz.denied' AND metadata_json LIKE '%/api/admin/event/reset%' AND actor_role = 'instructor'")
+      .prepare("SELECT outcome, client_ip AS ip, actor_role AS role FROM audit_log WHERE action = 'authz.denied' AND metadata_json LIKE '%/api/admin/event/reset%' AND metadata_json NOT LIKE '%/api/admin/event/reset-preview%' AND actor_role = 'instructor'")
       .all();
   // The sweep above already refused this exact call once.
   const before = rows();
