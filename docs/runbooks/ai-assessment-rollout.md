@@ -18,7 +18,7 @@ Enabling AI in any real environment, moving a pin, or any Foundry change needs e
 | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` | Dedicated service principal, **Foundry User** role on the project only | — |
 | `AI_REQUEST_TIMEOUT_MS`, `AI_MAX_CONCURRENT` | 120000 ms; 3 concurrent jobs | defaults |
 
-**Check** under System → **AI Resources** → "AI configuration". It shows switch / configured / enabled, the pinned version, the request format, and the names of missing settings. Values and secrets are never shown.
+**Check** under System → **AI Management**: the status card shows Ready / Disabled / Needs attention and the pinned version; **Advanced settings** → "Configuration details" shows switch / configured / enabled, the response contract, and the names of missing settings. Values and secrets are never shown.
 
 ## Agent versions known on 2026-10-18 (all test candidates, none production)
 
@@ -35,8 +35,8 @@ Foundry marks the newest version as "latest"; the app never follows it.
 1. **Deploy with AI off.** Deploy the code with `AI_ASSESSMENT_ENABLED` unset (`docs/runbooks/production-deploy-backup-and-rollback.md`).
 2. **Configure without enabling.**
    - Set the endpoint, agent name, service principal, `FOUNDRY_AGENT_VERSION`, and the matching `FOUNDRY_AGENT_CONTRACT_VERSION`.
-   - Restart, then check AI Resources: "configured", "AI assessment off".
-3. **Reference documents.** Upload a reference document per scenario on the Scenarios page. This creates one Foundry file and one vector store per version, and every one is tracked under AI Resources.
+   - Restart, then check AI Management: status **Disabled**, Foundry "Settings complete".
+3. **Reference documents.** Upload a reference document per scenario on the Scenarios page. This creates one Foundry file and one vector store per version, and every one is tracked under AI Management.
 4. **Enable for a pilot.** Set `AI_ASSESSMENT_ENABLED=true`, restart, and run one live review and one final on a test team before an event.
 5. **Operate.**
    - Instructors review every result.
@@ -63,7 +63,7 @@ Foundry marks the newest version as "latest"; the app never follows it.
 
 ## Foundry resources and cleanup
 
-- Every file and vector store the app creates is recorded under AI Resources → "Tracked Foundry resources".
+- Every file and vector store the app creates is recorded under AI Management → Advanced settings → "All tracked Foundry resources".
 - **Deletion is never automatic:**
   - an admin selects unused candidates and confirms the exact IDs (type DELETE);
   - the server re-checks every one.

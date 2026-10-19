@@ -25,7 +25,7 @@ The app never sends anything to students on its own. Microsoft Foundry receives 
 |---|---|---|
 | See or upload reference documents, set the rubric, rebuild, download | `scenario.inspect` / `scenario.author` | admin; instructors on their assigned scenarios |
 | Run reviews, read results, post feedback, record decisions | `ai_assessment.use` (+ `documentation.feedback`, `score.award`) | admin; instructors on their assigned (organization, scenario) pairs |
-| AI Resources: configuration, tracked resources, cleanup, Foundry inventory | `ai_resources.manage` | admin only |
+| AI Management: status, reference document overview, tracked resources, cleanup, Foundry inventory | `ai_resources.manage` | admin only |
 | Results export with the "AI Assessment" sheet | `event.export` (all) / `results.export` (assigned pairs) | admin / instructors |
 
 Out-of-scope requests answer 404, and missing permissions answer 403. Both are audited. Students have no AI access.
@@ -43,7 +43,7 @@ Instructors see one Upload / Replace button, a plain status (Ready, Preparing…
 - **Failed processing:** retry it, or upload another version. A failed replacement never affects the current version.
 - **"Foundry copy deleted"** means the version's copy in Foundry is gone. The file is still stored. If sessions still use it, **Rebuild in Foundry** re-uploads it, and the pins don't change.
 - **Download** gives authors the original file. Every download is audited.
-- **Deleting a scenario** removes its versions. Their Foundry copies are never deleted automatically: they appear as cleanup candidates under AI Resources.
+- **Deleting a scenario** removes its versions. Their Foundry copies are never deleted automatically: they appear as unused resources under AI Management.
 - **Rubric:** the weights for the final score (default 40/30/20/10; they must add up to 100). Admin-only in the UI; instructors always get the saved (or default) weights.
 
 ## Running reviews
@@ -87,15 +87,20 @@ Instructors see one Upload / Replace button, a plain status (Ready, Preparing…
   - The Reset page warns when approved finals exist.
   - Download the Excel first, because it is the only copy afterwards.
 
-## AI Resources (admin; System → AI Resources)
+## AI Management (admin; System → AI Management, route `/admin/ai-resources`)
 
-- **AI configuration:** switch, configured or not, pinned agent version, request format, and the names of missing settings. Settings are changed in the server environment, then a restart.
-- **Tracked Foundry resources:** everything the app created.
-  - **Cleanup** is explicit. Select unused candidates (reasons: replaced version, failed upload, earlier attempt, deleted scenario), then confirm the exact IDs by typing DELETE.
-  - The server re-checks each one. Results are shown per ID, and failures stay listed for a retry.
-- **Foundry project inventory:** a read-only listing, loaded only on request.
-  - Items the app doesn't track are marked **Not tracked by this app** and can't be deleted here.
-  - The agent version pinned on this server is marked.
+Simplified 2026-10-19. The main view answers three questions; technical detail is under a collapsed **Advanced settings**.
+
+- **AI status:** **Ready / Disabled / Needs attention**, with the reasons.
+  - *Disabled* = the server switch is off. *Needs attention* = switched on but settings are missing, or a reference document failed / needs a rebuild / no scenario has a ready document.
+  - Shows whether the Foundry settings are complete and the pinned agent version. It never claims a working connection: this page runs no connectivity check.
+  - AI is switched on or off only in the server environment (no toggle here).
+- **Reference documents:** each scenario with Ready / Processing / Failed / Missing, the file name and a link to the scenario page. Upload and replace stay on the Scenarios page.
+- **Foundry resources:** counts of tracked, in use and unused (eligible for cleanup) resources.
+  - **Review unused resources** opens the cleanup list: type, Foundry ID, why it is unused. Nothing is preselected.
+  - Confirm the exact IDs by typing DELETE. The server re-checks each one. Results are shown per ID, and failures stay listed for a retry.
+- **Advanced settings:** configuration details (agent and response contract version, missing setting **names**, timeout, concurrency), the full tracked resource list (read-only), and the **Foundry project inventory**.
+  - The inventory is a read-only listing, loaded only on request. Items the app doesn't track are marked **Not tracked by this app** and can't be deleted here. The pinned agent version is marked.
 
 ### Test resources outside the app (kept on decision, cleanup needs a separate approval)
 
@@ -112,7 +117,7 @@ The project's other two stores (`vs_YgzS…`, `vs_cFNP…`) belong to their owne
 | Message (code) | Meaning / action |
 |---|---|
 | AI assessment is turned off (`ai_disabled`) | The kill switch is off on the server |
-| Not configured (`ai_not_configured`) | A setting is missing; AI Resources lists which |
+| Not configured (`ai_not_configured`) | A setting is missing; AI Management → Advanced settings lists which |
 | No reference document was ready when this session started (`ground_truth_not_ready`) | Upload one; sessions started before any version get the first ready one |
 | Reference version not available in Foundry (`ground_truth_unavailable`) | Rebuild it from the version history |
 | A review is already running (`assessment_in_progress`) / busy (`ai_busy`) / hourly limit (`rate_limited`) | Wait and try again |

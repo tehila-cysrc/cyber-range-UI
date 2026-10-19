@@ -204,7 +204,7 @@ export function ScenarioConfigPage() {
                 if (d.versions.length) {
                   aiNote = `
 
-It also removes ${d.versions.length} AI reference document version${d.versions.length === 1 ? '' : 's'}${pinned ? ` (used by ${pinned} team session${pinned === 1 ? '' : 's'})` : ''}. Their copies in Microsoft Foundry are not deleted automatically: they become cleanup candidates under System → AI Resources.`;
+It also removes ${d.versions.length} AI reference document version${d.versions.length === 1 ? '' : 's'}${pinned ? ` (used by ${pinned} team session${pinned === 1 ? '' : 's'})` : ''}. Their copies in Microsoft Foundry are not deleted automatically: they become unused resources under System → AI Management.`;
                 }
               } catch {
                 /* no AI data visible — nothing to add */
