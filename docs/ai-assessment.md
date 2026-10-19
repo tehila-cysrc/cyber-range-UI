@@ -109,6 +109,7 @@ Simplified 2026-10-19. The main view answers three questions; technical detail i
 | Agent versions | `cyber-range-assessor` v5 (contract 1), v6 (contract 2), v7 (contract 3, temperature 0) |
 | Files | `assistant-14NjsAauiu5dKfCfEeEAW6`, `assistant-Qr59VGT8HyB4Az2M9YTBNF`, `assistant-BjUN2sJdkTGX9DhXxZkSFJ` |
 | Vector stores | `vs_oHsKp7ahHzbxqSGMZyLflvYk`, `vs_8rWe3thbMPxdrTyYMUEEI9sb`, `vs_D5kjUKbHLn1QPXgB2hgSkYVG` |
+| 2026-10-19 connectivity test (v7, isolated DB copy) | file `assistant-VMU9EnHAM2u84YMCUorP69`, vector store `vs_B6XfogyW0KYRkcHzJqC0GUfd` (TJS test reference, 1 KB) — tracked only in the isolated copy's `ai_foundry_resources`, so the main app's AI Management will not list them; kept on decision |
 
 The project's other two stores (`vs_YgzS…`, `vs_cFNP…`) belong to their owner and must never be touched.
 
