@@ -210,6 +210,34 @@ export function useRunAssessment(mode: AssessmentMode) {
 }
 export const useRunLiveReview = () => useRunAssessment('live');
 
+// Event Summary batch (2026-10-19): every started session in the caller's pair scope with its latest
+// final; upToDate = a new request would only reuse that final (no model call). Read-only on the server.
+export interface FinalOverviewRow {
+  teamId: number;
+  teamName: string;
+  organizationName: string | null;
+  cyberRangeId: number;
+  scenarioName: string;
+  sessionStatus: 'active' | 'paused' | 'completed';
+  blockedReason: string | null;
+  latestFinal: AssessmentSummary | null;
+  upToDate: boolean;
+}
+export interface FinalOverview {
+  rows: FinalOverviewRow[];
+  rateLimit: { perHour: number; usedLastHour: number };
+}
+export const finalOverviewKey = ['ai-final-overview'];
+
+export function useFinalOverview(enabled: boolean, poll: boolean) {
+  return useQuery({
+    queryKey: finalOverviewKey,
+    queryFn: () => apiFetch<FinalOverview>('/admin/ai-assessments/overview'),
+    enabled,
+    refetchInterval: (q) => (poll || q.state.data?.rows.some((r) => r.latestFinal && isRunning(r.latestFinal)) ? 4000 : false),
+  });
+}
+
 export type DecisionBody = { decision: 'approved' | 'edited' | 'rejected'; score?: number; note?: string; override?: boolean };
 
 // Final-score decision: recorded on the assessment only — never an official score, never the leaderboard.
@@ -221,6 +249,7 @@ export function useDecideAssessment(summary: AssessmentSummary) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: assessmentsKey(summary.teamId, summary.cyberRangeId, 'final') });
       queryClient.invalidateQueries({ queryKey: ['ai-assessment', summary.id] });
+      queryClient.invalidateQueries({ queryKey: finalOverviewKey });
     },
   });
 }

@@ -131,6 +131,7 @@ const R = () => [
   ['decision A/S2 (bad body -> 400 when allowed)', 'POST', `/api/admin/ai-assessments/${ids.aA2}/decision`, { decision: 'maybe' }, { admin: 400, iA: 404, iAB: 404, student: 403, anon: 401 }],
   ['feedback link to B/S2 assessment on A entry', 'POST', `/api/cyber-ranges/${f.s1}/documentation/${ids.entryA1}/feedback`, { verdict: 'on_track', sourceAiAssessmentId: ids.aB2 }, { admin: 400, iA: 400, iAB: 400, student: 403, anon: 401 }],
   ['reset preview', 'GET', '/api/admin/event/reset-preview', null, { admin: 200, iA: 403, iAB: 403, student: 403, anon: 401 }],
+  ['final overview', 'GET', '/api/admin/ai-assessments/overview', null, { admin: 200, iA: 200, iAB: 200, student: 403, anon: 401 }],
 ];
 
 test('AI route matrix: 403 without permission, 404 out of scope (no cross product, no-org admin-only), 401 anonymous', async () => {
@@ -146,6 +147,52 @@ test('AI route matrix: 403 without permission, 404 out of scope (no cross produc
   assert.deepEqual(failures, []);
   // Out-of-scope refusals are audited.
   assert.ok(db.prepare("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'authz.denied'").get().c > 10);
+});
+
+// Event Summary batch overview (2026-10-19): rows are filtered by PAIR scope (no cross product), carry
+// the latest final, and say whether a new request would only reuse it. Read-only: no Foundry call.
+test('final overview: pair-scoped rows, latest final, upToDate matches server reuse', async () => {
+  const get = async (token) => {
+    const res = await fetch(`${base}/api/admin/ai-assessments/overview`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.rateLimit.perHour, 30);
+    assert.equal(typeof body.rateLimit.usedLastHour, 'number');
+    return body.rows;
+  };
+  const pairs = (rows) => rows.map((r) => `${r.teamId}/${r.cyberRangeId}`).sort();
+  const orig = fake.invokeAssessment;
+  let invoked = 0;
+  fake.invokeAssessment = async (a) => {
+    invoked++;
+    return orig(a);
+  };
+
+  assert.deepEqual(pairs(await get(tok.iA)), [`${f.teamA}/${f.s1}`]);
+  // iAB holds (A,S1) and (B,S2): A's work on S2 must not appear.
+  assert.deepEqual(pairs(await get(tok.iAB)), [`${f.teamA}/${f.s1}`, `${f.teamB}/${f.s2}`].sort());
+  const all = await get(tok.admin);
+  assert.deepEqual(pairs(all), [`${f.teamA}/${f.s1}`, `${f.teamA}/${f.s2}`, `${f.teamB}/${f.s2}`].sort());
+
+  const row = (teamId, rangeId) => all.find((r) => r.teamId === teamId && r.cyberRangeId === rangeId);
+  const b2 = row(f.teamB, f.s2);
+  assert.equal(b2.latestFinal.id, ids.aB2);
+  assert.equal(b2.latestFinal.recommendedTotal, 4);
+  assert.equal(b2.blockedReason, null);
+  assert.equal(b2.upToDate, true, 'nothing changed since the final');
+  assert.equal(b2.teamName, 'Team B');
+  // A/S1 gained an entry after its final: a new request would really run.
+  assert.equal(row(f.teamA, f.s1).upToDate, false);
+
+  // upToDate agrees with the server: requesting B/S2 again reuses the earlier final (no model call).
+  const invokes = db.prepare("SELECT COUNT(*) AS c FROM ai_assessments WHERE mode = 'final'").get().c;
+  const res = await fetch(`${base}/api/admin/ai-assessments`, { method: 'POST', headers: { Authorization: `Bearer ${tok.admin}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ teamId: f.teamB, cyberRangeId: f.s2, mode: 'final' }) });
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(body.reused, true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM ai_assessments WHERE mode = 'final'").get().c, invokes);
+  fake.invokeAssessment = orig;
+  assert.equal(invoked, 0, 'neither the overview nor the reused request called the model');
 });
 
 test('every AI route in the route inventory is covered by the matrix', async () => {

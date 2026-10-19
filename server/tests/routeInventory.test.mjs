@@ -169,6 +169,7 @@ const EXPECTED = {
   'GET /api/admin/ai/status': 'ai_assessment.use',
   'POST /api/admin/ai-assessments': 'ai_assessment.use',
   'GET /api/admin/ai-assessments': 'ai_assessment.use',
+  'GET /api/admin/ai-assessments/overview': 'ai_assessment.use',
   'GET /api/admin/ai-assessments/:id': 'ai_assessment.use',
   'POST /api/admin/ai-assessments/:id/decision': 'ai_assessment.use',
 };

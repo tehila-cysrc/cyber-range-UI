@@ -5,6 +5,10 @@ import { apiFetch } from '../../lib/apiClient';
 import { EmptyState } from '../../components/EmptyState';
 import { useDebriefTeam } from './useDebriefTeam';
 import { useCan } from '../../lib/permissions';
+import { useState } from 'react';
+import { Button } from '../../components/Button';
+import { AiBatchDialog } from '../aiAssessment/AiBatchDialog';
+import { useAiStatus } from '../aiAssessment/useAiAssessments';
 
 interface DaySummary {
   dayKey: string;
@@ -21,6 +25,9 @@ export function EventSummaryPage() {
   const canGlobalExport = useCan('event.export');
   const canScopedExport = useCan('results.export');
   const canExport = canGlobalExport || canScopedExport;
+  // AI final assessments for every team in scope (not only the picked one); hidden when AI is off.
+  const { available: aiAvailable } = useAiStatus();
+  const [aiOpen, setAiOpen] = useState(false);
   const { data, isError } = useQuery({
     queryKey: ['event-summary', query],
     queryFn: () => apiFetch<{ days: DaySummary[] }>(`/history/event-summary${query}`),
@@ -39,11 +46,17 @@ export function EventSummaryPage() {
       <h1 style={{ fontSize: 22, color: 'var(--text-primary)', margin: 'var(--space-md) 0' }}>
         Event Summary
       </h1>
-      {canExport && teamId != null && (
-        <div style={{ marginBottom: 'var(--space-md)' }}>
-          <ExportResultsButtons teamId={teamId} />
+      {((canExport && teamId != null) || aiAvailable) && (
+        <div style={{ marginBottom: 'var(--space-md)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+          {canExport && teamId != null && <ExportResultsButtons teamId={teamId} />}
+          {aiAvailable && (
+            <Button variant="ghost" onClick={() => setAiOpen(true)} title="Generate and review AI final assessments for all your teams">
+              AI Assessment
+            </Button>
+          )}
         </div>
       )}
+      {aiOpen && <AiBatchDialog onClose={() => setAiOpen(false)} />}
 
       {!ready && <EmptyState message="Pick a team above to see its event summary." />}
       {isError && <EmptyState message="Couldn't load the event summary — try refreshing." />}

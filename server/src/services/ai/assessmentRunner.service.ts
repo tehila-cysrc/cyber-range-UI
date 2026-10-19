@@ -19,6 +19,8 @@ import { FoundryError, getFoundryClient } from './foundryClient.js';
 import { SnapshotError, buildSnapshot, evidenceIndexFromSnapshot, leakScanContext, type InvestigationSnapshot } from './assessmentSnapshot.service.js';
 import { validateAssessment, type RubricCriterion } from './assessmentValidation.js';
 import { RUBRIC_LABELS, getRubric, resolveSessionVersion, type RubricKey } from './scenarioAiDocuments.service.js';
+import { getActiveEventRunId } from '../../db/seed.js';
+import { loadScope, scopeAllowsPair } from '../../authz/scope.js';
 
 const now = () => new Date().toISOString();
 
@@ -77,6 +79,12 @@ function underRateLimit(p: Principal): boolean {
 function countForRateLimit(p: Principal) {
   const key = p.accountId !== null ? `a${p.accountId}` : `u${p.id}`;
   recentByAccount.set(key, [...(recentByAccount.get(key) ?? []), Date.now()]);
+}
+// For the batch screen's warning: how many NEW jobs this account started in the last hour. Read-only.
+export function rateLimitStatus(p: Principal): { perHour: number; usedLastHour: number } {
+  const key = p.accountId !== null ? `a${p.accountId}` : `u${p.id}`;
+  const cutoff = Date.now() - 3600_000;
+  return { perHour: RATE_LIMIT_PER_HOUR, usedLastHour: (recentByAccount.get(key) ?? []).filter((t) => t > cutoff).length };
 }
 export function resetAiRateLimitsForTests() {
   recentByAccount.clear();
@@ -267,6 +275,81 @@ export function getAssessmentDetail(id: number): AssessmentDetail | null {
 // ---------------------------------------------------------------------------------------------
 // Request
 
+// The rubric a final request sends, as stored on the row (reuse compares it).
+function finalRubricJson(cyberRangeId: number): string {
+  return JSON.stringify(getRubric(cyberRangeId).criteria.map((c) => ({ key: c.key, maxPoints: c.maxPoints })));
+}
+
+// The earlier succeeded result for the SAME work: pinned version, snapshot and rubric all unchanged.
+function findReusableAssessment(teamId: number, cyberRangeId: number, mode: AssessmentMode, documentId: number, snapshotSha: string, rubricJson: string | null): number | null {
+  const prev = db
+    .prepare(
+      `SELECT id FROM ai_assessments
+       WHERE team_id = ? AND cyber_range_id = ? AND mode = ? AND status = 'succeeded' AND document_id = ? AND snapshot_sha256 = ?
+         AND COALESCE(rubric_json, '') = COALESCE(?, '')
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+    )
+    .get(teamId, cyberRangeId, mode, documentId, snapshotSha, rubricJson) as { id: number } | undefined;
+  return prev?.id ?? null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Final-assessment overview (Event Summary batch, 2026-10-19): every started session of the active run
+// in the caller's PAIR scope, its latest final and whether a new request would just reuse it. Read-only:
+// no Foundry call, no write. Batches run through requestAssessment one request at a time (client side).
+
+export interface FinalOverviewRow {
+  teamId: number;
+  teamName: string;
+  organizationName: string | null;
+  cyberRangeId: number;
+  scenarioName: string;
+  sessionStatus: 'active' | 'paused' | 'completed';
+  blockedReason: string | null; // why a final can't be requested now (reason code), null = it can
+  latestFinal: AssessmentSummary | null;
+  upToDate: boolean; // the latest succeeded final covers the current work — a request would reuse it
+}
+
+export function finalAssessmentOverview(p: Principal): FinalOverviewRow[] {
+  const scope = loadScope(p);
+  const rows = db
+    .prepare(
+      `SELECT tcp.team_id AS teamId, t.name AS teamName, t.organization_id AS orgId, o.name AS organizationName,
+              tcp.cyber_range_id AS cyberRangeId, cr.name AS scenarioName, tcp.status AS sessionStatus
+       FROM team_cyber_range_progress tcp
+       JOIN teams t ON t.id = tcp.team_id
+       JOIN cyber_ranges cr ON cr.id = tcp.cyber_range_id
+       LEFT JOIN organizations o ON o.id = t.organization_id
+       WHERE t.event_run_id IS ? AND tcp.status IN ('active', 'paused', 'completed')
+       ORDER BY t.sort_order, t.id, cr.sort_order, cr.id`,
+    )
+    .all(getActiveEventRunId()) as (Omit<FinalOverviewRow, 'blockedReason' | 'latestFinal' | 'upToDate'> & { orgId: number | null })[];
+
+  return rows
+    .filter((r) => scopeAllowsPair(scope, r.orgId, r.cyberRangeId))
+    .map(({ orgId: _orgId, ...r }) => {
+      const latestRow = db
+        .prepare(`SELECT ${SUMMARY_COLUMNS} FROM ai_assessments a WHERE a.team_id = ? AND a.cyber_range_id = ? AND a.mode = 'final' ORDER BY a.created_at DESC, a.id DESC LIMIT 1`)
+        .get(r.teamId, r.cyberRangeId) as SummaryRow | undefined;
+      const latestFinal = latestRow ? toSummary(latestRow) : null;
+      const version = resolveSessionVersion(r.teamId, r.cyberRangeId);
+      let blockedReason: string | null = null;
+      if (!version) blockedReason = 'ground_truth_not_ready';
+      else if (!version.vectorStoreId || version.foundryDeleted || (version.status !== 'ready' && version.status !== 'superseded')) blockedReason = 'ground_truth_unavailable';
+      let upToDate = false;
+      if (version && !blockedReason) {
+        try {
+          const built = buildSnapshot(r.teamId, r.cyberRangeId);
+          upToDate = findReusableAssessment(r.teamId, r.cyberRangeId, 'final', version.documentId, built.sha256, finalRubricJson(r.cyberRangeId)) !== null;
+        } catch (e) {
+          if (e instanceof SnapshotError) blockedReason = e.code;
+          else throw e;
+        }
+      }
+      return { ...r, blockedReason, latestFinal, upToDate };
+    });
+}
+
 export function requestAssessment(p: Principal, body: z.infer<typeof AssessmentRequestBody>): RunnerResult<{ assessment: AssessmentSummary; reused: boolean }> {
   const config = getAiConfig();
   if (!config.enabled) return refuse(503, 'ai_disabled', 'AI assessment is disabled on this server');
@@ -302,20 +385,12 @@ export function requestAssessment(p: Principal, body: z.infer<typeof AssessmentR
     if (e instanceof SnapshotError) return e.code === 'snapshot_too_large' ? refuse(422, e.code, e.message) : refuse(409, e.code, e.message);
     throw e;
   }
-  const rubric = mode === 'final' ? getRubric(cyberRangeId).criteria.map((c) => ({ key: c.key, maxPoints: c.maxPoints })) : null;
-  const rubricJson = rubric ? JSON.stringify(rubric) : null;
+  const rubricJson = mode === 'final' ? finalRubricJson(cyberRangeId) : null;
 
   // Unchanged work, same pinned version, same rubric -> return the earlier result (no new call, no cost).
   if (!body.force) {
-    const prev = db
-      .prepare(
-        `SELECT id FROM ai_assessments
-         WHERE team_id = ? AND cyber_range_id = ? AND mode = ? AND status = 'succeeded' AND document_id = ? AND snapshot_sha256 = ?
-           AND COALESCE(rubric_json, '') = COALESCE(?, '')
-         ORDER BY created_at DESC, id DESC LIMIT 1`,
-      )
-      .get(teamId, cyberRangeId, mode, version.documentId, built.sha256, rubricJson) as { id: number } | undefined;
-    if (prev) return { ok: true, status: 200, value: { assessment: getAssessmentSummary(prev.id)!, reused: true } };
+    const prevId = findReusableAssessment(teamId, cyberRangeId, mode, version.documentId, built.sha256, rubricJson);
+    if (prevId !== null) return { ok: true, status: 200, value: { assessment: getAssessmentSummary(prevId)!, reused: true } };
   }
 
   const inFlight = (db.prepare("SELECT COUNT(*) AS n FROM ai_assessments WHERE status IN ('pending', 'running')").get() as { n: number }).n;

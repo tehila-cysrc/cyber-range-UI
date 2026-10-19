@@ -71,6 +71,14 @@ Instructors see one Upload / Replace button, a plain status (Ready, Preparing…
   None of these changes the result.
 - **History rows** show the time, status, reference version, requester, agent version and reply format.
 
+## Final assessments for all teams (Event Summary → "AI Assessment")
+
+- One list of every started team session you may assess (pair scope), with its status: not assessed, generating, waiting for your review (AI score), approved / edited / rejected, failed, or why it can't run (no reference document, copy unavailable).
+- **Generate N selected:** the default selection is every session whose work changed since its last final (or that has none). Sessions already covered by their latest final are not selectable, so no duplicate model call is made; the server's reuse is the backstop.
+- Before starting, a confirmation lists the count, the sessions still running (final covers only what is documented so far), and a warning when the selection may exceed your hourly limit (30 per account; the screen shows how many are left).
+- The browser runs at most 3 requests at once; "busy" answers are retried after 15 s; the hourly limit stops the batch and the rest are marked "not started". Progress shows done / generating / waiting / failed / not started. **Stop** keeps running ones going on the server. Closing the page stops what has not started yet.
+- **Review** opens the result with the score decision inline; **View details** opens the team's full AI view. Nothing is approved or sent automatically.
+
 ## Final score decisions and export
 
 - **Approve, Edit (with a note) or Reject.** Recorded on the assessment and audited. Official scores and the leaderboard never change; award points on the Scoring tab.

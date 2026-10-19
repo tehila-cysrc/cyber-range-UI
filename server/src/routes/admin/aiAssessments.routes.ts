@@ -9,6 +9,8 @@ import {
   AssessmentRequestBody,
   DecisionBody,
   decideAssessment,
+  finalAssessmentOverview,
+  rateLimitStatus,
   getAssessmentDetail,
   listAssessments,
   loadAssessmentOwner,
@@ -72,6 +74,12 @@ router.get('/ai-assessments', requirePermission('ai_assessment.use'), (req, res)
   }
   if (!assertTeamPair(req, res, teamId, cyberRangeId)) return;
   res.json({ assessments: listAssessments(teamId, cyberRangeId, mode as 'live' | 'final' | null), session: sessionAiInfo(teamId, cyberRangeId) });
+});
+
+// Event Summary batch: every started session in the caller's pair scope with its latest final and
+// whether a new request would reuse it. Read-only — no Foundry call, no write. Before /:id.
+router.get('/ai-assessments/overview', requirePermission('ai_assessment.use'), (req, res) => {
+  res.json({ rows: finalAssessmentOverview(req.user!), rateLimit: rateLimitStatus(req.user!) });
 });
 
 // Scope is checked on the ROW's own team + scenario, never on anything the client sends.
