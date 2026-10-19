@@ -160,7 +160,7 @@ export function AiBatchDialog({ onClose }: { onClose: () => void }) {
     await Promise.all(Array.from({ length: Math.min(MAX_IN_FLIGHT, batch.length) }, worker));
     const leftover = new Set(queue.map((i) => i.key));
     if (leftover.size > 0) {
-      const message = limitReached ? 'Not started: you reached the hourly limit of AI assessments. Run the rest later.' : 'Not started: the batch was stopped.';
+      const message = limitReached ? 'you reached the hourly limit of AI assessments. Run the rest later.' : 'the batch was stopped.';
       setItems((cur) => cur && cur.map((i) => (leftover.has(i.key) ? { ...i, state: 'not_started', message } : i)));
     }
     queryClient.invalidateQueries({ queryKey: finalOverviewKey });
@@ -346,7 +346,7 @@ export function AiBatchDialog({ onClose }: { onClose: () => void }) {
         {rows.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-md)' }}>
             <Button onClick={() => void start()} disabled={active || pickedCount === 0} style={{ opacity: active || pickedCount === 0 ? 0.5 : 1 }}>
-              {pickedCount === 0 ? 'Nothing to generate' : `Generate ${pickedCount} selected`}
+              {active ? 'Generating…' : pickedCount === 0 ? 'Nothing to generate' : `Generate ${pickedCount} selected`}
             </Button>
             {!active && selectableRows.length > 0 && (
               <button
