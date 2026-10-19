@@ -174,7 +174,7 @@ export function AiBatchDialog({ onClose }: { onClose: () => void }) {
     const lines = [
       `${picked.length} final assessment${picked.length === 1 ? '' : 's'} will be generated, up to ${MAX_IN_FLIGHT} at a time (usually 30–90 seconds each).`,
       stillRunning > 0
-        ? `${stillRunning} of these scenario${stillRunning === 1 ? ' is' : 's are'} still running: the assessment covers only what the team has documented so far.`
+        ? `${stillRunning} ${stillRunning === 1 ? 'scenario is' : 'scenarios are'} still running: the assessment covers only what the team has documented so far.`
         : null,
       left !== null && picked.length > left
         ? `This may exceed your hourly limit: ${left} of ${data!.rateLimit.perHour} AI assessments left this hour. The batch stops at the limit; run the rest later.`
@@ -314,9 +314,14 @@ export function AiBatchDialog({ onClose }: { onClose: () => void }) {
                           {item.message ? ` — ${item.message}` : ''}
                         </span>
                       ) : (
-                        <span>
-                          <TelemetryBadge tone={st.tone}>{st.text}</TelemetryBadge>
-                        </span>
+                        // Short states as a badge; reasons and errors (long sentences) as plain text.
+                        r.blockedReason || r.latestFinal?.status === 'failed' ? (
+                          <span style={{ fontSize: 14, color: st.tone === 'alert' ? 'var(--signal-alert)' : 'var(--text-muted)' }}>{st.text}</span>
+                        ) : (
+                          <span>
+                            <TelemetryBadge tone={st.tone}>{st.text}</TelemetryBadge>
+                          </span>
+                        )
                       )}
                       {item?.state === 'reused' && <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>{item.message}</span>}
                     </span>

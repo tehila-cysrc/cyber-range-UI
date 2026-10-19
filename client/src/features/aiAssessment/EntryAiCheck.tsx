@@ -95,7 +95,9 @@ export function EntryAiCheck({ teamId, cyberRangeId, sessionStatus, entryId, onF
   }
 
   const assessments = data?.assessments ?? [];
-  const summary = (runId !== null ? assessments.find((a) => a.id === runId) : null) ?? (request.isPending ? null : assessments[0] ?? null);
+  // Our own run until the list shows it (never an older result meanwhile); the newest one when we
+  // follow a review someone else started.
+  const summary = runId !== null ? (assessments.find((a) => a.id === runId) ?? null) : request.isPending ? null : (assessments[0] ?? null);
   const running = request.isPending || !summary || summary.status === 'pending' || summary.status === 'running';
 
   let body;
