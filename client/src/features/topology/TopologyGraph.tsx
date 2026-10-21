@@ -131,9 +131,13 @@ export function TopologyGraph({
 
   const zoneRects = useMemo(() => {
     const rects = new Map<number, { x: number; y: number; width: number; height: number }>();
+    const emptyZones: TopologyZoneData[] = [];
     for (const zone of zones) {
       const members = nodes.filter((n) => n.zoneId === zone.id);
-      if (members.length === 0) continue;
+      if (members.length === 0) {
+        emptyZones.push(zone);
+        continue;
+      }
       const minX = Math.min(...members.map((n) => n.posX));
       const minY = Math.min(...members.map((n) => n.posY));
       const maxX = Math.max(...members.map((n) => n.posX + CARD_WIDTH));
@@ -143,6 +147,19 @@ export function TopologyGraph({
         y: minY - ZONE_PADDING - ZONE_LABEL_HEIGHT,
         width: maxX - minX + ZONE_PADDING * 2,
         height: maxY - minY + ZONE_PADDING * 2 + ZONE_LABEL_HEIGHT,
+      });
+    }
+    // A zone with no hosts has nothing to wrap — a just-added zone used to be invisible until a node
+    // was put in it. Give each one a one-card placeholder frame in a row below everything else.
+    if (emptyZones.length > 0) {
+      const occupied = [...rects.values()];
+      const left = Math.min(0, ...occupied.map((r) => r.x), ...nodes.map((n) => n.posX));
+      const bottom = Math.max(0, ...occupied.map((r) => r.y + r.height), ...nodes.map((n) => n.posY + CARD_HEIGHT));
+      const width = CARD_WIDTH + ZONE_PADDING * 2;
+      const height = CARD_HEIGHT + ZONE_PADDING * 2 + ZONE_LABEL_HEIGHT;
+      const top = occupied.length > 0 || nodes.length > 0 ? bottom + ZONE_PADDING * 2 : 0;
+      emptyZones.forEach((zone, i) => {
+        rects.set(zone.id, { x: left + i * (width + ZONE_PADDING), y: top, width, height });
       });
     }
     return rects;
@@ -175,6 +192,9 @@ export function TopologyGraph({
                   {zone.name}
                   {zone.cidr ? <span style={{ color: 'var(--text-telemetry)' }}> · {zone.cidr}</span> : null}
                 </div>
+                {!nodes.some((n) => n.zoneId === zone.id) && (
+                  <div style={{ fontSize: 12, color: 'var(--text-telemetry)', textAlign: 'center', marginTop: 18 }}>No hosts yet</div>
+                )}
               </div>
             ),
           },
