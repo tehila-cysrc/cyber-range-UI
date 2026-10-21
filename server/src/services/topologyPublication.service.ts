@@ -66,10 +66,10 @@ export function publishTopology(cyberRangeId: number, actorUsername: string) {
   return { publishedAt, nodeCount: snapshot.nodes.length };
 }
 
-// Students get only what the viewer shows (OS, private IP). The raw metadata and external keys carry
+// Students get only what the viewer shows (OS, private IP, the instructor's access note). The raw metadata and external keys carry
 // the full ARM resource id (subscription id), resource group, location and VM size. Projected at read
 // time so snapshots published before this change are covered too.
-const STUDENT_METADATA_KEYS = ['osType', 'privateIpAddress'] as const;
+const STUDENT_METADATA_KEYS = ['osType', 'privateIpAddress', 'accessNote'] as const;
 
 function studentMetadata(metadataJson: unknown): string | null {
   if (typeof metadataJson !== 'string') return null;

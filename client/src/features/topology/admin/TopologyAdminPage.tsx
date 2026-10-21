@@ -69,7 +69,7 @@ const fieldStyle: React.CSSProperties = {
 };
 
 type Selection = { type: 'node'; id: number } | { type: 'zone'; id: number } | null;
-type NodePatch = { label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean; privateIpAddress?: string };
+type NodePatch = { label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean; privateIpAddress?: string; accessNote?: string };
 
 // The scenario list can be hidden to give the canvas the full width; remembered per browser.
 const LIST_HIDDEN_KEY = 'topology-admin:list-hidden';
@@ -106,6 +106,7 @@ export function TopologyAdminPage() {
   const [newNodeRole, setNewNodeRole] = useState('');
   const [newNodeZoneId, setNewNodeZoneId] = useState<number | ''>('');
   const [newNodeIp, setNewNodeIp] = useState('');
+  const [newNodeAccess, setNewNodeAccess] = useState('');
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneCidr, setNewZoneCidr] = useState('');
 
@@ -144,6 +145,7 @@ export function TopologyAdminPage() {
           role: newNodeRole || null,
           zoneId: newNodeZoneId === '' ? null : newNodeZoneId,
           privateIpAddress: newNodeIp.trim() || undefined,
+          accessNote: newNodeAccess.trim() || undefined,
         }),
       }),
     onSuccess: async () => {
@@ -151,6 +153,7 @@ export function TopologyAdminPage() {
       setNewNodeRole('');
       setNewNodeZoneId('');
       setNewNodeIp('');
+      setNewNodeAccess('');
       await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
       setLayoutVersion((v) => v + 1);
     },
@@ -328,6 +331,13 @@ export function TopologyAdminPage() {
                 ))}
               </select>
               <input value={newNodeIp} onChange={(e) => setNewNodeIp(e.target.value)} placeholder="IP (optional)" style={{ ...fieldStyle, width: 130 }} />
+              <input
+                value={newNodeAccess}
+                onChange={(e) => setNewNodeAccess(e.target.value)}
+                placeholder="How to reach it (optional, e.g. RDP from WS01)"
+                maxLength={500}
+                style={{ ...fieldStyle, width: 280 }}
+              />
               <Button type="submit" variant="ghost">
                 Add node
               </Button>
@@ -543,6 +553,8 @@ function NodePanel({
   const privateIp = typeof metadata?.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
   // Only a manually added node's IP is editable — a discovered VM's comes from Azure.
   const [ip, setIp] = useState(privateIp ?? '');
+  const accessNote = typeof metadata?.accessNote === 'string' ? metadata.accessNote : '';
+  const [access, setAccess] = useState(accessNote);
 
   const queryClient = useQueryClient();
   // VM login credentials live in the environment's Key Vault — environment secrets are admin-only.
@@ -624,15 +636,29 @@ function NodePanel({
 
       {/* Shown to students too (TopologyViewerPage) once published — the instructor needs it on hand, not buried in Diagnostics. */}
       {!node.environmentId ? (
-        <Field label="Internal IP">
-          <input
-            value={ip}
-            onChange={(e) => setIp(e.target.value)}
-            onBlur={() => ip.trim() !== (privateIp ?? '') && onSave({ privateIpAddress: ip.trim() })}
-            placeholder="e.g. 10.0.1.4"
-            style={{ ...fieldStyle, width: '100%', fontFamily: 'var(--font-mono)' }}
-          />
-        </Field>
+        <>
+          <Field label="Internal IP">
+            <input
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              onBlur={() => ip.trim() !== (privateIp ?? '') && onSave({ privateIpAddress: ip.trim() })}
+              placeholder="e.g. 10.0.1.4"
+              style={{ ...fieldStyle, width: '100%', fontFamily: 'var(--font-mono)' }}
+            />
+          </Field>
+          {/* A manually added node isn't a real VM in the zone — say how students reach it. */}
+          <Field label="How to reach it (shown to students)">
+            <textarea
+              value={access}
+              onChange={(e) => setAccess(e.target.value)}
+              onBlur={() => access.trim() !== accessNote && onSave({ accessNote: access.trim() })}
+              placeholder="e.g. RDP from WS01 to 10.0.1.5"
+              maxLength={500}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+            />
+          </Field>
+        </>
       ) : privateIp && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, fontSize: 13 }}>
           <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -680,7 +706,7 @@ function NodePanel({
         Include for students when publishing
       </label>
       <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 10 }}>
-        Name, IP, role, zone, status and visibility save as soon as you change them.
+        Name, IP, access, role, zone, status and visibility save as soon as you change them.
       </div>
 
       {/* Admin-only diagnostics — the raw discovered metadata, never shown on the canvas itself. */}

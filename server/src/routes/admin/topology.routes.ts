@@ -25,12 +25,28 @@ router.use(requireAuth);
 // operations (Connect, power, scripts) also need the scenario to be exclusive to the caller's scope.
 const AUTHOR = [requirePermission('scenario.author'), scenarioParam] as const;
 
-// Instructor-entered node IP: optional, '' clears it.
-function privateIpAddressProblem(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') return 'privateIpAddress must be a string';
-  if (value.trim() && !isIP(value.trim())) return 'privateIpAddress must be a valid IP address';
-  return null;
+// Instructor-entered details of a manually added node, kept in metadata_json (privateIpAddress is
+// the same key discovery writes). Both optional; '' clears one. accessNote says how to reach a node
+// that isn't a real discovered VM — typically "RDP from WS01 to 10.0.1.5" — and is shown to students.
+const MANUAL_NODE_FIELDS = {
+  privateIpAddress: (v: string) => (isIP(v) ? null : 'privateIpAddress must be a valid IP address'),
+  accessNote: (v: string) => (v.length <= 500 ? null : 'accessNote must be at most 500 characters'),
+} as const;
+type ManualNodeField = keyof typeof MANUAL_NODE_FIELDS;
+
+// The manual fields present in a request body, trimmed — or the first validation error.
+function manualNodeFields(body: Record<string, unknown>): { fields: Partial<Record<ManualNodeField, string>> } | { error: string } {
+  const fields: Partial<Record<ManualNodeField, string>> = {};
+  for (const key of Object.keys(MANUAL_NODE_FIELDS) as ManualNodeField[]) {
+    const value = body[key];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== 'string') return { error: `${key} must be a string` };
+    const trimmed = (value ?? '').trim();
+    const problem = trimmed ? MANUAL_NODE_FIELDS[key](trimmed) : null;
+    if (problem) return { error: problem };
+    fields[key] = trimmed;
+  }
+  return { fields };
 }
 
 // Publishing (UX-38): students see only what was last published.
@@ -48,19 +64,19 @@ router.post('/cyber-ranges/:cyberRangeId/topology/publish', ...AUTHOR, (req, res
 
 router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { label, nodeType, posX, posY, metadata, role, zoneId, privateIpAddress } = req.body ?? {};
+  const { label, nodeType, posX, posY, metadata, role, zoneId } = req.body ?? {};
 
   if (typeof label !== 'string' || typeof nodeType !== 'string') {
     res.status(400).json({ error: 'label and nodeType are required' });
     return;
   }
-  const ipProblem = privateIpAddressProblem(privateIpAddress);
-  if (ipProblem) {
-    res.status(400).json({ error: ipProblem });
+  const manual = manualNodeFields(req.body ?? {});
+  if ('error' in manual) {
+    res.status(400).json({ error: manual.error });
     return;
   }
-  const ip = typeof privateIpAddress === 'string' ? privateIpAddress.trim() : '';
-  const nodeMetadata = ip ? { ...(metadata ?? {}), privateIpAddress: ip } : metadata;
+  const setFields = Object.fromEntries(Object.entries(manual.fields).filter(([, v]) => v));
+  const nodeMetadata = Object.keys(setFields).length > 0 ? { ...(metadata ?? {}), ...setFields } : metadata;
   if (typeof zoneId === 'number' && !rowInScenario('topology_zones', zoneId, cyberRangeId)) {
     res.status(400).json({ error: "that zone isn't part of this scenario's topology" });
     return;
@@ -114,25 +130,25 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) 
 router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status, privateIpAddress } = req.body ?? {};
+  const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status } = req.body ?? {};
 
   if (!rowInScenario('topology_nodes', nodeId, cyberRangeId)) {
     res.status(404).json({ error: 'node not found' });
     return;
   }
-  if (privateIpAddress !== undefined) {
-    const ipProblem = privateIpAddressProblem(privateIpAddress);
-    if (ipProblem) {
-      res.status(400).json({ error: ipProblem });
-      return;
-    }
-    // A discovered VM's IP comes from Azure: rediscovery overwrites it and Bastion access is derived
-    // from it, so only manually added nodes take an instructor-entered IP.
+  const manual = manualNodeFields(req.body ?? {});
+  if ('error' in manual) {
+    res.status(400).json({ error: manual.error });
+    return;
+  }
+  if (Object.keys(manual.fields).length > 0) {
+    // A discovered VM's metadata comes from Azure: rediscovery overwrites it and Bastion access is
+    // derived from its IP, so only manually added nodes take instructor-entered IP / access details.
     const { environmentId } = db.prepare('SELECT environment_id AS environmentId FROM topology_nodes WHERE id = ?').get(nodeId) as {
       environmentId: number | null;
     };
     if (environmentId !== null) {
-      res.status(400).json({ error: "a discovered node's IP comes from Azure and can't be edited" });
+      res.status(400).json({ error: "a discovered node's IP and access come from Azure and can't be edited" });
       return;
     }
   }
@@ -167,13 +183,12 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (r
     typeof status === 'string' ? status : null,
     nodeId,
   );
-  if (privateIpAddress !== undefined) {
-    const ip = typeof privateIpAddress === 'string' ? privateIpAddress.trim() : '';
+  for (const [key, value] of Object.entries(manual.fields)) {
     db.prepare(
-      ip
-        ? `UPDATE topology_nodes SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.privateIpAddress', ?) WHERE id = ?`
-        : `UPDATE topology_nodes SET metadata_json = json_remove(metadata_json, '$.privateIpAddress') WHERE id = ?`,
-    ).run(...(ip ? [ip, nodeId] : [nodeId]));
+      value
+        ? `UPDATE topology_nodes SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.${key}', ?) WHERE id = ?`
+        : `UPDATE topology_nodes SET metadata_json = json_remove(metadata_json, '$.${key}') WHERE id = ?`,
+    ).run(...(value ? [value, nodeId] : [nodeId]));
   }
 
   res.json({ ok: true });

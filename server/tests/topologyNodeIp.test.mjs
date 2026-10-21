@@ -90,3 +90,24 @@ test("a discovered node's IP can't be edited", async () => {
   assert.equal((await api('PATCH', `/admin/cyber-ranges/${f.s1}/topology/nodes/${nodeId}`, { privateIpAddress: '10.9.9.9' })).status, 400);
   assert.equal(ipOf(nodeId), '10.0.0.4');
 });
+
+test('a manually added node takes an access note, shown to students once published', async () => {
+  const { publishTopology, getPublishedTopology } = await import('../dist/services/topologyPublication.service.js');
+  const noteOf = (nodeId) => JSON.parse(db.prepare('SELECT metadata_json AS m FROM topology_nodes WHERE id = ?').get(nodeId).m ?? '{}').accessNote;
+
+  const created = await api('POST', `/admin/cyber-ranges/${f.s1}/topology/nodes`, { label: 'SRV02', nodeType: 'host', accessNote: ' RDP from WS01 ' });
+  assert.equal(created.status, 201);
+  const nodeId = created.body.node.id;
+  assert.equal(noteOf(nodeId), 'RDP from WS01');
+
+  assert.equal((await api('PATCH', `/admin/cyber-ranges/${f.s1}/topology/nodes/${nodeId}`, { accessNote: 'SSH from JUMP01 to 10.0.1.9' })).status, 200);
+  assert.equal(noteOf(nodeId), 'SSH from JUMP01 to 10.0.1.9');
+  assert.equal((await api('PATCH', `/admin/cyber-ranges/${f.s1}/topology/nodes/${nodeId}`, { accessNote: 'x'.repeat(501) })).status, 400);
+
+  publishTopology(f.s1, 'instructor');
+  const published = getPublishedTopology(f.s1).nodes.find((n) => n.id === nodeId);
+  assert.equal(JSON.parse(published.metadataJson).accessNote, 'SSH from JUMP01 to 10.0.1.9');
+
+  assert.equal((await api('PATCH', `/admin/cyber-ranges/${f.s1}/topology/nodes/${nodeId}`, { accessNote: '' })).status, 200);
+  assert.equal(noteOf(nodeId), undefined);
+});

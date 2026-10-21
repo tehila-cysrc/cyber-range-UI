@@ -150,6 +150,8 @@ export function TopologyViewerPage() {
   const metadata = parseMetadata(selectedNode?.metadataJson);
   const ip = metadata && typeof metadata.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
   const os = metadata && typeof metadata.osType === 'string' ? metadata.osType : null;
+  // Instructor's note on how to reach a manually added machine (e.g. "RDP from WS01").
+  const accessNote = metadata && typeof metadata.accessNote === 'string' ? metadata.accessNote : null;
 
   const nodes = topologyData?.nodes ?? [];
   // Only statuses the instructor actually set — an "UNKNOWN (3)" badge told students nothing.
@@ -244,7 +246,17 @@ export function TopologyViewerPage() {
                 )}
               </div>
 
-              {!selectedNode.hasAccessTarget && (
+              {accessNote && (
+                <div style={{ marginTop: 14, fontSize: 13 }}>
+                  <div style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+                    How to reach it
+                  </div>
+                  <div style={{ color: 'var(--text-primary)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    <bdi>{accessNote}</bdi>
+                  </div>
+                </div>
+              )}
+              {!selectedNode.hasAccessTarget && !accessNote && (
                 <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-telemetry)' }}>
                   Remote access isn't available for this machine.
                 </div>
