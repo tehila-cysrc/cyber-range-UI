@@ -62,6 +62,7 @@ export const PERMISSIONS = [
   // Uploading a scenario's ground-truth document uses scenario.author; the decision route also needs score.award.
   'ai_assessment.use',
   'ai_resources.manage', // admin: list / delete the app's Foundry files and vector stores (explicit cleanup only)
+  'certificate.manage', // admin: the certificate library (texts shared by every scenario)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

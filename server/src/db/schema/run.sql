@@ -278,13 +278,16 @@ CREATE TABLE IF NOT EXISTS documentation_feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_documentation_feedback_entry ON documentation_feedback (documentation_entry_id);
 
--- Instructor override: a student may download the completion certificate even without a completed
--- scenario (e.g. the instructor never marked it completed, or something broke). RUN — cascades with
--- the student. A student is otherwise eligible once any of their team's scenarios is completed
--- (certificate.service.ts); the certificate itself is generated in the browser, never stored.
+-- Instructor override: a student may download a scenario's certificate even without completing it
+-- (e.g. the instructor never marked it completed, or something broke). One row per (student, scenario);
+-- cyber_range_id NULL = a grant made before certificates were per scenario (default certificate).
+-- RUN — cascades with the student. A student is otherwise eligible for each scenario their team
+-- completed (certificate.service.ts); the certificate itself is generated in the browser, never stored.
+-- The (user_id, cyber_range_id) unique index lives in migrate.ts (older databases get the column there first).
 CREATE TABLE IF NOT EXISTS certificate_grants (
   id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cyber_range_id INTEGER REFERENCES cyber_ranges(id) ON DELETE CASCADE,
   granted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   granted_at TEXT NOT NULL
 );

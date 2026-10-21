@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { db } from './index.js';
 import { publishTopology } from '../services/topologyPublication.service.js';
+import { ensureDefaultCertificateTemplate } from '../services/certificateTemplates.service.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -116,6 +117,35 @@ function relaxScoresForTtpAwards() {
     ALTER TABLE scores_new RENAME TO scores;
     COMMIT;
   `);
+}
+
+// certificate_grants predates per-scenario certificates (2026-10-21): it had `user_id UNIQUE` and no
+// cyber_range_id. SQLite can't drop an inline UNIQUE, so the table is rebuilt once, guarded by the
+// presence of cyber_range_id. Existing grants keep cyber_range_id NULL (= the default certificate) —
+// guessing which scenario they were meant for could hand out the wrong certificate.
+function perScenarioCertificateGrants() {
+  const columns = db.prepare(`PRAGMA table_info(certificate_grants)`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === 'cyber_range_id')) {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE certificate_grants_new (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        cyber_range_id INTEGER REFERENCES cyber_ranges(id) ON DELETE CASCADE,
+        granted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        granted_at TEXT NOT NULL
+      );
+      INSERT INTO certificate_grants_new (id, user_id, granted_by_user_id, granted_at)
+        SELECT id, user_id, granted_by_user_id, granted_at FROM certificate_grants;
+      DROP TABLE certificate_grants;
+      ALTER TABLE certificate_grants_new RENAME TO certificate_grants;
+      COMMIT;
+    `);
+  }
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_certificate_grants_user_range
+       ON certificate_grants (user_id, IFNULL(cyber_range_id, 0))`,
+  );
 }
 
 // RBAC (accounts): every staff row of the active run that predates the accounts table becomes an
@@ -278,6 +308,12 @@ export function migrate() {
      WHERE first_completed_at IS NULL AND completed_at IS NOT NULL`,
   );
   relaxScoresForTtpAwards();
+
+  // Certificate library: which certificate a scenario awards (NULL = the default template), and
+  // grants per (student, scenario). CONFIG -> CONFIG reference.
+  addColumnIfMissing('cyber_ranges', 'certificate_template_id', 'INTEGER REFERENCES certificate_templates(id) ON DELETE SET NULL');
+  ensureDefaultCertificateTemplate();
+  perScenarioCertificateGrants();
 
   // RBAC: staff identities live in accounts (CONFIG); see backfillStaffAccounts.
   addColumnIfMissing('users', 'account_id', 'INTEGER REFERENCES accounts(id)');

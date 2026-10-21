@@ -327,3 +327,26 @@ CREATE TABLE IF NOT EXISTS ai_foundry_resources (
   delete_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ai_foundry_resources_document ON ai_foundry_resources (document_id);
+
+-- Certificate library (2026-10-21): named completion-certificate texts on the one approved design
+-- (client features/certificate/Certificate.tsx). A scenario picks one (cyber_ranges.certificate_template_id,
+-- added in migrate.ts; NULL = the default); exactly one row is the default (partial unique index).
+-- Seeded once by migrate.ts with the original copy. skills_json = JSON array of short strings.
+CREATE TABLE IF NOT EXISTS certificate_templates (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  label TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  skills_json TEXT NOT NULL DEFAULT '[]',
+  program TEXT NOT NULL,
+  program_highlight TEXT NOT NULL,
+  signer_name TEXT NOT NULL,
+  signer_title TEXT NOT NULL,
+  status_text TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_certificate_templates_name ON certificate_templates (name COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_certificate_templates_default ON certificate_templates (is_default) WHERE is_default = 1;

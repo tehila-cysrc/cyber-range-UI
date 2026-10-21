@@ -49,7 +49,8 @@ export type Permission =
   | 'mitre.read'
   | 'profile.self'
   | 'ai_assessment.use'
-  | 'ai_resources.manage';
+  | 'ai_resources.manage'
+  | 'certificate.manage';
 
 // Admin and instructor both use the staff UI; the server decides what each may actually do.
 export function isStaff(role: Role | null | undefined): boolean {

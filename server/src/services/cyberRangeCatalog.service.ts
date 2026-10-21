@@ -1,5 +1,6 @@
 import { db } from '../db/index.js';
 import { writeAudit } from './audit.service.js';
+import { certificateTemplateExists } from './certificateTemplates.service.js';
 
 // Cyber Range (scenario) catalog writes shared by POST /admin/cyber-ranges and the Environments
 // registration flow, which creates its range in the same transaction as the environment.
@@ -16,6 +17,8 @@ export interface NewCyberRangeInput {
   difficulty: string;
   expectedDurationMinutes?: number | null;
   studentBriefing?: unknown;
+  /** The certificate library entry it awards; null/absent = the default certificate. */
+  certificateTemplateId?: number | null;
 }
 
 /** Returns an error message for a 400, or null when the input can be inserted. */
@@ -25,7 +28,13 @@ export function validateNewCyberRange(input: Record<string, unknown> | null | un
     return `dayId (number), name (string) and difficulty ('intermediate'|'advanced') are required`;
   }
   if (!db.prepare('SELECT id FROM days WHERE id = ?').get(dayId)) return 'unknown dayId';
-  return null;
+  return validateCertificateTemplateId(input?.certificateTemplateId);
+}
+
+/** undefined/null (= default certificate) or an existing certificate library id. */
+export function validateCertificateTemplateId(value: unknown): string | null {
+  if (value === undefined || value === null || certificateTemplateExists(value)) return null;
+  return 'unknown certificateTemplateId';
 }
 
 export function insertCyberRange(input: NewCyberRangeInput): number {
@@ -35,10 +44,18 @@ export function insertCyberRange(input: NewCyberRangeInput): number {
 
   const result = db
     .prepare(
-      `INSERT INTO cyber_ranges (day_id, name, difficulty, expected_duration_minutes, sort_order, student_briefing)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO cyber_ranges (day_id, name, difficulty, expected_duration_minutes, sort_order, student_briefing, certificate_template_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(input.dayId, input.name.trim(), input.difficulty, input.expectedDurationMinutes ?? null, maxSort + 1, normalizeBriefing(input.studentBriefing));
+    .run(
+      input.dayId,
+      input.name.trim(),
+      input.difficulty,
+      input.expectedDurationMinutes ?? null,
+      maxSort + 1,
+      normalizeBriefing(input.studentBriefing),
+      input.certificateTemplateId ?? null,
+    );
   return Number(result.lastInsertRowid);
 }
 

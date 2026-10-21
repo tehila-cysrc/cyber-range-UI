@@ -2,19 +2,39 @@ import wordmarkWhite from '../../assets/logo-wordmark-white.svg';
 import markGreen from '../../assets/logo-mark-green.svg';
 import './certificate.css';
 
-const SKILLS = [
-  'AI Agent Compromise',
-  'C2 Investigation',
-  'Identity & Credential Abuse',
-  'Hybrid Pivoting',
-  'Attack Reconstruction',
-  'Containment & Remediation',
-];
+// The printed text of a certificate — one entry of the certificate library (server
+// certificateTemplates.service.ts; a scenario picks which one it awards). The design itself is fixed.
+export interface CertificateTemplate {
+  id: number;
+  name: string;
+  label: string;
+  /** Up to two lines, separated by "\n". */
+  title: string;
+  body: string;
+  skills: string[];
+  program: string;
+  programHighlight: string;
+  signerName: string;
+  signerTitle: string;
+  statusText: string;
+  isDefault: boolean;
+}
 
-// Copy is fixed (the approved final version of design 1); only the student's name and the date vary.
-export function Certificate({ name, date, ref }: { name: string; date: string; ref?: React.Ref<HTMLDivElement> }) {
+// Design 1 (docs/brand/certificates); the template supplies the copy, the student's name and the date vary.
+export function Certificate({
+  name,
+  date,
+  template,
+  ref,
+}: {
+  name: string;
+  date: string;
+  template: CertificateTemplate;
+  ref?: React.Ref<HTMLDivElement>;
+}) {
   // Long names shrink so they never run into the seal.
   const nameSize = name.length > 30 ? '24pt' : name.length > 22 ? '28pt' : undefined;
+  const titleLines = template.title.split('\n');
   return (
     <div className="cert" ref={ref}>
       <div className="abs frame" />
@@ -25,31 +45,36 @@ export function Certificate({ name, date, ref }: { name: string; date: string; r
 
       <img className="abs logo" src={wordmarkWhite} alt="CySource" />
       <div className="abs meta">
-        Advanced SOC Training
+        {template.program}
         <br />
-        <b>Cyber Range</b>
+        <b>{template.programHighlight}</b>
       </div>
 
       <div className="abs content">
-        <div className="label">Certificate of Completion</div>
+        <div className="label">{template.label}</div>
         <div className="title">
-          AI Agent Compromise
-          <br />& Hybrid Incident Response
+          {titleLines.map((line, i) => (
+            <span key={i}>
+              {i > 0 && <br />}
+              {line}
+            </span>
+          ))}
         </div>
         <div className="lead">Presented to</div>
         <div className="name" style={nameSize ? { fontSize: nameSize } : undefined}>
           {name}
         </div>
         <div className="rule" />
-        <p className="body">
-          For successfully completing an advanced CySource Cyber Range exercise in AI-driven cyber incident investigation
-          and response across hybrid Microsoft environments.
-        </p>
+        <p className="body">{template.body}</p>
       </div>
 
-      <div className="abs skills">
-        {SKILLS.flatMap((s, i) => (i === 0 ? [<span key={s}>{s}</span>] : [<i key={`d${i}`} />, <span key={s}>{s}</span>]))}
-      </div>
+      {template.skills.length > 0 && (
+        <div className="abs skills" style={template.skills.length < 4 ? { justifyContent: 'center', gap: '8mm' } : undefined}>
+          {template.skills.flatMap((s, i) =>
+            i === 0 ? [<span key={`s${i}`}>{s}</span>] : [<i key={`d${i}`} />, <span key={`s${i}`}>{s}</span>],
+          )}
+        </div>
+      )}
 
       <div className="abs seal" aria-hidden="true">
         <svg viewBox="0 0 200 200">
@@ -70,8 +95,8 @@ export function Certificate({ name, date, ref }: { name: string; date: string; r
 
       <div className="abs sigs">
         <div className="sig">
-          <div className="val">Amir Bar-El</div>
-          <div className="key">CySource Founder</div>
+          <div className="val">{template.signerName}</div>
+          <div className="key">{template.signerTitle}</div>
         </div>
         <div className="sig">
           <div className="val">{date}</div>
@@ -80,7 +105,7 @@ export function Certificate({ name, date, ref }: { name: string; date: string; r
       </div>
       <div className="abs status">
         <i />
-        Mission Complete
+        {template.statusText}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import {
   deleteCyberRange,
   insertCyberRange,
   normalizeBriefing,
+  validateCertificateTemplateId,
   validateNewCyberRange,
 } from '../../services/cyberRangeCatalog.service.js';
 
@@ -19,6 +20,7 @@ router.use(requireAuth);
 const SELECT_DETAILS = `
   SELECT cr.id AS id, cr.name AS name, cr.difficulty AS difficulty, cr.day_id AS dayId,
          cr.expected_duration_minutes AS expectedDurationMinutes, cr.student_briefing AS studentBriefing,
+         cr.certificate_template_id AS certificateTemplateId,
          d.key AS dayKey, d.label AS dayLabel
   FROM cyber_ranges cr JOIN days d ON d.id = cr.day_id
   WHERE cr.id = ?`;
@@ -36,8 +38,8 @@ router.post('/cyber-ranges', requirePermission('scenario.create'), (req, res) =>
     res.status(400).json({ error: invalid });
     return;
   }
-  const { dayId, name, difficulty, expectedDurationMinutes, studentBriefing } = req.body;
-  const id = insertCyberRange({ dayId, name, difficulty, expectedDurationMinutes, studentBriefing });
+  const { dayId, name, difficulty, expectedDurationMinutes, studentBriefing, certificateTemplateId } = req.body;
+  const id = insertCyberRange({ dayId, name, difficulty, expectedDurationMinutes, studentBriefing, certificateTemplateId });
   writeAudit(req.user!.username, 'cyber_range.created', 'cyber_range', id, { name }, { cyberRangeId: id });
 
   const cyberRange = db
@@ -74,7 +76,7 @@ router.patch('/cyber-ranges/:id', requirePermission('scenario.author'), (req, re
     return;
   }
   if (!assertScenarioInScope(req, res, id)) return;
-  const { name, dayId, difficulty, expectedDurationMinutes, studentBriefing } = req.body ?? {};
+  const { name, dayId, difficulty, expectedDurationMinutes, studentBriefing, certificateTemplateId } = req.body ?? {};
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
     res.status(400).json({ error: 'name must be a non-empty string' });
     return;
@@ -95,6 +97,11 @@ router.patch('/cyber-ranges/:id', requirePermission('scenario.author'), (req, re
     res.status(400).json({ error: 'expectedDurationMinutes must be a whole number of minutes (1–1440) or null' });
     return;
   }
+  const certificateError = validateCertificateTemplateId(certificateTemplateId);
+  if (certificateError) {
+    res.status(400).json({ error: certificateError });
+    return;
+  }
   // Only the fields sent are changed. A running team's clock keeps its original time limit — a new
   // duration applies from the next (re)start.
   const sets: string[] = [];
@@ -104,6 +111,7 @@ router.patch('/cyber-ranges/:id', requirePermission('scenario.author'), (req, re
   if (difficulty !== undefined) (sets.push('difficulty = ?'), params.push(difficulty));
   if (expectedDurationMinutes !== undefined) (sets.push('expected_duration_minutes = ?'), params.push(expectedDurationMinutes));
   if (studentBriefing !== undefined) (sets.push('student_briefing = ?'), params.push(normalizeBriefing(studentBriefing)));
+  if (certificateTemplateId !== undefined) (sets.push('certificate_template_id = ?'), params.push(certificateTemplateId));
   if (sets.length) {
     db.prepare(`UPDATE cyber_ranges SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
     writeAudit(req.user!.username, 'cyber_range.updated', 'cyber_range', id, { changes: Object.keys(req.body ?? {}) }, { cyberRangeId: id });

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/Button';
 import { useToastStore } from '../../stores/toastStore';
+import { useCan } from '../../lib/permissions';
+import { Link } from 'react-router-dom';
 
 interface Day {
   id: number;
@@ -17,6 +19,7 @@ interface ScenarioDetails {
   difficulty: 'intermediate' | 'advanced';
   expectedDurationMinutes: number | null;
   studentBriefing: string | null;
+  certificateTemplateId: number | null;
 }
 
 const fieldStyle: CSSProperties = {
@@ -49,6 +52,12 @@ export function ScenarioDetailsForm({
   const isNew = cyberRangeId === 'new';
 
   const { data: daysData } = useQuery({ queryKey: ['days'], queryFn: () => apiFetch<{ days: Day[] }>('/admin/days') });
+  const { data: certificatesData } = useQuery({
+    queryKey: ['certificate-templates'],
+    queryFn: () => apiFetch<{ templates: Array<{ id: number; name: string; isDefault: boolean }> }>('/admin/certificate-templates'),
+  });
+  const canManageCertificates = useCan('certificate.manage');
+  const defaultCertificate = certificatesData?.templates.find((t) => t.isDefault);
   const { data } = useQuery({
     queryKey: ['scenario-details', cyberRangeId],
     queryFn: () => apiFetch<{ cyberRange: ScenarioDetails }>(`/admin/cyber-ranges/${cyberRangeId}`),
@@ -60,6 +69,7 @@ export function ScenarioDetailsForm({
   const [difficulty, setDifficulty] = useState<'intermediate' | 'advanced' | ''>('');
   const [duration, setDuration] = useState('');
   const [briefing, setBriefing] = useState('');
+  const [certificateId, setCertificateId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +80,7 @@ export function ScenarioDetailsForm({
       setDifficulty('');
       setDuration('');
       setBriefing('');
+      setCertificateId('');
       return;
     }
     setName(d.name);
@@ -77,6 +88,7 @@ export function ScenarioDetailsForm({
     setDifficulty(d.difficulty);
     setDuration(d.expectedDurationMinutes != null ? String(d.expectedDurationMinutes) : '');
     setBriefing(d.studentBriefing ?? '');
+    setCertificateId(d.certificateTemplateId ?? '');
   }, [data, isNew]);
 
   const save = useMutation({
@@ -87,6 +99,7 @@ export function ScenarioDetailsForm({
         difficulty,
         expectedDurationMinutes: duration.trim() ? Number(duration) : null,
         studentBriefing: briefing,
+        certificateTemplateId: certificateId === '' ? null : certificateId,
       };
       if (isNew) {
         const res = await apiFetch<{ cyberRange: { id: number } }>('/admin/cyber-ranges', {
@@ -166,6 +179,30 @@ export function ScenarioDetailsForm({
           <input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="numeric" placeholder="e.g. 90 (optional)" style={fieldStyle} />
         </label>
       </div>
+      <label style={labelStyle}>
+        Certificate
+        <span style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>
+          What students who complete this scenario download from their Certificate button.
+          {canManageCertificates ? (
+            <>
+              {' '}
+              Edit the texts in <Link to="/admin/certificates" style={{ color: 'var(--signal-secondary)' }}>Certificates</Link>.
+            </>
+          ) : null}
+        </span>
+        <select
+          value={certificateId}
+          onChange={(e) => setCertificateId(e.target.value ? Number(e.target.value) : '')}
+          style={{ ...fieldStyle, maxWidth: 420 }}
+        >
+          <option value="">Default{defaultCertificate ? ` (${defaultCertificate.name})` : ''}</option>
+          {certificatesData?.templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <label style={labelStyle}>
         Student briefing
         <span style={{ fontSize: 12, color: 'var(--text-telemetry)' }}>

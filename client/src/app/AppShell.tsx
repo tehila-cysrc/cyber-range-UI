@@ -60,6 +60,7 @@ const INSTRUCTOR_GROUPS: NavGroup[] = [
       { to: '/admin/teams', label: 'Teams & Students', permission: 'team.read' },
       { to: '/admin/environments', label: 'Cloud Environments', permission: 'environment.manage' },
       { to: '/admin/scripts', label: 'Training Scripts', permission: 'script.read' },
+      { to: '/admin/certificates', label: 'Certificates', permission: 'certificate.manage' },
     ],
   },
 ];
