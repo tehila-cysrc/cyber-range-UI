@@ -9,6 +9,7 @@ import {
   linkEnvironmentToCyberRange,
   listEnvironments,
   listLinkedCyberRanges,
+  previewEnvironmentDeletion,
   registerEnvironmentWithCyberRange,
   unlinkEnvironmentFromCyberRange,
   updateEnvironment,
@@ -140,25 +141,34 @@ router.patch('/environments/:id', MANAGE, (req, res) => {
   res.json({ environment });
 });
 
-router.delete('/environments/:id', MANAGE, (req, res) => {
-  const id = Number(req.params.id);
-  let deleted: boolean;
-  try {
-    deleted = deleteEnvironment(id, req.user!.username);
-  } catch {
-    // FOREIGN KEY failure: a discovered node still has access-session / script-execution history (or
-    // a configured access target) that must not be silently erased — explain instead of a bare 500.
-    res.status(409).json({
-      error:
-        "this environment's hosts have recorded access-session or script history (or configured access targets) and can't be deleted — remove the access targets first, or keep the environment",
-    });
-    return;
-  }
-  if (!deleted) {
+router.get('/environments/:id/delete-preview', MANAGE, (req, res) => {
+  const impact = previewEnvironmentDeletion(Number(req.params.id));
+  if (!impact) {
     res.status(404).json({ error: 'environment not found' });
     return;
   }
-  res.json({ ok: true });
+  res.json({ impact });
+});
+
+router.delete('/environments/:id', MANAGE, (req, res) => {
+  const result = deleteEnvironment(Number(req.params.id), req.user!.username);
+  if (result.status === 'not_found') {
+    res.status(404).json({ error: 'environment not found' });
+    return;
+  }
+  if (result.status === 'busy') {
+    // Only live operations block: an active session's Bastion link is revoked with this
+    // environment's credential, and a running script/discovery would write rows for deleted hosts.
+    const { activeAccessSessions, runningScripts, activeDiscoveryRuns } = result.blockers;
+    const busy = [
+      activeAccessSessions && `${activeAccessSessions} active remote-access session(s) — end them from the Instructor Dashboard`,
+      runningScripts && `${runningScripts} running script(s) — wait for them to finish`,
+      activeDiscoveryRuns && 'a discovery run in progress — wait for it to finish',
+    ].filter(Boolean);
+    res.status(409).json({ error: `this environment can't be deleted right now: ${busy.join('; ')}`, blockers: result.blockers });
+    return;
+  }
+  res.json({ ok: true, impact: result.impact });
 });
 
 router.post('/environments/:id/connectivity-check', MANAGE, async (req, res) => {

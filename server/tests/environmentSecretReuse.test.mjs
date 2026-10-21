@@ -35,7 +35,7 @@ test('copying an environment reuses its secret in a separate credentials row', (
   assert.equal(readCredentialPlaintext(credentialIdOf(b.id)), 'shh');
 
   // Each environment owns its row: deleting the source leaves the copy usable.
-  assert.equal(env.deleteEnvironment(a.id, 'instructor'), true);
+  assert.equal(env.deleteEnvironment(a.id, 'instructor').status, 'deleted');
   assert.equal(readCredentialPlaintext(credentialIdOf(b.id)), 'shh');
 });
 

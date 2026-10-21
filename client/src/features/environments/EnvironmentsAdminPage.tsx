@@ -6,6 +6,45 @@ import { Button } from '../../components/Button';
 import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { useToastStore } from '../../stores/toastStore';
 
+interface EnvironmentDeletionImpact {
+  hosts: number;
+  zones: number;
+  edges: number;
+  discoveryRuns: number;
+  accessTargets: number;
+  accessSessions: number;
+  scriptExecutions: number;
+  ttpOccurrences: number;
+  expectedTtpsUnlinked: number;
+  publishedSnapshots: number;
+  linkedCyberRanges: { id: number; name: string; deactivated: boolean }[];
+  keyVaultSecretsLeftInAzure: string[];
+  blockers: { activeAccessSessions: number; runningScripts: number; activeDiscoveryRuns: number };
+}
+
+function deletionMessage(impact: EnvironmentDeletionImpact): string {
+  const lines = [
+    'ALL data linked to this environment is permanently deleted from the app and cannot be recovered:',
+    `• ${impact.hosts} host(s), ${impact.zones} zone(s), ${impact.edges} connection(s), ${impact.discoveryRuns} discovery run(s)`,
+    `• ${impact.accessTargets} saved VM login(s), ${impact.accessSessions} remote-access session record(s)`,
+    `• ${impact.scriptExecutions} script run record(s)` + (impact.ttpOccurrences ? ` and the ${impact.ttpOccurrences} MTTD occurrence(s) they recorded` : ''),
+    '• its stored credentials',
+  ];
+  if (impact.publishedSnapshots) lines.push(`• the hosts are removed from ${impact.publishedSnapshots} published student topology view(s)`);
+  if (impact.expectedTtpsUnlinked) lines.push(`${impact.expectedTtpsUnlinked} expected technique(s) stay on their scenario, without a host link.`);
+  const deactivated = impact.linkedCyberRanges.filter((r) => r.deactivated).map((r) => r.name);
+  if (deactivated.length) lines.push(`Scenario(s) left with no environment are hidden (not deleted): ${deactivated.join(', ')}.`);
+  lines.push('Teams, users, scores, documentation and other environments are not touched. Nothing is deleted in Azure (VMs, resource groups).');
+  if (impact.keyVaultSecretsLeftInAzure.length) {
+    lines.push(`Key Vault secrets stay in Azure — remove them there if no longer needed: ${impact.keyVaultSecretsLeftInAzure.join(', ')}.`);
+  }
+  const { activeAccessSessions, runningScripts, activeDiscoveryRuns } = impact.blockers;
+  if (activeAccessSessions + runningScripts + activeDiscoveryRuns > 0) {
+    lines.push('', 'Blocked right now: end active remote sessions and wait for running scripts/discovery to finish, then try again.');
+  }
+  return lines.join('\n');
+}
+
 interface PowerOperation {
   action: 'start' | 'stop';
   status: 'running' | 'succeeded' | 'failed';
@@ -492,9 +531,14 @@ export function EnvironmentsAdminPage() {
     },
   });
 
+  const pushToast = useToastStore((s) => s.push);
   const deleteEnvironment = useMutation({
     mutationFn: (id: number) => apiFetch(`/admin/environments/${id}`, { method: 'DELETE' }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      pushToast('Environment deleted', 'success');
+      refresh();
+    },
+    onError: (err) => pushToast(err instanceof ApiError ? err.message : 'Failed to delete environment'),
   });
 
   const checkConnectivity = useMutation({
@@ -532,14 +576,20 @@ export function EnvironmentsAdminPage() {
               isChecking={checkConnectivity.isPending}
               onCheckConnectivity={() => checkConnectivity.mutate(env.id)}
               onDelete={async () => {
-                // Deleting an environment removes every topology node it discovered for its linked
-                // cyber ranges — mid-exercise that blanks the students' topology view.
+                // Deleting an environment removes its hosts and everything recorded on them — show the
+                // admin exactly what goes before they agree.
+                let impact: EnvironmentDeletionImpact;
+                try {
+                  ({ impact } = await apiFetch<{ impact: EnvironmentDeletionImpact }>(`/admin/environments/${env.id}/delete-preview`));
+                } catch (err) {
+                  pushToast(err instanceof ApiError ? err.message : 'Failed to load what this delete would remove');
+                  return;
+                }
                 const ok = await confirmAction({
                   title: `Delete environment "${env.name}"?`,
-                  message:
-                    'Its stored credential is deleted and every topology node it discovered is removed from the linked cyber range(s). Students on those ranges lose those hosts from their Topology view. This cannot be undone.',
+                  message: deletionMessage(impact),
                   requireText: env.name,
-                  confirmLabel: 'Delete environment',
+                  confirmLabel: 'Delete permanently',
                   danger: true,
                 });
                 if (ok) deleteEnvironment.mutate(env.id);

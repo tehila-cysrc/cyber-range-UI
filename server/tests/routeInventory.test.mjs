@@ -122,6 +122,7 @@ const EXPECTED = {
   'POST /api/admin/environments': 'environment.manage',
   'PATCH /api/admin/environments/:id': 'environment.manage',
   'DELETE /api/admin/environments/:id': 'environment.manage',
+  'GET /api/admin/environments/:id/delete-preview': 'environment.manage',
   'POST /api/admin/environments/:id/connectivity-check': 'environment.manage',
   'GET /api/admin/environments/:id/linked-cyber-ranges': 'environment.manage',
   'POST /api/admin/environments/:id/discover': 'environment.manage',
