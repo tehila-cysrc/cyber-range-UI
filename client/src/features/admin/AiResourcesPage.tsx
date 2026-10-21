@@ -7,30 +7,24 @@ import { TelemetryBadge } from '../../components/TelemetryBadge';
 import { confirmAction } from '../../components/ConfirmDialog';
 import { useToastStore } from '../../stores/toastStore';
 
-// Admin "AI Management" (route /admin/ai-resources; platform phase P1 2026-10-18, simplified 2026-10-19).
-// Answers three questions at a glance: is AI ready, does anything need attention, are there unused
-// Foundry resources to review. Technical detail sits under a collapsed "Advanced settings".
-// - Status: from GET /admin/ai/config (setting names only, never values). It says "configured", never
-//   "connected": this page makes no connectivity check. AI is switched on/off only in the server environment.
+// Admin "AI Management" (route /admin/ai-resources; platform phase P1 2026-10-18, simplified 2026-10-19,
+// operational-only 2026-10-21). The admin does NOT manage the agent: its name, version, reply contract,
+// model, instructions and the rubric are pinned in code (server aiConfig.ts PINNED_AGENT) and change only
+// through a reviewed deploy. This page answers three questions: is AI ready, does a reference document
+// need attention, are there unused Foundry resources to review.
+// - Status: from GET /admin/ai/config ({switchOn, configured, enabled} only). It says "configured", never
+//   "connected": this page makes no connectivity check. Missing setting names go to the server log.
 // - Reference documents: the scenario list plus each scenario's existing ai-documents read (DB only, no
 //   Foundry call). Upload/replace stays on the Scenarios page.
 // - Foundry resources: counts from the tracked registry (ai_foundry_resources). Cleanup is explicit:
 //   nothing preselected, only unused candidates are selectable, a confirmation lists the exact Foundry ids
 //   and needs DELETE typed, the server re-checks every id, and results are shown per id. Never automatic.
-// - Foundry inventory (advanced): READ-ONLY listing of the project, loaded only on request. Untracked
-//   items cannot be deleted here.
+// - The read-only Foundry inventory API (GET /admin/ai/foundry-inventory) stays for maintenance; no UI.
 
 interface AiConfigView {
   switchOn: boolean;
   configured: boolean;
   enabled: boolean;
-  missing: string[];
-  agentName: string | null;
-  agentVersion: string | null;
-  requestContractVersion: string;
-  requestTimeoutMs: number;
-  maxConcurrent: number;
-  acceptedContractVersions: string[];
 }
 
 interface ScenarioItem {
@@ -74,25 +68,6 @@ interface CleanupOutcome {
   deleted: { id: number; kind: string; foundryId: string }[];
   failed: { id: number; kind: string; foundryId: string; errorCode: string }[];
 }
-interface Tracked {
-  id: number;
-  scenarioName: string | null;
-  documentVersion: number | null;
-  inUse: boolean;
-  cleanupReason: CleanupReason | null;
-  deleted: boolean;
-}
-interface Inventory {
-  fetchedAt: string;
-  agentName: string | null;
-  pinnedVersion: string | null;
-  vectorStores: { id: string; name: string | null; status: string | null; createdAt: string | null; usageBytes: number | null; fileCount: number | null; tracked: Tracked | null }[];
-  files: { id: string; filename: string | null; bytes: number | null; purpose: string | null; createdAt: string | null; tracked: Tracked | null }[];
-  agentVersions: { version: string; description: string | null; createdAt: string | null; pinned: boolean }[];
-  truncated: { vectorStores: boolean; files: boolean; agentVersions: boolean };
-  missingFromFoundry: { id: number; kind: string; foundryId: string }[];
-}
-
 const REASON: Record<CleanupReason, string> = {
   document_deleted: 'Its scenario or document was deleted',
   superseded_unpinned: 'Replaced by a newer document; no team session uses it',
@@ -102,12 +77,9 @@ const REASON: Record<CleanupReason, string> = {
 const KIND: Record<FoundryResource['kind'], string> = { file: 'File', vector_store: 'Vector store' };
 
 const card: CSSProperties = { background: 'var(--surface-1)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-card, 8px)', padding: 'var(--space-md)', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', minWidth: 0 };
-const th: CSSProperties = { textAlign: 'left', fontSize: 12, color: 'var(--text-telemetry)', fontWeight: 500, padding: '6px 8px', borderBottom: '1px solid var(--surface-border)' };
-const td: CSSProperties = { fontSize: 14, color: 'var(--text-primary)', padding: '6px 8px', borderBottom: '1px solid var(--surface-border)', verticalAlign: 'top' };
 const mono: CSSProperties = { fontFamily: 'var(--font-mono, monospace)', fontSize: 13, overflowWrap: 'anywhere' };
 const muted: CSSProperties = { fontSize: 13, color: 'var(--text-muted)' };
 const alertText: CSSProperties = { fontSize: 13, color: 'var(--signal-alert)' };
-const monoLabel: CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-telemetry)' };
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 const errText = (e: unknown) => (e instanceof ApiError ? `${e.message}${e.reason ? ` (${e.reason})` : ''}` : 'Request failed');
@@ -206,11 +178,10 @@ function StatusCard({ docRows, docsLoading }: { docRows: DocRow[]; docsLoading: 
   if (c) {
     if (!c.switchOn) {
       overall = 'disabled';
-      reasons.push('AI assessment is switched off in the server configuration. Instructors cannot run AI checks.');
-      if (!c.configured) reasons.push(`The configuration is also incomplete (${plural(c.missing.length, 'setting')} missing or invalid — see Advanced settings).`);
+      reasons.push('AI assessment is turned off on this server. Instructors cannot run AI checks.');
     } else if (!c.configured) {
       overall = 'attention';
-      reasons.push(`AI is switched on, but ${plural(c.missing.length, 'required setting is', 'required settings are')} missing or invalid, so AI stays off. The names are listed under Advanced settings.`);
+      reasons.push('AI is turned on, but the server setup is incomplete, so AI stays off. Ask whoever deploys the app — the server log lists what is missing.');
     } else {
       overall = failedDocs.length > 0 || noReadyDoc ? 'attention' : 'ready';
       if (noReadyDoc) reasons.push('No scenario has a ready reference document yet, so AI checks cannot run.');
@@ -237,38 +208,10 @@ function StatusCard({ docRows, docsLoading }: { docRows: DocRow[]; docsLoading: 
               <li key={r}>{r}</li>
             ))}
           </ul>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-sm)' }}>
-            <StatusFact label="Microsoft Foundry">
-              {c.configured ? 'Settings complete' : <span style={{ color: 'var(--signal-alert)' }}>Not configured</span>}
-              <div style={muted}>{c.configured ? 'The connection is not tested on this page; it is used when a document is processed or a check runs.' : 'Required settings are missing in the server environment.'}</div>
-            </StatusFact>
-            <StatusFact label="Agent version">
-              {c.agentVersion ? (
-                <>
-                  <span style={mono}>{c.agentName ?? '—'}</span> · version <span style={mono}>{c.agentVersion}</span>
-                  <div style={muted}>Pinned: a newer version in Foundry is not used until the server is changed.</div>
-                </>
-              ) : (
-                <>
-                  <span style={{ color: 'var(--signal-alert)' }}>No version pinned</span>
-                  <div style={muted}>AI stays off until a reviewed version is set on the server.</div>
-                </>
-              )}
-            </StatusFact>
-          </div>
-          <div style={muted}>AI is turned on or off in the server environment and changed by redeploying, not on this page.</div>
+          <div style={muted}>AI and the agent it uses are set by whoever deploys the app, not on this page.</div>
         </>
       )}
     </section>
-  );
-}
-
-function StatusFact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 'var(--space-sm)', border: '1px solid var(--surface-border)', borderRadius: 'var(--radius-control)', minWidth: 0 }}>
-      <span style={monoLabel}>{label}</span>
-      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>{children}</div>
-    </div>
   );
 }
 
@@ -522,207 +465,6 @@ function ReviewDialog({ onClose, onDone }: { onClose: () => void; onDone: (res: 
   );
 }
 
-// ---- 4. advanced settings -------------------------------------------------------------------------
-
-function AdvancedSettings() {
-  const [open, setOpen] = useState(false);
-  return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        style={{ ...monoLabel, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', alignSelf: 'flex-start' }}
-      >
-        {open ? '▾' : '▸'} Advanced settings
-      </button>
-      {open && (
-        <>
-          <ConfigDetails />
-          <TrackedInventory />
-          <InventoryCard />
-        </>
-      )}
-    </section>
-  );
-}
-
-function ConfigDetails() {
-  const { data, isError } = useAiConfig();
-  const c = data?.config;
-  return (
-    <Card title="Configuration details">
-      {isError && <span style={alertText}>Could not load the configuration.</span>}
-      {c && (
-        <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <TelemetryBadge tone={c.enabled ? 'primary' : 'muted'}>{c.enabled ? 'AI assessment enabled' : 'AI assessment off'}</TelemetryBadge>
-            <TelemetryBadge tone={c.switchOn ? 'secondary' : 'muted'}>Switch {c.switchOn ? 'on' : 'off'}</TelemetryBadge>
-            <TelemetryBadge tone={c.configured ? 'secondary' : 'alert'}>{c.configured ? 'Configured' : 'Not configured'}</TelemetryBadge>
-          </div>
-          <div style={muted}>
-            Agent <span style={mono}>{c.agentName ?? '—'}</span>, pinned version <span style={mono}>{c.agentVersion ?? 'none (AI stays off)'}</span> · response contract{' '}
-            {c.requestContractVersion} · accepted reply formats {c.acceptedContractVersions.join(', ')} · timeout {Math.round(c.requestTimeoutMs / 1000)} s · up to {c.maxConcurrent} jobs at a time
-          </div>
-          {c.missing.length > 0 ? (
-            <div style={alertText}>
-              Missing or invalid settings: <span style={mono}>{c.missing.join(', ')}</span>
-            </div>
-          ) : (
-            <div style={muted}>No missing settings.</div>
-          )}
-          <div style={muted}>Setting names only — values and secrets are never shown. They are changed in the server environment by redeploying.</div>
-        </>
-      )}
-    </Card>
-  );
-}
-
-// Read-only: deleting happens only through "Review unused resources".
-function TrackedInventory() {
-  const { data, isLoading, isError } = useTrackedResources();
-  const rows = data?.resources ?? [];
-  return (
-    <Card title="All tracked Foundry resources">
-      <div style={muted}>Every file and vector store this app created, including in-use and deleted ones.</div>
-      {isLoading && <span style={muted}>Loading…</span>}
-      {isError && <span style={alertText}>Could not load the resources.</span>}
-      {data && rows.length === 0 && <span style={muted}>This app has not created any Foundry resources yet.</span>}
-      {rows.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={th}>Kind</th>
-                <th style={th}>Foundry id</th>
-                <th style={th}>Scenario · version</th>
-                <th style={th}>Status</th>
-                <th style={th}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={td}>{KIND[r.kind]}</td>
-                  <td style={{ ...td, ...mono }}>{r.foundryId}</td>
-                  <td style={td}>
-                    {r.scenarioName ?? <span style={muted}>deleted scenario</span>}
-                    {r.documentVersion ? ` · v${r.documentVersion}` : ''}
-                  </td>
-                  <td style={td}>
-                    {r.deletedAt ? (
-                      <TelemetryBadge tone="muted">
-                        Deleted {when(r.deletedAt)}
-                        {r.deletedBy ? ` by ${r.deletedBy}` : ''}
-                      </TelemetryBadge>
-                    ) : r.inUse ? (
-                      <TelemetryBadge tone="primary">In use</TelemetryBadge>
-                    ) : r.cleanupReason ? (
-                      <TelemetryBadge tone="secondary">Unused</TelemetryBadge>
-                    ) : null}
-                    {r.deleteError && <div style={{ fontSize: 12, color: 'var(--signal-alert)' }}>Last delete failed: {r.deleteError}</div>}
-                  </td>
-                  <td style={td}>{when(r.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function TrackedBadge({ t }: { t: Tracked | null }) {
-  if (!t) return <TelemetryBadge tone="tertiary">Not tracked by this app</TelemetryBadge>;
-  if (t.deleted) return <TelemetryBadge tone="alert">Tracked as deleted</TelemetryBadge>;
-  return (
-    <TelemetryBadge tone={t.inUse ? 'primary' : 'secondary'}>
-      {t.scenarioName ?? 'deleted scenario'}
-      {t.documentVersion ? ` v${t.documentVersion}` : ''} · {t.inUse ? 'in use' : 'cleanup candidate'}
-    </TelemetryBadge>
-  );
-}
-
-function InventoryCard() {
-  const [requested, setRequested] = useState(false);
-  const { data, isFetching, error, refetch } = useQuery({
-    queryKey: ['ai-foundry-inventory'],
-    queryFn: () => apiFetch<{ inventory: Inventory }>('/admin/ai/foundry-inventory'),
-    enabled: requested, // only when the admin asks: this calls Microsoft Foundry (read-only)
-    retry: false,
-  });
-  const inv = data?.inventory;
-  return (
-    <Card
-      title="Foundry project inventory (read-only)"
-      right={
-        <Button variant="ghost" disabled={isFetching} onClick={() => (requested ? void refetch() : setRequested(true))}>
-          {isFetching ? 'Loading…' : inv ? 'Refresh from Foundry' : 'Load from Foundry'}
-        </Button>
-      }
-    >
-      <div style={muted}>
-        Lists what exists in the Foundry project, including resources this app does not track (for example test resources created by scripts). Untracked items can't be deleted
-        here; their cleanup needs a separate decision.
-      </div>
-      {error && <span style={alertText}>Could not list Foundry: {errText(error)}</span>}
-      {inv && (
-        <div style={{ overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <div style={muted}>Fetched {when(inv.fetchedAt)}</div>
-          <h3 style={{ fontSize: 14, margin: '8px 0 0' }}>Agent versions — {inv.agentName}</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {inv.agentVersions.map((a) => (
-                <tr key={a.version}>
-                  <td style={{ ...td, ...mono, width: 60 }}>v{a.version}</td>
-                  <td style={td}>{a.description || <span style={muted}>no description</span>}</td>
-                  <td style={td}>{a.pinned ? <TelemetryBadge tone="primary">Pinned on this server</TelemetryBadge> : null}</td>
-                  <td style={td}>{when(a.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <h3 style={{ fontSize: 14, margin: '8px 0 0' }}>Vector stores</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {inv.vectorStores.map((v) => (
-                <tr key={v.id}>
-                  <td style={{ ...td, ...mono }}>{v.id}</td>
-                  <td style={td}>{v.name ?? '—'}</td>
-                  <td style={td}>
-                    <TrackedBadge t={v.tracked} />
-                  </td>
-                  <td style={td}>{when(v.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <h3 style={{ fontSize: 14, margin: '8px 0 0' }}>Files</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {inv.files.map((f) => (
-                <tr key={f.id}>
-                  <td style={{ ...td, ...mono }}>{f.id}</td>
-                  <td style={td}>{f.filename ?? '—'}</td>
-                  <td style={td}>
-                    <TrackedBadge t={f.tracked} />
-                  </td>
-                  <td style={td}>{when(f.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {(inv.truncated.vectorStores || inv.truncated.files || inv.truncated.agentVersions) && <div style={muted}>Only the first 100 of each kind are shown.</div>}
-          {inv.missingFromFoundry.length > 0 && (
-            <div style={muted}>Tracked but not listed by Foundry (already gone, or beyond the first page): {inv.missingFromFoundry.map((m) => m.foundryId).join(', ')}</div>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export function AiResourcesPage() {
   const docs = useDocRows();
   return (
@@ -731,7 +473,6 @@ export function AiResourcesPage() {
       <StatusCard docRows={docs.rows} docsLoading={docs.isLoading || docs.rows.some((r) => r.loading)} />
       <DocumentsCard rows={docs.rows} isLoading={docs.isLoading} isError={docs.isError} />
       <ResourcesCard />
-      <AdvancedSettings />
     </div>
   );
 }

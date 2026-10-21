@@ -117,7 +117,6 @@ const R = () => [
   ['rebuild S2 (not missing -> 409 when allowed)', 'POST', `/api/admin/cyber-ranges/${f.s2}/ai-documents/${ids.docS2}/rebuild`, null, { admin: 409, iA: 404, iAB: 409, student: 403, anon: 401 }],
   ['download S2', 'GET', `/api/admin/cyber-ranges/${f.s2}/ai-documents/${ids.docS2}/content`, null, { admin: 200, iA: 404, iAB: 200, student: 403, anon: 401 }],
   ['download S1 doc via S2 url', 'GET', `/api/admin/cyber-ranges/${f.s2}/ai-documents/${ids.docS1}/content`, null, { admin: 404, iA: 404, iAB: 404, student: 403, anon: 401 }],
-  ['rubric S2 (bad sum -> 400 when allowed)', 'PUT', `/api/admin/cyber-ranges/${f.s2}/ai-rubric`, { criteria: [] }, { admin: 400, iA: 404, iAB: 400, student: 403, anon: 401 }],
   ['request A/S2 (cross product)', 'POST', '/api/admin/ai-assessments', { teamId: f.teamA, cyberRangeId: f.s2, mode: 'bogus' }, { admin: 400, iA: 400, iAB: 400, student: 403, anon: 401 }],
   // A's S2 session is paused: live reviews of a paused session are allowed (admin 202); scoped never.
   ['request A/S2 live', 'POST', '/api/admin/ai-assessments', { teamId: f.teamA, cyberRangeId: f.s2, mode: 'live' }, { admin: 202, iA: 404, iAB: 404, student: 403, anon: 401 }],
@@ -207,14 +206,13 @@ test('every AI route in the route inventory is covered by the matrix', async () 
 });
 
 test('audit completeness: every AI mutation leaves an audit row (ids/codes only, no content)', async () => {
-  // Generate the remaining actions: decision, rubric, download, cleanup (after superseding S1 v1).
+  // Generate the remaining actions: decision, download, cleanup (after superseding S1 v1). The rubric is
+  // code-defined since 2026-10-21, so there is no rubric mutation to audit.
   const post = (path, token, body) => fetch(base + path, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   assert.equal((await post(`/api/admin/ai-assessments/${ids.aA1}/decision`, tok.admin, { decision: 'approved' })).status, 200);
-  const crit = { criteria: [{ key: 'identification', maxPoints: 40 }, { key: 'understanding', maxPoints: 30 }, { key: 'connections', maxPoints: 20 }, { key: 'clarity', maxPoints: 10 }] };
-  assert.equal((await fetch(`${base}/api/admin/cyber-ranges/${f.s1}/ai-rubric`, { method: 'PUT', headers: { Authorization: `Bearer ${tok.admin}`, 'Content-Type': 'application/json' }, body: JSON.stringify(crit) })).status, 200);
   await (await fetch(`${base}/api/admin/cyber-ranges/${f.s1}/ai-documents/${ids.docS1}/content`, { headers: { Authorization: `Bearer ${tok.admin}` } })).arrayBuffer();
   const actions = new Set(db.prepare("SELECT DISTINCT action FROM audit_log WHERE action LIKE 'ai_%'").all().map((r) => r.action));
-  for (const a of ['ai_document.uploaded', 'ai_document.indexed', 'ai_assessment.requested', 'ai_assessment.completed', 'ai_assessment.decided', 'ai_rubric.updated', 'ai_document.downloaded']) {
+  for (const a of ['ai_document.uploaded', 'ai_document.indexed', 'ai_assessment.requested', 'ai_assessment.completed', 'ai_assessment.decided', 'ai_document.downloaded']) {
     assert.ok(actions.has(a), `missing audit action ${a}`);
   }
   // No AI audit row carries document text, student text or model output.

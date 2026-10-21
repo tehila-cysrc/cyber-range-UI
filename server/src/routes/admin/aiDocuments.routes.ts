@@ -12,7 +12,6 @@ import {
   rebuildVersion,
   documentContent,
   retryVersion,
-  setRubric,
   uploadVersion,
   type ServiceResult,
 } from '../../services/ai/scenarioAiDocuments.service.js';
@@ -108,16 +107,7 @@ router.get('/cyber-ranges/:cyberRangeId/ai-documents/:documentId/content', requi
   res.send(Buffer.from(r.value.bytes));
 });
 
-router.put('/cyber-ranges/:cyberRangeId/ai-rubric', requirePermission('scenario.author'), (req, res) => {
-  const rangeId = scenarioFromParam(req, res);
-  if (rangeId === null) return;
-  const error = setRubric(rangeId, req.body, req.user!.username);
-  if (error) {
-    res.status(400).json({ error, reason: 'invalid_rubric' });
-    return;
-  }
-  res.json({ rubric: getRubric(rangeId) });
-});
+// The final-assessment rubric is defined in code (2026-10-21) — no route edits it.
 
 // Admin only. Lists the app's recorded Foundry resources; ?state=candidates (default) = unused ones the
 // admin may approve for deletion. Nothing is ever deleted by listing.

@@ -21,8 +21,8 @@ The rehearsal used an old production snapshot, not today's data. Step 3 repeats 
 - [ ] Coolify env: `INITIAL_ADMIN_PASSWORD` set (production already has RBAC accounts, so it should not trigger — set it anyway).
 - [ ] Coolify env for AI, **with the switch off** for the deploy:
   - `AI_ASSESSMENT_ENABLED=false`
-  - `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_AGENT_NAME=cyber-range-assessor`
-  - `FOUNDRY_AGENT_VERSION=7`, `FOUNDRY_AGENT_CONTRACT_VERSION=3` (user decision 2026-10-19: use v7 for now; connectivity-tested, not production-approved)
+  - `FOUNDRY_PROJECT_ENDPOINT`
+  - The agent (cyber-range-assessor v7, contract 3) is pinned in code since 2026-10-21 — no agent variables in Coolify (v7: user decision 2026-10-19, connectivity-tested, not production-approved)
   - `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — **decide which service principal**: the runbook requires a dedicated one with only "Foundry User"; the local `.env` one may be the over-privileged `sp-cyber-range-demo` (FOLLOWUPS P2).
 
 ## 2. Backup (approval) — Coolify terminal of the running container

@@ -36,42 +36,14 @@ export interface Rubric {
   isDefault: boolean;
 }
 
-export function getRubric(cyberRangeId: number): Rubric {
-  const row = db.prepare('SELECT ai_rubric_json AS j FROM cyber_ranges WHERE id = ?').get(cyberRangeId) as { j: string | null } | undefined;
-  let weights: Record<RubricKey, number> = DEFAULT_RUBRIC;
-  let isDefault = true;
-  if (row?.j) {
-    try {
-      const parsed = JSON.parse(row.j) as Record<string, number>;
-      if (RUBRIC_KEYS.every((k) => Number.isInteger(parsed[k]))) {
-        weights = parsed as Record<RubricKey, number>;
-        isDefault = false;
-      }
-    } catch {
-      /* fall back to the default */
-    }
-  }
-  return { criteria: RUBRIC_KEYS.map((key) => ({ key, label: RUBRIC_LABELS[key], maxPoints: weights[key] })), isDefault };
+// The rubric is defined in code (user decision 2026-10-21): the same DEFAULT_RUBRIC for every scenario,
+// changed only by a reviewed code change + deploy. The cyber_ranges.ai_rubric_json column is no longer
+// read or written (no environment had a saved custom rubric when this changed). The parameter stays so
+// call sites and assessment records keep their shape.
+export function getRubric(_cyberRangeId: number): Rubric {
+  return { criteria: RUBRIC_KEYS.map((key) => ({ key, label: RUBRIC_LABELS[key], maxPoints: DEFAULT_RUBRIC[key] })), isDefault: true };
 }
 
-// Returns an error message, or null when saved.
-export function setRubric(cyberRangeId: number, body: unknown, actorUsername: string): string | null {
-  const criteria = (body as { criteria?: unknown })?.criteria;
-  if (!Array.isArray(criteria) || criteria.length !== RUBRIC_KEYS.length) return `criteria must list exactly: ${RUBRIC_KEYS.join(', ')}`;
-  const weights: Partial<Record<RubricKey, number>> = {};
-  for (const c of criteria as { key?: unknown; maxPoints?: unknown }[]) {
-    if (!RUBRIC_KEYS.includes(c?.key as RubricKey)) return `unknown criterion ${JSON.stringify(c?.key)}`;
-    if (weights[c.key as RubricKey] !== undefined) return `duplicate criterion ${c.key}`;
-    if (!Number.isInteger(c.maxPoints) || (c.maxPoints as number) < 0 || (c.maxPoints as number) > 100) return 'each maxPoints must be an integer 0..100';
-    weights[c.key as RubricKey] = c.maxPoints as number;
-  }
-  const sum = RUBRIC_KEYS.reduce((s, k) => s + (weights[k] ?? 0), 0);
-  if (sum !== 100) return `the weights must add up to 100 (got ${sum})`;
-  const ordered = Object.fromEntries(RUBRIC_KEYS.map((k) => [k, weights[k]]));
-  db.prepare('UPDATE cyber_ranges SET ai_rubric_json = ? WHERE id = ?').run(JSON.stringify(ordered), cyberRangeId);
-  writeAudit(actorUsername, 'ai_rubric.updated', 'cyber_range', cyberRangeId, { weights: ordered }, { cyberRangeId });
-  return null;
-}
 
 // ---------------------------------------------------------------------------------------------
 // Read model. The DTO never carries bytes or Foundry ids.

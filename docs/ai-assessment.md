@@ -23,16 +23,16 @@ The app never sends anything to students on its own. Microsoft Foundry receives 
 
 | Action | Permission | Who |
 |---|---|---|
-| See or upload reference documents, set the rubric, rebuild, download | `scenario.inspect` / `scenario.author` | admin; instructors on their assigned scenarios |
+| See or upload reference documents, rebuild, download | `scenario.inspect` / `scenario.author` | admin; instructors on their assigned scenarios |
 | Run reviews, read results, post feedback, record decisions | `ai_assessment.use` (+ `documentation.feedback`, `score.award`) | admin; instructors on their assigned (organization, scenario) pairs |
-| AI Management: status, reference document overview, tracked resources, cleanup, Foundry inventory | `ai_resources.manage` | admin only |
+| AI Management: readiness, reference document overview, review and delete unused resources | `ai_resources.manage` | admin only |
 | Results export with the "AI Assessment" sheet | `event.export` (all) / `results.export` (assigned pairs) | admin / instructors |
 
 Out-of-scope requests answer 404, and missing permissions answer 403. Both are audited. Students have no AI access.
 
 ## Reference documents (Scenarios page → "Reference document for AI")
 
-Instructors see one Upload / Replace button, a plain status (Ready, Preparing…, Failed + Retry) and the file name. Everything below except upload and retry (version numbers, version history, Rebuild, Download, file details, rubric weights) is under **Advanced settings (admin)**, shown only with `ai_resources.manage`. The server rules are unchanged.
+Instructors see one Upload / Replace button, a plain status (Ready, Preparing…, Failed + Retry) and the file name. Everything below except upload and retry (version numbers, version history, Rebuild, Download, file details) is under **Advanced settings (admin)**, shown only with `ai_resources.manage`. The server rules are unchanged.
 
 
 - **Upload:** PDF, DOCX or TXT, up to 5 MB. Each upload is a new **version**. It is processed in Foundry (a file and a vector store) and becomes current when ready.
@@ -44,7 +44,7 @@ Instructors see one Upload / Replace button, a plain status (Ready, Preparing…
 - **"Foundry copy deleted"** means the version's copy in Foundry is gone. The file is still stored. If sessions still use it, **Rebuild in Foundry** re-uploads it, and the pins don't change.
 - **Download** gives authors the original file. Every download is audited.
 - **Deleting a scenario** removes its versions. Their Foundry copies are never deleted automatically: they appear as unused resources under AI Management.
-- **Rubric:** the weights for the final score (default 40/30/20/10; they must add up to 100). Admin-only in the UI; instructors always get the saved (or default) weights.
+- **Rubric:** the weights for the final score are defined in code (`DEFAULT_RUBRIC`: 40/30/20/10) and are the same for every scenario. There is no editor (2026-10-21); a change is a reviewed code change and a deploy.
 
 ## Running reviews
 
@@ -89,18 +89,17 @@ Instructors see one Upload / Replace button, a plain status (Ready, Preparing…
 
 ## AI Management (admin; System → AI Management, route `/admin/ai-resources`)
 
-Simplified 2026-10-19. The main view answers three questions; technical detail is under a collapsed **Advanced settings**.
+Operational only (2026-10-21). The admin does not manage the agent: its name, version, reply contract — and with the version its model, instructions and temperature — are pinned in code (`PINNED_AGENT` in `server/src/services/ai/aiConfig.ts`), and the rubric is `DEFAULT_RUBRIC`. Changing them is a reviewed code change and a controlled deploy. The page answers three questions:
 
 - **AI status:** **Ready / Disabled / Needs attention**, with the reasons.
-  - *Disabled* = the server switch is off. *Needs attention* = switched on but settings are missing, or a reference document failed / needs a rebuild / no scenario has a ready document.
-  - Shows whether the Foundry settings are complete and the pinned agent version. It never claims a working connection: this page runs no connectivity check.
-  - AI is switched on or off only in the server environment (no toggle here).
+  - *Disabled* = the server switch is off. *Needs attention* = switched on but the deployment is incomplete, or a reference document failed / needs a rebuild / no scenario has a ready document.
+  - No agent, version or setting names are shown. The server log lists missing setting names at startup (`[ai] … missing or invalid: …`). It never claims a working connection: this page runs no connectivity check.
+  - AI is switched on or off only in the deployment configuration (no toggle here).
 - **Reference documents:** each scenario with Ready / Processing / Failed / Missing, the file name and a link to the scenario page. Upload and replace stay on the Scenarios page.
 - **Foundry resources:** counts of tracked, in use and unused (eligible for cleanup) resources.
   - **Review unused resources** opens the cleanup list: type, Foundry ID, why it is unused. Nothing is preselected.
   - Confirm the exact IDs by typing DELETE. The server re-checks each one. Results are shown per ID, and failures stay listed for a retry.
-- **Advanced settings:** configuration details (agent and response contract version, missing setting **names**, timeout, concurrency), the full tracked resource list (read-only), and the **Foundry project inventory**.
-  - The inventory is a read-only listing, loaded only on request. Items the app doesn't track are marked **Not tracked by this app** and can't be deleted here. The pinned agent version is marked.
+- There are no advanced settings. The read-only Foundry inventory remains an API for maintenance only (`GET /admin/ai/foundry-inventory`, admin): it lists the project's vector stores, files and agent versions, marks the code-pinned version, and deletes nothing.
 
 ### Test resources outside the app (kept on decision, cleanup needs a separate approval)
 
@@ -118,14 +117,14 @@ The project's other two stores (`vs_YgzS…`, `vs_cFNP…`) belong to their owne
 | Message (code) | Meaning / action |
 |---|---|
 | AI assessment is turned off (`ai_disabled`) | The kill switch is off on the server |
-| Not configured (`ai_not_configured`) | A setting is missing; AI Management → Advanced settings lists which |
+| Not configured (`ai_not_configured`) | The deployment is missing a setting; the server log at startup names it |
 | No reference document was ready when this session started (`ground_truth_not_ready`) | Upload one; sessions started before any version get the first ready one |
 | Reference version not available in Foundry (`ground_truth_unavailable`) | Rebuild it from the version history |
 | A review is already running (`assessment_in_progress`) / busy (`ai_busy`) / hourly limit (`rate_limited`) | Wait and try again |
 | Timeout / unavailable / rate limited by Foundry | Try again. The server already retried transport errors twice |
 | Content safety filter blocked this review (`ai_content_filtered`) | Often student text that looks like instructions to the AI; review the timeline by hand |
 | Wrong format twice / ran past its length limit / didn't consult the reference (`invalid_response`, `ai_output_runaway`, `ai_no_retrieval`) | No result kept; try again. If repeated, an admin checks the agent |
-| Answer format changed (`contract_mismatch`) | The pinned agent's reply format isn't accepted; check `FOUNDRY_AGENT_VERSION` / `FOUNDRY_AGENT_CONTRACT_VERSION` |
+| Answer format changed (`contract_mismatch`) | The pinned agent's reply format isn't accepted; check `PINNED_AGENT` in `server/src/services/ai/aiConfig.ts` (a code change) |
 | Interrupted | The server restarted mid-run; run it again |
 
 ## Cost (estimate)

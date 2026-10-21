@@ -7,18 +7,22 @@ Status: **prepared 2026-10-18, not executed.**
 
 Enabling AI in any real environment, moving a pin, or any Foundry change needs explicit approval.
 
-## Settings (server environment; a restart applies them)
+## The agent is pinned in code (2026-10-21)
+
+`PINNED_AGENT` in `server/src/services/ai/aiConfig.ts` fixes the agent name (`cyber-range-assessor`), its version (`7`) and the reply contract (`3`). A Foundry agent version is immutable — model, instructions, temperature and response schema are fixed when the version is created — so the pin fixes all of them. The final-score rubric is `DEFAULT_RUBRIC` in `scenarioAiDocuments.service.ts`. Neither the environment nor the admin UI can change any of this; a change is a reviewed commit plus a deploy (see "Moving the pin").
+
+## Settings (deployment environment; a restart applies them)
 
 | Setting | Meaning | Safe default |
 |---|---|---|
 | `AI_ASSESSMENT_ENABLED` | Kill switch. Anything but `true`/`1`/`on`/`yes` = off | unset (off) |
-| `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_AGENT_NAME` | Which Foundry project and agent | — |
-| `FOUNDRY_AGENT_VERSION` | **Required** pinned agent version. Unset = AI stays off (never Foundry's "latest") | unset |
-| `FOUNDRY_AGENT_CONTRACT_VERSION` | Reply format of that version: `2` = v6, `3` = v7. Unknown value = AI stays off | unset (= `2`) |
+| `FOUNDRY_PROJECT_ENDPOINT` | Which Foundry project (per environment) | — |
 | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` | Dedicated service principal, **Foundry User** role on the project only | — |
 | `AI_REQUEST_TIMEOUT_MS`, `AI_MAX_CONCURRENT` | 120000 ms; 3 concurrent jobs | defaults |
 
-**Check** under System → **AI Management**: the status card shows Ready / Disabled / Needs attention and the pinned version; **Advanced settings** → "Configuration details" shows switch / configured / enabled, the response contract, and the names of missing settings. Values and secrets are never shown.
+`FOUNDRY_AGENT_NAME`, `FOUNDRY_AGENT_VERSION` and `FOUNDRY_AGENT_CONTRACT_VERSION` are no longer read (ignored if present).
+
+**Check:** the server log at startup prints `[ai] AI assessment is off …`, `[ai] … missing or invalid: <names>` or `[ai] AI assessment on — agent cyber-range-assessor v7 (contract 3, pinned in code)`. System → **AI Management** shows only Ready / Disabled / Needs attention. Values and secrets are never shown.
 
 ## Agent versions known on 2026-10-18 (all test candidates, none production)
 
@@ -34,8 +38,8 @@ Foundry marks the newest version as "latest"; the app never follows it.
 
 1. **Deploy with AI off.** Deploy the code with `AI_ASSESSMENT_ENABLED` unset (`docs/runbooks/production-deploy-backup-and-rollback.md`).
 2. **Configure without enabling.**
-   - Set the endpoint, agent name, service principal, `FOUNDRY_AGENT_VERSION`, and the matching `FOUNDRY_AGENT_CONTRACT_VERSION`.
-   - Restart, then check AI Management: status **Disabled**, Foundry "Settings complete".
+   - Set the endpoint and the service principal.
+   - Restart, then check the startup log (no missing settings) and AI Management: status **Disabled**.
 3. **Reference documents.** Upload a reference document per scenario on the Scenarios page. This creates one Foundry file and one vector store per version, and every one is tracked under AI Management.
 4. **Enable for a pilot.** Set `AI_ASSESSMENT_ENABLED=true`, restart, and run one live review and one final on a test team before an event.
 5. **Operate.**
@@ -45,29 +49,29 @@ Foundry marks the newest version as "latest"; the app never follows it.
 
 ## Moving the pin (e.g. v6 → v7)
 
-1. Change `FOUNDRY_AGENT_VERSION` **and** `FOUNDRY_AGENT_CONTRACT_VERSION` together (v7 → `3`).
-2. Restart.
+1. In a reviewed commit, change `PINNED_AGENT.version` **and** `PINNED_AGENT.contractVersion` together (and the test that pins them).
+2. Deploy (backup + dry run per the deploy runbook).
 3. **Check what has to stay the same:**
    - running assessments finish on the old version;
    - new ones use the new pin;
    - history rows show "agent vN · format N".
-4. The app accepts replies in formats 2 and 3, so a mismatch between pin and format still parses. Setting both keeps the request honest.
+4. The app accepts replies in formats 2 and 3; a contract it cannot parse keeps AI off.
 
 ## Rollback / emergency stop
 
 | Situation | Action |
 |---|---|
-| Wrong or bad results | Set `FOUNDRY_AGENT_VERSION` (and format) back to the previous version, then restart |
+| Wrong or bad results | `AI_ASSESSMENT_ENABLED=false` and restart now; then revert the `PINNED_AGENT` commit and deploy |
 | Stop everything now | `AI_ASSESSMENT_ENABLED=false`, restart. New AI actions (reviews, uploads, rebuilds) are refused with 503 `ai_disabled`, the UI hides them, and stored results stay readable |
 | Foundry outage | Rate limits and server errors are retried up to twice with backoff, then the job fails with a safe code (`ai_unavailable`, `ai_timeout`, `ai_rate_limited`); instructors can run it again |
 
 ## Foundry resources and cleanup
 
-- Every file and vector store the app creates is recorded under AI Management → Advanced settings → "All tracked Foundry resources".
+- Every file and vector store the app creates is recorded (`ai_foundry_resources`); AI Management shows the counts and the unused ones under "Review unused resources".
 - **Deletion is never automatic:**
   - an admin selects unused candidates and confirms the exact IDs (type DELETE);
   - the server re-checks every one.
-- "Foundry project inventory" is a read-only listing on request. Resources created outside the app are shown as **not tracked** and can't be deleted there. The 2026-10-15/18 test resources are like that: agent v5–v7, 3 files, 3 vector stores; see `BACKLOG.md`.
+- The Foundry project inventory is a read-only API for maintenance (`GET /admin/ai/foundry-inventory`, admin; no UI). Resources created outside the app are shown as **not tracked** and can't be deleted there. The 2026-10-15/18 test resources are like that: agent v5–v7, 3 files, 3 vector stores; see `BACKLOG.md`.
 - If a version's Foundry copy is gone while sessions still use it, rebuild it from the stored file: Scenarios → AI reference document → version history → **Rebuild in Foundry**.
 
 ## Data retention

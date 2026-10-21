@@ -9,6 +9,7 @@ import { startAccessSessionExpirySweep } from './services/accessBroker/accessSes
 import { seed } from './db/seed.js';
 import { importScriptLibraryIfEmpty } from './db/importScriptLibrary.js';
 import { recoverInterruptedAiWork } from './services/ai/scenarioAiDocuments.service.js';
+import { logAiConfigAtStartup } from './services/ai/aiConfig.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
@@ -19,6 +20,7 @@ importScriptLibraryIfEmpty();
 // AI documents/assessments a restart interrupted become failed (retryable). Marks only — never deletes
 // anything in Foundry.
 recoverInterruptedAiWork();
+logAiConfigAtStartup();
 
 const app = createApp();
 const httpServer = createServer(app);

@@ -10,11 +10,11 @@ import { useToastStore } from '../../stores/toastStore';
 import { formatEntryTime } from '../documentation/InvestigationPage';
 
 // AI Scenario Configuration (docs/ai-investigation-assessment-plan.md §F-1): the scenario's ground-truth
-// reference document for the AI assessment, uploaded once and reused by every team, plus the rubric
-// weights. Answer-key data like the ATT&CK list above it — staff only, served under /admin. The server
+// reference document for the AI assessment, uploaded once and reused by every team. The rubric weights
+// are defined in code since 2026-10-21 (no editor). Answer-key data like the ATT&CK list above it — staff only, served under /admin. The server
 // never returns the document bytes or Foundry ids; this screen only shows metadata and status.
 // Simplified instructor UX (2026-10-18): instructors see one upload/replace control and a plain status;
-// version history, rebuild, download, file details and rubric weights sit under "Advanced settings",
+// version history, rebuild, download and file details sit under "Advanced settings",
 // shown to admins (ai_resources.manage) only. Pinning and every server rule are unchanged.
 
 type DocStatus = 'processing' | 'ready' | 'failed' | 'superseded';
@@ -52,7 +52,6 @@ interface AiDocumentsResponse {
 
 const MAX_BYTES = 5 * 1024 * 1024; // mirrors the server limit (documentValidation.ts)
 const ACCEPT = '.pdf,.docx,.txt';
-const DEFAULT_WEIGHTS: Record<RubricKey, number> = { identification: 40, understanding: 30, connections: 20, clarity: 10 };
 
 const monoLabel: CSSProperties = {
   fontFamily: 'var(--font-mono)',
@@ -62,14 +61,6 @@ const monoLabel: CSSProperties = {
   color: 'var(--text-telemetry)',
 };
 
-const fieldStyle: CSSProperties = {
-  background: 'var(--surface-1)',
-  border: '1px solid var(--surface-border)',
-  borderRadius: 'var(--radius-control)',
-  padding: 8,
-  color: 'var(--text-primary)',
-  width: 72,
-};
 
 function formatSize(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -458,121 +449,6 @@ export function AiScenarioConfigSection({ cyberRangeId }: { cyberRangeId: number
         </div>
       )}
 
-      {isAdmin && showAdvanced && data && (
-        // Keyed by the saved weights: a refetch with different weights (another instructor's save)
-        // remounts the editor so its draft starts from the server copy.
-        <RubricEditor
-          key={data.rubric.criteria.map((c) => c.maxPoints).join('-')}
-          cyberRangeId={cyberRangeId}
-          rubric={data.rubric}
-          canEdit={canAuthor}
-          onSaved={invalidate}
-        />
-      )}
     </section>
   );
-}
-
-function RubricEditor({
-  cyberRangeId,
-  rubric,
-  canEdit,
-  onSaved,
-}: {
-  cyberRangeId: number;
-  rubric: AiDocumentsResponse['rubric'];
-  canEdit: boolean;
-  onSaved: () => void;
-}) {
-  const push = useToastStore((s) => s.push);
-  const serverWeights = Object.fromEntries(rubric.criteria.map((c) => [c.key, c.maxPoints])) as Record<RubricKey, number>;
-  const [draft, setDraft] = useState<Record<RubricKey, string>>(() => toDraft(serverWeights));
-  const [error, setError] = useState<string | null>(null);
-
-  const values = rubric.criteria.map((c) => Number(draft[c.key]));
-  const valid = values.every((n) => Number.isInteger(n) && n >= 0 && n <= 100);
-  const total = valid ? values.reduce((s, n) => s + n, 0) : null;
-  const changed = rubric.criteria.some((c) => Number(draft[c.key]) !== c.maxPoints);
-
-  const save = useMutation({
-    mutationFn: () =>
-      apiFetch(`/admin/cyber-ranges/${cyberRangeId}/ai-rubric`, {
-        method: 'PUT',
-        body: JSON.stringify({ criteria: rubric.criteria.map((c) => ({ key: c.key, maxPoints: Number(draft[c.key]) })) }),
-      }),
-    onSuccess: () => {
-      setError(null);
-      push('Rubric weights saved.', 'success');
-      onSaved();
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not save the rubric.'),
-  });
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', borderTop: '1px solid var(--surface-border)', paddingTop: 'var(--space-md)' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <h3 style={{ ...monoLabel, margin: 0 }}>Final assessment rubric</h3>
-        <span style={{ display: 'flex', gap: 6 }}>
-          {rubric.isDefault && <TelemetryBadge>Default</TelemetryBadge>}
-          <TelemetryBadge tone={total === 100 ? 'primary' : 'alert'}>{total ?? '—'} / 100</TelemetryBadge>
-        </span>
-      </div>
-      <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>
-        Weights for the AI's recommended final score. The recommendation is never added to team points or the leaderboard — an
-        instructor reviews it. Documentation clarity is judged leniently; ATT&amp;CK ids and professional terminology are not required.
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', columnGap: 'var(--space-xl)', gap: 'var(--space-sm)' }}>
-        {rubric.criteria.map((c) => (
-          <label key={c.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-sm)', fontSize: 14, color: 'var(--text-primary)' }}>
-            <span>{c.label}</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              inputMode="numeric"
-              disabled={!canEdit}
-              value={draft[c.key]}
-              onChange={(e) => setDraft((d) => ({ ...d, [c.key]: e.target.value }))}
-              className="tabular"
-              style={fieldStyle}
-            />
-          </label>
-        ))}
-      </div>
-      {canEdit && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-sm)', alignItems: 'center' }}>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={!changed || total !== 100 || save.isPending}
-            onClick={() => save.mutate()}
-            style={{ padding: '6px 14px', fontSize: 14 }}
-          >
-            {save.isPending ? 'Saving…' : 'Save weights'}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={save.isPending}
-            onClick={() => setDraft(toDraft(DEFAULT_WEIGHTS))}
-            style={{ padding: '6px 14px', fontSize: 14 }}
-          >
-            Reset to 40 / 30 / 20 / 10
-          </Button>
-          {valid && total !== 100 && <span style={{ fontSize: 14, color: 'var(--signal-alert)' }}>The weights must add up to 100.</span>}
-          {!valid && <span style={{ fontSize: 14, color: 'var(--signal-alert)' }}>Each weight must be a whole number from 0 to 100.</span>}
-        </div>
-      )}
-      {error && (
-        <div role="alert" style={{ color: 'var(--signal-alert)', fontSize: 14 }}>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function toDraft(w: Record<RubricKey, number>): Record<RubricKey, string> {
-  return { identification: String(w.identification), understanding: String(w.understanding), connections: String(w.connections), clarity: String(w.clarity) };
 }

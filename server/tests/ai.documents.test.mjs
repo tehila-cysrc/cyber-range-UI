@@ -151,7 +151,6 @@ test('RBAC: students 403, out-of-scope scenario 404 (audited), in-scope instruct
   // iA holds (A,S1) only: S2 is invisible.
   assert.equal((await upload(f.s2, pdf(), tok.iA)).status, 404);
   assert.equal((await getDocs(f.s2, tok.iA)).status, 404);
-  assert.equal((await call('PUT', `/api/admin/cyber-ranges/${f.s2}/ai-rubric`, tok.iA, { criteria: [] })).status, 404);
   assert.ok(db.prepare("SELECT 1 FROM audit_log WHERE action = 'authz.denied' AND cyber_range_id = ?").get(f.s2));
   assert.equal((await getDocs(999999)).status, 404);
   // In scope: accepted and indexed.
@@ -325,16 +324,14 @@ test('cleanup: admin only, exact approved ids, re-checked, vector stores first, 
   assert.ok(row.bytes > 0);
 });
 
-test('rubric: validated, scoped, stored; default otherwise', async () => {
-  const put = (body, token = tok.iA) => call('PUT', `/api/admin/cyber-ranges/${f.s1}/ai-rubric`, token, body);
-  const crit = (a, b, c, d) => ({ criteria: [{ key: 'identification', maxPoints: a }, { key: 'understanding', maxPoints: b }, { key: 'connections', maxPoints: c }, { key: 'clarity', maxPoints: d }] });
-  assert.equal((await put(crit(40, 30, 20, 20))).status, 400);
-  assert.equal((await put({ criteria: [{ key: 'identification', maxPoints: 100 }] })).status, 400);
-  assert.equal((await put({ ...crit(50, 30, 10, 10), extra: 1 })).status, 200);
+// 2026-10-21: the rubric is defined in code — every scenario gets DEFAULT_RUBRIC, a legacy stored value
+// is ignored, and no route edits it (routeInventory pins the route list).
+test('rubric: defined in code for every scenario; a stored legacy value is ignored', async () => {
+  db.prepare('UPDATE cyber_ranges SET ai_rubric_json = ? WHERE id = ?').run(JSON.stringify({ identification: 50, understanding: 30, connections: 10, clarity: 10 }), f.s1);
   const g = (await getDocs(f.s1, tok.iA)).body.rubric;
-  assert.equal(g.isDefault, false);
-  assert.deepEqual(g.criteria.map((c) => c.maxPoints), [50, 30, 10, 10]);
-  assert.equal((await put(crit(50, 30, 10, 10), tok.studentA)).status, 403);
+  assert.equal(g.isDefault, true);
+  assert.deepEqual(g.criteria.map((c) => [c.key, c.maxPoints]), [['identification', 40], ['understanding', 30], ['connections', 20], ['clarity', 10]]);
+  db.prepare('UPDATE cyber_ranges SET ai_rubric_json = NULL WHERE id = ?').run(f.s1);
 });
 
 test('official scoring untouched and the model never invoked in Phase 2', () => {
@@ -342,14 +339,13 @@ test('official scoring untouched and the model never invoked in Phase 2', () => 
   assert.ok(!fake.calls.some((c) => c.op === 'invokeAssessment'));
 });
 
-test('admin AI config summary: names only, no endpoint/ids/secret; admin only', async () => {
+test('admin AI config summary: readiness only (no agent, version, contract or setting names); admin only', async () => {
   assert.equal((await call('GET', '/api/admin/ai/config', tok.iA)).status, 403);
   const r = await call('GET', '/api/admin/ai/config', tok.admin);
   assert.equal(r.status, 200);
-  assert.equal(r.body.config.agentVersion, '3');
-  assert.deepEqual(r.body.config.acceptedContractVersions, ['2', '3']);
+  assert.deepEqual(Object.keys(r.body.config).sort(), ['configured', 'enabled', 'switchOn']);
   const text = JSON.stringify(r.body);
-  for (const secret of ['fake-secret-value', 'fake-res.services', '11111111-2222', '66666666-7777']) assert.ok(!text.includes(secret), secret);
+  for (const secret of ['fake-secret-value', 'fake-res.services', '11111111-2222', '66666666-7777', 'cyber-range-assessor']) assert.ok(!text.includes(secret), secret);
 });
 
 test('Foundry inventory: read-only, matched to the registry; untracked items are never cleanup candidates', async () => {
@@ -375,7 +371,7 @@ test('Foundry inventory: read-only, matched to the registry; untracked items are
   assert.equal(inv.vectorStores.find((v) => v.id === live.foundryId).tracked.id, live.id);
   assert.equal(inv.vectorStores.find((v) => v.id === 'vs_UntrackedTestStore1').tracked, null);
   assert.equal(inv.files[0].tracked, null);
-  assert.deepEqual(inv.agentVersions.map((a) => [a.version, a.pinned]), [['3', true], ['7', false]]);
+  assert.deepEqual(inv.agentVersions.map((a) => [a.version, a.pinned]), [['3', false], ['7', true]]);
   assert.ok(inv.missingFromFoundry.length > 0); // registry rows the fake did not list
   // Only listing happened.
   assert.deepEqual(fake.calls.slice(before).map((c) => c.op), ['listInventory']);
@@ -386,12 +382,13 @@ test('Foundry inventory: read-only, matched to the registry; untracked items are
   const bad = await call('GET', '/api/admin/ai/foundry-inventory', tok.admin);
   assert.equal(bad.status, 502);
   assert.equal(bad.body.reason, 'ai_auth_failed');
-  const saved = process.env.FOUNDRY_AGENT_VERSION;
-  delete process.env.FOUNDRY_AGENT_VERSION;
+  // Incomplete deployment (the agent is pinned in code, so drop a credential instead).
+  const saved = process.env.AZURE_CLIENT_ID;
+  delete process.env.AZURE_CLIENT_ID;
   try {
     assert.equal((await call('GET', '/api/admin/ai/foundry-inventory', tok.admin)).status, 503);
   } finally {
-    process.env.FOUNDRY_AGENT_VERSION = saved;
+    process.env.AZURE_CLIENT_ID = saved;
   }
   delete fake.listInventory;
 });

@@ -11,7 +11,7 @@ process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), 'cyber-range-ai-')), 'test
 const { db } = await import('../dist/db/index.js');
 const { seed, getActiveEventRunId, createFreshEventRun } = await import('../dist/db/seed.js');
 const { migrate } = await import('../dist/db/migrate.js');
-const { getAiConfig, isAiEnabled, aiStatusSummary } = await import('../dist/services/ai/aiConfig.js');
+const { getAiConfig, isAiEnabled, aiStatusSummary, PINNED_AGENT } = await import('../dist/services/ai/aiConfig.js');
 const { can, permissionsFor } = await import('../dist/authz/permissions.js');
 
 const NOW = '2026-10-15T00:00:00.000Z';
@@ -164,26 +164,29 @@ test('kill switch: AI is off by default and off for any non-"on" value', () => {
 });
 
 test('switched on but incomplete configuration stays disabled and names (only) what is missing', () => {
-  withEnv({ AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_PROJECT_ENDPOINT: 'http://evil.example.com/x', FOUNDRY_AGENT_NAME: 'cyber-range-assessor' }, () => {
+  withEnv({ AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_PROJECT_ENDPOINT: 'http://evil.example.com/x' }, () => {
     const c = getAiConfig();
     assert.equal(c.enabled, false);
     assert.equal(c.switchOn, true);
-    assert.deepEqual(c.missing, ['FOUNDRY_PROJECT_ENDPOINT', 'FOUNDRY_AGENT_VERSION', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET']);
-  });
-  withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_VERSION: 'latest' }, () => {
-    assert.deepEqual(getAiConfig().missing, ['FOUNDRY_AGENT_VERSION']);
+    assert.deepEqual(c.missing, ['FOUNDRY_PROJECT_ENDPOINT', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET']);
   });
 });
 
-test('an unpinned agent version keeps AI disabled (never routes to Foundry’s "latest")', () => {
-  for (const v of [undefined, '', '  ']) {
-    const env = { ...FULL, AI_ASSESSMENT_ENABLED: 'true' };
-    if (v === undefined) delete env.FOUNDRY_AGENT_VERSION;
-    else env.FOUNDRY_AGENT_VERSION = v;
+// 2026-10-21: the agent (name, version, reply contract) is pinned in code. The environment can neither
+// unpin it (Foundry's "latest") nor select another agent, version or contract.
+test('the agent is pinned in code; agent settings in the environment are ignored', () => {
+  assert.deepEqual({ ...PINNED_AGENT }, { name: 'cyber-range-assessor', version: '7', contractVersion: '3' });
+  for (const env of [
+    { ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_VERSION: '' },
+    { ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_VERSION: 'latest', FOUNDRY_AGENT_NAME: 'other-agent', FOUNDRY_AGENT_CONTRACT_VERSION: '2' },
+  ]) {
     withEnv(env, () => {
       const c = getAiConfig();
-      assert.equal(c.enabled, false, JSON.stringify(v));
-      assert.deepEqual(c.missing, ['FOUNDRY_AGENT_VERSION']);
+      assert.equal(c.enabled, true);
+      assert.deepEqual(c.missing, []);
+      assert.equal(c.agentName, 'cyber-range-assessor');
+      assert.equal(c.agentVersion, '7');
+      assert.equal(c.requestContractVersion, '3');
     });
   }
 });
@@ -195,7 +198,7 @@ test('the client secret never appears in config objects or the staff status summ
     assert.equal(c.hasClientSecret, true);
     assert.ok(!JSON.stringify(c).includes(SECRET));
     const s = aiStatusSummary();
-    assert.deepEqual(Object.keys(s).sort(), ['agentName', 'configured', 'enabled']);
+    assert.deepEqual(Object.keys(s).sort(), ['configured', 'enabled']);
     assert.ok(!JSON.stringify(s).includes(SECRET));
     assert.ok(!JSON.stringify(s).includes(FULL.AZURE_CLIENT_ID));
   });
@@ -216,20 +219,10 @@ test('permission ai_assessment.use: admin and instructor, never student', () => 
   assert.ok(!permissionsFor('student').includes('ai_assessment.use'));
 });
 
-test('FOUNDRY_AGENT_CONTRACT_VERSION: optional, defaults to "2", must be an accepted contract (else AI stays disabled)', () => {
+test('the pinned reply contract is one the app accepts (a bad edit would keep AI off)', () => {
   withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true' }, () => {
     const c = getAiConfig();
-    assert.equal(c.requestContractVersion, '2');
+    assert.equal(c.requestContractVersion, PINNED_AGENT.contractVersion);
     assert.equal(c.enabled, true);
   });
-  withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_CONTRACT_VERSION: '3' }, () => {
-    assert.equal(getAiConfig().requestContractVersion, '3');
-    assert.equal(getAiConfig().enabled, true);
-  });
-  for (const bad of ['4', 'latest', '1']) {
-    withEnv({ ...FULL, AI_ASSESSMENT_ENABLED: 'true', FOUNDRY_AGENT_CONTRACT_VERSION: bad }, () => {
-      assert.deepEqual(getAiConfig().missing, ['FOUNDRY_AGENT_CONTRACT_VERSION'], bad);
-      assert.equal(getAiConfig().enabled, false);
-    });
-  }
 });

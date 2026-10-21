@@ -4,39 +4,22 @@
 // re-checked executeCleanup() in scenarioAiDocuments.service.ts, which only accepts registry ids, so an
 // untracked resource (test resources created by scripts, other people's stores) can never be deleted
 // from the app.
-import { ACCEPTED_CONTRACT_VERSIONS } from './assessmentContract.js';
 import { getAiConfig } from './aiConfig.js';
 import { FoundryError, getFoundryClient } from './foundryClient.js';
 import { listFoundryResources, type FoundryResourceDTO } from './scenarioAiDocuments.service.js';
 
+// AI Management's readiness card (2026-10-21): the switch and whether the deployment is complete —
+// no agent, version, contract or setting names (those are code- and deployment-owned; the names of
+// missing settings go to the server log at startup).
 export interface AiConfigView {
   switchOn: boolean;
   configured: boolean;
   enabled: boolean;
-  missing: string[]; // setting NAMES only
-  agentName: string | null;
-  agentVersion: string | null;
-  requestContractVersion: string;
-  requestTimeoutMs: number;
-  maxConcurrent: number;
-  acceptedContractVersions: string[];
 }
 
-// Admin-only: no endpoint, tenant/client ids or secret material.
 export function aiConfigView(): AiConfigView {
   const c = getAiConfig();
-  return {
-    switchOn: c.switchOn,
-    configured: c.configured,
-    enabled: c.enabled,
-    missing: c.missing,
-    agentName: c.agentName,
-    agentVersion: c.agentVersion,
-    requestContractVersion: c.requestContractVersion,
-    requestTimeoutMs: c.requestTimeoutMs,
-    maxConcurrent: c.maxConcurrent,
-    acceptedContractVersions: [...ACCEPTED_CONTRACT_VERSIONS],
-  };
+  return { switchOn: c.switchOn, configured: c.configured, enabled: c.enabled };
 }
 
 type Tracked = Pick<FoundryResourceDTO, 'id' | 'scenarioName' | 'documentVersion' | 'inUse' | 'cleanupReason'> & { deleted: boolean };
