@@ -69,6 +69,7 @@ const fieldStyle: React.CSSProperties = {
 };
 
 type Selection = { type: 'node'; id: number } | { type: 'zone'; id: number } | null;
+type NodePatch = { label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean; privateIpAddress?: string };
 
 // The scenario list can be hidden to give the canvas the full width; remembered per browser.
 const LIST_HIDDEN_KEY = 'topology-admin:list-hidden';
@@ -104,6 +105,7 @@ export function TopologyAdminPage() {
   const [newNodeLabel, setNewNodeLabel] = useState('');
   const [newNodeRole, setNewNodeRole] = useState('');
   const [newNodeZoneId, setNewNodeZoneId] = useState<number | ''>('');
+  const [newNodeIp, setNewNodeIp] = useState('');
   const [newZoneName, setNewZoneName] = useState('');
   const [newZoneCidr, setNewZoneCidr] = useState('');
 
@@ -141,15 +143,18 @@ export function TopologyAdminPage() {
           nodeType: 'host',
           role: newNodeRole || null,
           zoneId: newNodeZoneId === '' ? null : newNodeZoneId,
+          privateIpAddress: newNodeIp.trim() || undefined,
         }),
       }),
     onSuccess: async () => {
       setNewNodeLabel('');
       setNewNodeRole('');
       setNewNodeZoneId('');
+      setNewNodeIp('');
       await queryClient.invalidateQueries({ queryKey: ['topology', cyberRangeId] });
       setLayoutVersion((v) => v + 1);
     },
+    onError: (err) => pushToast(err instanceof Error ? err.message : 'Could not add this node'),
   });
 
   const addZone = useMutation({
@@ -176,9 +181,13 @@ export function TopologyAdminPage() {
   });
 
   const patchNode = useMutation({
-    mutationFn: (patch: { nodeId: number; label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean }) =>
+    mutationFn: (patch: NodePatch & { nodeId: number }) =>
       apiFetch(`/admin/cyber-ranges/${cyberRangeId}/topology/nodes/${patch.nodeId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     onSuccess: invalidate,
+    onError: (err) => {
+      pushToast(err instanceof Error ? err.message : 'Could not save this node');
+      invalidate();
+    },
   });
 
   const deleteNode = useMutation({
@@ -318,6 +327,7 @@ export function TopologyAdminPage() {
                   </option>
                 ))}
               </select>
+              <input value={newNodeIp} onChange={(e) => setNewNodeIp(e.target.value)} placeholder="IP (optional)" style={{ ...fieldStyle, width: 130 }} />
               <Button type="submit" variant="ghost">
                 Add node
               </Button>
@@ -523,7 +533,7 @@ function NodePanel({
   node: TopologyNodeData;
   zones: TopologyZoneData[];
   onClose: () => void;
-  onSave: (patch: { label?: string; role?: string; zoneId?: number; status?: string; isVisibleToStudents?: boolean }) => void;
+  onSave: (patch: NodePatch) => void;
   onDelete: () => void;
   onAccessTargetChanged: () => void;
 }) {
@@ -531,6 +541,8 @@ function NodePanel({
   const metadata = parseMetadata(node.metadataJson);
   const osType = metadata?.osType === 'Windows' || metadata?.osType === 'Linux' ? metadata.osType : null;
   const privateIp = typeof metadata?.privateIpAddress === 'string' ? metadata.privateIpAddress : null;
+  // Only a manually added node's IP is editable — a discovered VM's comes from Azure.
+  const [ip, setIp] = useState(privateIp ?? '');
 
   const queryClient = useQueryClient();
   // VM login credentials live in the environment's Key Vault — environment secrets are admin-only.
@@ -611,7 +623,17 @@ function NodePanel({
       <input value={label} onChange={(e) => setLabel(e.target.value)} onBlur={() => label !== node.label && onSave({ label })} style={{ ...fieldStyle, width: '100%', fontSize: 15, fontWeight: 500, marginBottom: 10 }} />
 
       {/* Shown to students too (TopologyViewerPage) once published — the instructor needs it on hand, not buried in Diagnostics. */}
-      {privateIp && (
+      {!node.environmentId ? (
+        <Field label="Internal IP">
+          <input
+            value={ip}
+            onChange={(e) => setIp(e.target.value)}
+            onBlur={() => ip.trim() !== (privateIp ?? '') && onSave({ privateIpAddress: ip.trim() })}
+            placeholder="e.g. 10.0.1.4"
+            style={{ ...fieldStyle, width: '100%', fontFamily: 'var(--font-mono)' }}
+          />
+        </Field>
+      ) : privateIp && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, fontSize: 13 }}>
           <span style={{ color: 'var(--text-telemetry)', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Internal IP
@@ -658,7 +680,7 @@ function NodePanel({
         Include for students when publishing
       </label>
       <div style={{ fontSize: 12, color: 'var(--text-telemetry)', marginBottom: 10 }}>
-        Name, role, zone, status and visibility save as soon as you change them.
+        Name, IP, role, zone, status and visibility save as soon as you change them.
       </div>
 
       {/* Admin-only diagnostics — the raw discovered metadata, never shown on the canvas itself. */}

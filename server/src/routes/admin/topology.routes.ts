@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { Router } from 'express';
 import { db } from '../../db/index.js';
 import { requireAuth } from '../../middleware/auth.js';
@@ -24,6 +25,14 @@ router.use(requireAuth);
 // operations (Connect, power, scripts) also need the scenario to be exclusive to the caller's scope.
 const AUTHOR = [requirePermission('scenario.author'), scenarioParam] as const;
 
+// Instructor-entered node IP: optional, '' clears it.
+function privateIpAddressProblem(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return 'privateIpAddress must be a string';
+  if (value.trim() && !isIP(value.trim())) return 'privateIpAddress must be a valid IP address';
+  return null;
+}
+
 // Publishing (UX-38): students see only what was last published.
 router.get('/cyber-ranges/:cyberRangeId/topology/publication', requirePermission('scenario.inspect'), scenarioParam, (req, res) => {
   res.json(publicationStatus(Number(req.params.cyberRangeId)));
@@ -39,12 +48,19 @@ router.post('/cyber-ranges/:cyberRangeId/topology/publish', ...AUTHOR, (req, res
 
 router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) => {
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { label, nodeType, posX, posY, metadata, role, zoneId } = req.body ?? {};
+  const { label, nodeType, posX, posY, metadata, role, zoneId, privateIpAddress } = req.body ?? {};
 
   if (typeof label !== 'string' || typeof nodeType !== 'string') {
     res.status(400).json({ error: 'label and nodeType are required' });
     return;
   }
+  const ipProblem = privateIpAddressProblem(privateIpAddress);
+  if (ipProblem) {
+    res.status(400).json({ error: ipProblem });
+    return;
+  }
+  const ip = typeof privateIpAddress === 'string' ? privateIpAddress.trim() : '';
+  const nodeMetadata = ip ? { ...(metadata ?? {}), privateIpAddress: ip } : metadata;
   if (typeof zoneId === 'number' && !rowInScenario('topology_zones', zoneId, cyberRangeId)) {
     res.status(400).json({ error: "that zone isn't part of this scenario's topology" });
     return;
@@ -75,7 +91,7 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) 
       nodeType,
       placedX,
       placedY,
-      metadata ? JSON.stringify(metadata) : null,
+      nodeMetadata ? JSON.stringify(nodeMetadata) : null,
       typeof role === 'string' ? role : null,
       resolvedZoneId,
     );
@@ -98,11 +114,27 @@ router.post('/cyber-ranges/:cyberRangeId/topology/nodes', ...AUTHOR, (req, res) 
 router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (req, res) => {
   const nodeId = Number(req.params.nodeId);
   const cyberRangeId = Number(req.params.cyberRangeId);
-  const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status } = req.body ?? {};
+  const { label, nodeType, posX, posY, role, zoneId, isVisibleToStudents, status, privateIpAddress } = req.body ?? {};
 
   if (!rowInScenario('topology_nodes', nodeId, cyberRangeId)) {
     res.status(404).json({ error: 'node not found' });
     return;
+  }
+  if (privateIpAddress !== undefined) {
+    const ipProblem = privateIpAddressProblem(privateIpAddress);
+    if (ipProblem) {
+      res.status(400).json({ error: ipProblem });
+      return;
+    }
+    // A discovered VM's IP comes from Azure: rediscovery overwrites it and Bastion access is derived
+    // from it, so only manually added nodes take an instructor-entered IP.
+    const { environmentId } = db.prepare('SELECT environment_id AS environmentId FROM topology_nodes WHERE id = ?').get(nodeId) as {
+      environmentId: number | null;
+    };
+    if (environmentId !== null) {
+      res.status(400).json({ error: "a discovered node's IP comes from Azure and can't be edited" });
+      return;
+    }
   }
   if (typeof zoneId === 'number' && !rowInScenario('topology_zones', zoneId, cyberRangeId)) {
     res.status(400).json({ error: "that zone isn't part of this scenario's topology" });
@@ -135,6 +167,14 @@ router.patch('/cyber-ranges/:cyberRangeId/topology/nodes/:nodeId', ...AUTHOR, (r
     typeof status === 'string' ? status : null,
     nodeId,
   );
+  if (privateIpAddress !== undefined) {
+    const ip = typeof privateIpAddress === 'string' ? privateIpAddress.trim() : '';
+    db.prepare(
+      ip
+        ? `UPDATE topology_nodes SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.privateIpAddress', ?) WHERE id = ?`
+        : `UPDATE topology_nodes SET metadata_json = json_remove(metadata_json, '$.privateIpAddress') WHERE id = ?`,
+    ).run(...(ip ? [ip, nodeId] : [nodeId]));
+  }
 
   res.json({ ok: true });
 });
