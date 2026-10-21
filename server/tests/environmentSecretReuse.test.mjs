@@ -44,3 +44,24 @@ test('copying from an unknown environment stores nothing', () => {
   assert.throws(() => env.createEnvironment(input('x', { copySecretFromEnvironmentId: 99999 }), 'instructor'));
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM credentials').get().n, before);
 });
+
+test('renaming an environment renames its linked Cyber Ranges that still share its name', () => {
+  const dayId = db.prepare('SELECT id FROM days ORDER BY id LIMIT 1').get().id;
+  const { environment, cyberRangeId } = env.registerEnvironmentWithCyberRange(
+    input('Old', { clientSecret: 'shh' }),
+    { dayId, name: 'Old', difficulty: 'intermediate' },
+    'instructor',
+  );
+  const { cyberRangeId: otherRangeId } = env.registerEnvironmentWithCyberRange(
+    input('Other', { clientSecret: 'shh' }),
+    { dayId, name: 'Own name', difficulty: 'intermediate' },
+    'instructor',
+  );
+  env.linkEnvironmentToCyberRange(otherRangeId, environment.id, 'instructor');
+  const rangeName = (id) => db.prepare('SELECT name FROM cyber_ranges WHERE id = ?').get(id).name;
+
+  env.updateEnvironment(environment.id, { name: 'New' }, 'instructor');
+  assert.equal(rangeName(cyberRangeId), 'New');
+  // A range with its own name keeps it.
+  assert.equal(rangeName(otherRangeId), 'Own name');
+});

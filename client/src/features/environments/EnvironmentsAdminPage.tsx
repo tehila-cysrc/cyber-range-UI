@@ -273,7 +273,8 @@ function EnvironmentCard({
           onCancel={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
-            queryClient.invalidateQueries({ queryKey: ['admin-environments'] });
+            // A rename also renames the linked Cyber Ranges, whose names are cached under many keys.
+            queryClient.invalidateQueries();
           }}
         />
       </div>

@@ -155,10 +155,20 @@ export function updateEnvironment(
   input: Partial<CloudEnvironmentInput>,
   actorUsername: string,
 ): CloudEnvironmentSummary | null {
-  const existing = db.prepare('SELECT id, credential_id AS credentialId FROM cloud_environments WHERE id = ?').get(id) as
-    | { id: number; credentialId: number }
+  const existing = db.prepare('SELECT id, credential_id AS credentialId, name FROM cloud_environments WHERE id = ?').get(id) as
+    | { id: number; credentialId: number; name: string }
     | undefined;
   if (!existing) return null;
+
+  // Registering an environment creates its Cyber Range under the same name, and every other page
+  // shows the Cyber Range's name — so a rename carries over to the linked ranges that still share
+  // the old name. A range renamed on its own (Scenarios page) keeps its name.
+  if (input.name && input.name !== existing.name) {
+    db.prepare(
+      `UPDATE cyber_ranges SET name = ?
+       WHERE name = ? AND id IN (SELECT cyber_range_id FROM cyber_range_environments WHERE environment_id = ?)`,
+    ).run(input.name, existing.name, id);
+  }
 
   db.prepare(
     `UPDATE cloud_environments SET
