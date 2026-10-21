@@ -7,7 +7,7 @@ import { ApiError } from '../../lib/apiClient';
 import { useCan } from '../../lib/permissions';
 import { useToastStore } from '../../stores/toastStore';
 import { EntryFeedbackForm } from '../documentation/EntryFeedback';
-import { JudgementBadges, LeakGate } from './AiParts';
+import { LeakGate } from './AiParts';
 import { monoLabel, type Tone } from './aiStyles';
 import {
   describeAiError,
@@ -15,9 +15,7 @@ import {
   useAssessmentDetail,
   useAssessmentList,
   useRequestAssessment,
-  type Evidence,
   type LiveDetail,
-  type LiveResult,
 } from './useAiAssessments';
 
 // "Check with AI" on one timeline entry (simplified instructor UX, 2026-10-18). The agent only reviews
@@ -29,12 +27,6 @@ const VERDICT: Record<'on_track' | 'off_track' | 'comment', { label: string; ton
   on_track: { label: 'On the right track', tone: 'primary' },
   off_track: { label: 'Off track', tone: 'alert' },
   comment: { label: 'Comment', tone: 'secondary' },
-};
-const OVERALL: Record<LiveResult['status'], string> = {
-  on_track: 'on track',
-  partially_on_track: 'partially on track',
-  needs_guidance: 'needs guidance',
-  insufficient_evidence: 'too early to tell',
 };
 
 const linkButton = {
@@ -48,8 +40,6 @@ const linkButton = {
   textTransform: 'uppercase',
   color: 'var(--signal-secondary)',
 } as const;
-
-const mentions = (evidence: Evidence[], entryId: number) => evidence.some((e) => e.type === 'timeline_entry' && e.id === entryId);
 
 export interface EntryAiCheckProps {
   teamId: number;
@@ -178,16 +168,13 @@ function EntryResult({
   const r = detail.result!.result;
   const flags = detail.result!.flags;
   const feedback = r.studentSafeFeedback.entryFeedback.find((f) => f.entryId === entryId) ?? null;
-  const related = [
-    ...r.correctlyIdentified.filter((it) => mentions(it.evidence, entryId)),
-    ...r.partiallyUnderstood.filter((it) => mentions(it.evidence, entryId)),
-  ];
-  const gaps = r.missingOrUnclear.filter((g) => mentions(g.evidence, entryId));
   const points = r.suggestedEntryScores.find((s) => s.entryId === entryId) ?? null;
+  // Kept short on purpose (2026-10-21): a verdict, a two-line recommendation and one suggested score.
+  // The full breakdown lives in "Details"; the extensive feedback is the Event Summary final assessment.
+  const recommendation = feedback?.text ?? points?.rationale ?? null;
   const instructionLike = (flags.instructionLikeRecords ?? []).some((x) => x.type === 'timeline_entry' && x.id === entryId);
   const posted = (detail.postedEntryIds ?? []).includes(entryId);
   const blocked = flags.leakSuspected && !reviewed;
-  const nothing = !feedback && related.length === 0 && gaps.length === 0 && !points;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -197,43 +184,27 @@ function EntryResult({
         </div>
       )}
 
-      {nothing ? (
-        <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>The AI had no specific comment on this entry.</span>
-      ) : (
-        <>
-          {feedback && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span>
-                <TelemetryBadge tone={VERDICT[feedback.verdict].tone}>{VERDICT[feedback.verdict].label}</TelemetryBadge>
-                {posted && (
-                  <span style={{ marginLeft: 6 }}>
-                    <TelemetryBadge tone="primary">Posted</TelemetryBadge>
-                  </span>
-                )}
-              </span>
-              <span style={{ fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.5 }}>{feedback.text}</span>
-            </div>
-          )}
-          {related.map((it, i) => (
-            <div key={`r${i}`} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-primary)' }}>
-              <JudgementBadges judgement={it.judgement} unsupported={it.unsupported} />
-              <span>{it.concept}</span>
-            </div>
-          ))}
-          {gaps.map((g, i) => (
-            <div key={`g${i}`} style={{ fontSize: 14, color: 'var(--text-primary)' }}>
-              <TelemetryBadge tone="tertiary">Missing</TelemetryBadge> {g.topic}
-            </div>
-          ))}
-          {points && (
-            <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>
-              Suggested points (not awarded): +{points.points}
-            </span>
-          )}
-        </>
-      )}
-
-      <span style={{ fontSize: 13, color: 'var(--text-telemetry)' }}>Team overall: {OVERALL[r.status]}.</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        {feedback && <TelemetryBadge tone={VERDICT[feedback.verdict].tone}>{VERDICT[feedback.verdict].label}</TelemetryBadge>}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-primary)' }}>
+          Suggested score: {points ? `${points.points > 0 ? '+' : ''}${points.points}` : '0'}
+        </span>
+        {posted && <TelemetryBadge tone="primary">Posted</TelemetryBadge>}
+      </div>
+      <span
+        title={recommendation ?? undefined}
+        style={{
+          fontSize: 14,
+          lineHeight: 1.5,
+          color: recommendation ? 'var(--text-primary)' : 'var(--text-muted)',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {recommendation ?? 'The AI had no specific comment on this entry.'}
+      </span>
 
       {feedback && canFeedback && !editing && <LeakGate flags={flags} reviewed={reviewed} onReviewed={setReviewed} />}
 
@@ -261,7 +232,7 @@ function EntryResult({
             </Button>
           )}
           <Link to={`/instructor/teams/${teamId}?tab=ai&session=${cyberRangeId}`} style={{ fontSize: 14, color: 'var(--signal-secondary)' }}>
-            View details
+            Details
           </Link>
           <button type="button" onClick={onRecheck} style={linkButton} title="Run a new AI review of the whole investigation">
             Check again
