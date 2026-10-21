@@ -647,7 +647,7 @@ function NodePanel({
             />
           </Field>
           {/* A manually added node isn't a real VM in the zone — say how students reach it. */}
-          <Field label="How to reach it (shown to students)">
+          <Field label="How to reach it">
             <textarea
               value={access}
               onChange={(e) => setAccess(e.target.value)}
