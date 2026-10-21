@@ -134,6 +134,7 @@ interface DocEntry {
   isImportantFinding: number;
   afterTimeLimit?: number;
   createdAt: string;
+  authorUserId: number;
   authorName: string;
   authorAvatar?: string | null;
   categoryKey: string | null;
@@ -936,7 +937,12 @@ function TimelineEntry({
         deletingId={removeFeedback.isPending ? removeFeedback.variables : null}
       />
       {feedbackEditing && (
-        <EntryFeedbackForm<DocEntry> cyberRangeId={feedbackEditing.cyberRangeId} entryId={entry.id} onSaved={replaceEntry} />
+        <EntryFeedbackForm<DocEntry>
+          cyberRangeId={feedbackEditing.cyberRangeId}
+          entryId={entry.id}
+          onSaved={replaceEntry}
+          scoring={feedbackEditing.ai ? { teamId: feedbackEditing.ai.teamId, studentUserId: entry.authorUserId } : undefined}
+        />
       )}
       {feedbackEditing?.ai && (
         <EntryAiCheck
@@ -944,6 +950,7 @@ function TimelineEntry({
           cyberRangeId={feedbackEditing.cyberRangeId}
           sessionStatus={feedbackEditing.ai.sessionStatus}
           entryId={entry.id}
+          authorUserId={entry.authorUserId}
           onFeedbackSaved={(updated) => replaceEntry(updated as DocEntry)}
         />
       )}

@@ -47,10 +47,11 @@ export interface EntryAiCheckProps {
   // Live reviews need an active or paused session (server rule); completed ones are assessed from Event Summary.
   sessionStatus: 'active' | 'paused' | 'completed' | string;
   entryId: number;
+  authorUserId?: number;
   onFeedbackSaved: (entry: unknown) => void;
 }
 
-export function EntryAiCheck({ teamId, cyberRangeId, sessionStatus, entryId, onFeedbackSaved }: EntryAiCheckProps) {
+export function EntryAiCheck({ teamId, cyberRangeId, sessionStatus, entryId, authorUserId, onFeedbackSaved }: EntryAiCheckProps) {
   const { available } = useAiStatus();
   const [open, setOpen] = useState(false);
   const [runId, setRunId] = useState<number | null>(null);
@@ -111,7 +112,7 @@ export function EntryAiCheck({ teamId, cyberRangeId, sessionStatus, entryId, onF
       </>
     );
   } else {
-    body = <EntryResult key={summary.id} summary={summary} teamId={teamId} cyberRangeId={cyberRangeId} entryId={entryId} onFeedbackSaved={onFeedbackSaved} onRecheck={() => start(true)} />;
+    body = <EntryResult key={summary.id} summary={summary} teamId={teamId} cyberRangeId={cyberRangeId} entryId={entryId} authorUserId={authorUserId} onFeedbackSaved={onFeedbackSaved} onRecheck={() => start(true)} />;
   }
 
   return (
@@ -144,6 +145,7 @@ function EntryResult({
   teamId,
   cyberRangeId,
   entryId,
+  authorUserId,
   onFeedbackSaved,
   onRecheck,
 }: {
@@ -151,6 +153,7 @@ function EntryResult({
   teamId: number;
   cyberRangeId: number;
   entryId: number;
+  authorUserId?: number;
   onFeedbackSaved: (entry: unknown) => void;
   onRecheck: () => void;
 }) {
@@ -216,6 +219,8 @@ function EntryResult({
           initialBody={feedback.text}
           startOpen
           sourceAiAssessmentId={detail.id}
+          // Suggested score pre-filled and editable; a resend starts empty so it can't double-award.
+          scoring={{ teamId, studentUserId: authorUserId, initialPoints: posted ? undefined : points?.points }}
           onCancel={() => setEditing(false)}
           onSaved={(entry) => {
             onFeedbackSaved(entry);
